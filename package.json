@@ -22,10 +22,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Nizar-max/agent-workflow.git"
+    "url": "https://github.com/PolderLabsVOF/agent-workflow.git"
   },
   "bugs": {
-    "url": "https://github.com/Nizar-max/agent-workflow/issues"
+    "url": "https://github.com/PolderLabsVOF/agent-workflow/issues"
   },
   "license": "MIT",
   "devDependencies": {
