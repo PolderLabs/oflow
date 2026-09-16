@@ -129,12 +129,14 @@ oflow verify --plan .oflow/state/plans/<plan-id>.json
 ```
 
 The currently implemented plan operations are issue/work-item update, issue
-note creation, and project label create/update:
+note creation, project label create/update, and project milestone create/update:
 
 ```bash
 oflow plan issue update --story <iid> \
   --title "Updated title" \
   --labels "Ready,backend" \
+  --due-date 2027-01-20 \
+  --weight 3 \
   --state closed
 oflow plan issue note --story <iid> \
   --body "Progress: API contract confirmed."
@@ -154,6 +156,12 @@ comments. Label creation also disables automatic retries because it is a
 non-idempotent POST; label updates use the idempotent PUT endpoint. Milestone
 creation also disables retries for the non-idempotent POST. Board movement,
 iterations, and merge-request writes are not yet apply-capable.
+
+Project sync can read group-backed iterations. Iteration creation and editing
+remain planned because GitLab documents the project/group REST endpoints as
+listing APIs; sprint creation is tied to group iteration cadences and is not a
+simple project REST mutation. Do not simulate it by changing labels or
+milestones.
 
 The exact syntax may change, but the state transition must not:
 

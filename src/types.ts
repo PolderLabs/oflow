@@ -82,6 +82,8 @@ export interface GitLabIssue {
   references?: Record<string, unknown> | null;
   updated_at?: string;
   created_at?: string;
+  due_date?: string | null;
+  weight?: number | null;
   [key: string]: unknown;
 }
 
@@ -90,6 +92,8 @@ export interface GitLabIssueUpdate {
   description?: string;
   labels?: string;
   milestone?: string;
+  due_date?: string;
+  weight?: number;
   state_event?: "close" | "reopen";
 }
 

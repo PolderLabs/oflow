@@ -31,6 +31,8 @@ test("issue update plans require approval and verify the applied result", async 
     description: "Old description",
     state: "opened",
     labels: ["Old"],
+    due_date: null,
+    weight: null,
     web_url: "https://gitlab.example.test/team/project/-/issues/42",
   };
   try {
@@ -53,6 +55,8 @@ test("issue update plans require approval and verify the applied result", async 
           title: body.get("title") ?? issue.title,
           labels: (body.get("labels") ?? issue.labels.join(",")).split(","),
           state: body.get("state_event") === "close" ? "closed" : issue.state,
+          due_date: body.get("due_date") ?? issue.due_date,
+          weight: body.has("weight") ? Number(body.get("weight")) : issue.weight,
         };
       }
       return {
@@ -66,6 +70,8 @@ test("issue update plans require approval and verify the applied result", async 
     const created = await createIssueUpdatePlan(root, 42, {
       title: "Choose a pod now",
       labels: "User Story,Ready",
+      due_date: "2027-01-20",
+      weight: 3,
       state_event: "close",
     });
     assert.equal(created.plan.state, "draft");

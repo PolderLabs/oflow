@@ -137,10 +137,10 @@ export async function createIssueUpdatePlan(
     );
   }
   validateIssueIid(issueIid);
-  const operationChanges = cleanChanges(changes);
+  const operationChanges = validateIssueChanges(cleanChanges(changes));
   if (Object.keys(operationChanges).length === 0) {
     throw new OflowError(
-      "No issue changes were provided. Use --title, --description, --labels, --milestone, or --state.",
+      "No issue changes were provided. Use --title, --description, --labels, --milestone, --due-date, --weight, or --state.",
       "EMPTY_PLAN",
     );
   }
@@ -797,6 +797,22 @@ function cleanChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
   ) as GitLabIssueUpdate;
 }
 
+function validateIssueChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
+  if (changes.due_date !== undefined) {
+    validateDate(changes.due_date, "Issue due date");
+  }
+  if (
+    changes.weight !== undefined &&
+    (!Number.isSafeInteger(changes.weight) || changes.weight < 0)
+  ) {
+    throw new OflowError(
+      "Issue weight must be a non-negative integer.",
+      "INVALID_ISSUE_WEIGHT",
+    );
+  }
+  return changes;
+}
+
 function compactIssue(issue: GitLabIssue): NonNullable<PlanArtifact["result"]> {
   return {
     kind: "issue.update",
@@ -885,6 +901,18 @@ function verifyIssue(
   }
   if (changes.milestone !== undefined) {
     checks.push(check("milestone", changes.milestone, namedValue(issue.milestone)));
+  }
+  if (changes.due_date !== undefined) {
+    checks.push(check("due_date", changes.due_date, issue.due_date ?? ""));
+  }
+  if (changes.weight !== undefined) {
+    checks.push(
+      check(
+        "weight",
+        String(changes.weight),
+        issue.weight === null || issue.weight === undefined ? "" : String(issue.weight),
+      ),
+    );
   }
   if (changes.state_event !== undefined) {
     const expected = changes.state_event === "close" ? "closed" : "opened";

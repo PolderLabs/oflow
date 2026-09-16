@@ -75,6 +75,7 @@ interface CliOptions {
   label?: string;
   startDate?: string;
   dueDate?: string;
+  weight?: string;
   labels?: string;
   milestone?: string;
 }
@@ -173,6 +174,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             description: options.description,
             labels: options.labels,
             milestone: options.milestone,
+            due_date: options.dueDate,
+            weight: options.weight === undefined
+              ? undefined
+              : parseNonNegativeInteger(options.weight, "issue weight"),
             state_event: normalizeIssueUpdateState(options.state),
           };
           const stored = await createIssueUpdatePlan(root, storyIid, changes);
@@ -441,6 +446,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--label" ||
       argument === "--start-date" ||
       argument === "--due-date" ||
+      argument === "--weight" ||
       argument === "--labels" ||
       argument === "--milestone" ||
       argument === "--plan"
@@ -476,6 +482,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.startDate = value;
       } else if (argument === "--due-date") {
         options.dueDate = value;
+      } else if (argument === "--weight") {
+        options.weight = value;
       } else if (argument === "--labels") {
         options.labels = value;
       } else if (argument === "--milestone") {
@@ -517,6 +525,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.startDate = argument.slice("--start-date=".length);
     } else if (argument.startsWith("--due-date=")) {
       options.dueDate = argument.slice("--due-date=".length);
+    } else if (argument.startsWith("--weight=")) {
+      options.weight = argument.slice("--weight=".length);
     } else if (argument.startsWith("--labels=")) {
       options.labels = argument.slice("--labels=".length);
     } else if (argument.startsWith("--milestone=")) {
@@ -603,6 +613,17 @@ function parsePositiveInteger(value: string, field: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new OflowError(field + " must be a positive integer.", "INVALID_MILESTONE_IID");
+  }
+  return parsed;
+}
+
+function parseNonNegativeInteger(value: string, field: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new OflowError(field + " must be a non-negative integer.", "INVALID_ISSUE_WEIGHT");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new OflowError(field + " must be a non-negative integer.", "INVALID_ISSUE_WEIGHT");
   }
   return parsed;
 }

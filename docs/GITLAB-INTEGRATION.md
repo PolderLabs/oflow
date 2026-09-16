@@ -117,6 +117,12 @@ version. The high-level `glab work-items` command is currently documented as
 experimental, which is another reason not to make it the foundation of the
 Scrum read model.
 
+Iterations are a deliberate boundary: GitLab documents project and group REST
+endpoints for listing iterations, while sprint creation is group/cadence-backed
+and not exposed as a simple project REST create/update operation. `oflow` reads
+them when available but does not pretend that a milestone or label mutation is
+an iteration mutation.
+
 GitLab's fine-grained REST permission mapping also gives us an explicit way to
 document each capability. For the current Scrum scope, start with the
 smallest project/group permissions needed for the operation, rather than
