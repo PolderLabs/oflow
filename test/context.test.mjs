@@ -55,6 +55,10 @@ test("work items compact away descriptions while preserving planning state", () 
     milestone: "Sprint 1",
     iteration: "Iteration 1",
     assignees: ["zakar"],
+    startDate: null,
+    dueDate: null,
+    weight: null,
+    taskCompletion: null,
     parent: {
       iid: 4,
       title: "Access control",

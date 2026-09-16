@@ -110,10 +110,11 @@ Use `--label`, `--milestone`, `--assignee`, `--search`, and
 size and the context an agent must read.
 `work --json` includes the same `query` and `workItemsMayBeTruncated` metadata
 as `sync`, alongside a compact `issues` array containing state, labels,
-assignees, timebox, parent, timestamps, and links—not descriptions. Markdown
-output shows the effective query and marks a result as “more may exist” when it
-reaches the requested limit. Use `context --story <iid>` when the description
-and acceptance criteria are needed.
+assignees, timebox, dates, weight, task-checklist progress, parent, timestamps,
+and links—not descriptions. Markdown output shows the effective query and
+marks a result as “more may exist” when it reaches the requested limit. Use
+`context --story <iid>` when the description and acceptance criteria are
+needed.
 
 `mr --iid <iid>` reads one project merge request without changing it. Its
 default JSON/Markdown shape is compact review state (branches, labels,

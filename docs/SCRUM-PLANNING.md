@@ -47,8 +47,9 @@ the preferred way to keep agent handoffs small on larger projects.
 The JSON snapshot reports the effective query and `workItemsMayBeTruncated` so
 agents can tell when a follow-up sync with a larger limit is needed.
 `work --json` reports the same query metadata alongside a compact `issues`
-array. Descriptions are intentionally omitted; use `context --story <iid>` for
-acceptance criteria and full story evidence. Its Markdown output also
+array with assignment, timebox, weight, dates, parent, and task-checklist
+progress. Descriptions are intentionally omitted; use `context --story <iid>`
+for acceptance criteria and full story evidence. Its Markdown output also
 identifies capped results. Agents should treat a `true` truncation flag as a
 prompt to narrow the filters or request a larger limit before making planning
 decisions.

@@ -90,8 +90,13 @@ export interface GitLabIssue {
   references?: Record<string, unknown> | null;
   updated_at?: string;
   created_at?: string;
+  start_date?: string | null;
   due_date?: string | null;
   weight?: number | null;
+  task_completion_status?: {
+    count?: number;
+    completed_count?: number;
+  } | null;
   [key: string]: unknown;
 }
 

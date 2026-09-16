@@ -133,6 +133,13 @@ export interface WorkItemSummary {
   milestone: string | null;
   iteration: string | null;
   assignees: string[];
+  startDate: string | null;
+  dueDate: string | null;
+  weight: number | null;
+  taskCompletion: {
+    completed: number;
+    total: number;
+  } | null;
   parent: {
     iid: number | null;
     title: string;
@@ -153,6 +160,10 @@ export function compactWorkItems(issues: GitLabIssue[]): WorkItemSummary[] {
     assignees: (issue.assignees ?? [])
       .map((assignee) => assignee.username ?? assignee.name)
       .filter((assignee): assignee is string => typeof assignee === "string"),
+    startDate: issue.start_date ?? null,
+    dueDate: issue.due_date ?? null,
+    weight: issue.weight ?? null,
+    taskCompletion: compactTaskCompletion(issue.task_completion_status),
     parent: compactParent(issue.parent ?? issue.epic),
     updatedAt: issue.updated_at ?? null,
     webUrl: issue.web_url ?? null,
@@ -197,7 +208,18 @@ export function formatWorkItemsMarkdown(
         const labels = issue.labels && issue.labels.length > 0
           ? " · " + issue.labels.join(", ")
           : "";
-        return "- #" + issue.iid + " " + title + labels;
+        const assignees = usernamesFrom(issue.assignees);
+        const progress = compactTaskCompletion(issue.task_completion_status);
+        const details = [
+          issue.labels?.length ? issue.labels.join(", ") : "",
+          assignees.length > 0 ? "assignee: " + assignees.join(", ") : "",
+          namedValue(issue.milestone) ? "milestone: " + namedValue(issue.milestone) : "",
+          namedValue(issue.iteration) ? "iteration: " + namedValue(issue.iteration) : "",
+          progress ? "tasks: " + String(progress.completed) + "/" + String(progress.total) : "",
+          issue.weight !== null && issue.weight !== undefined ? "weight: " + String(issue.weight) : "",
+        ].filter(Boolean);
+        return "- #" + issue.iid + " " + title +
+          (details.length > 0 ? " · " + details.join(" · ") : "");
       }),
     );
   }
@@ -222,6 +244,17 @@ function namedValue(value: unknown): string | null {
   }
   const name = value.name ?? value.title;
   return typeof name === "string" && name.trim() ? oneLine(name) : null;
+}
+
+function compactTaskCompletion(value: unknown): WorkItemSummary["taskCompletion"] {
+  if (!isRecord(value) || typeof value.count !== "number" ||
+    typeof value.completed_count !== "number") {
+    return null;
+  }
+  return {
+    completed: value.completed_count,
+    total: value.count,
+  };
 }
 
 function usernameFrom(value: unknown): string | null {

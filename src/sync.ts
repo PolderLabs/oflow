@@ -83,6 +83,14 @@ export interface SyncWorkItem {
   labels: string[];
   milestone: string | null;
   iteration: string | null;
+  assignees: string[];
+  startDate: string | null;
+  dueDate: string | null;
+  weight: number | null;
+  taskCompletion: {
+    completed: number;
+    total: number;
+  } | null;
   parent: SyncParent | null;
   updatedAt: string | null;
   webUrl: string | null;
@@ -157,6 +165,14 @@ export interface SyncStory {
   labels: string[];
   milestone: string | null;
   iteration: string | null;
+  assignees: string[];
+  startDate: string | null;
+  dueDate: string | null;
+  weight: number | null;
+  taskCompletion: {
+    completed: number;
+    total: number;
+  } | null;
   parent: SyncParent | null;
   updatedAt: string | null;
   webUrl: string | null;
@@ -337,9 +353,15 @@ export function formatSyncMarkdown(result: SyncResult): string {
           " " +
           linkOrText(item.title, item.webUrl) +
           (item.labels.length > 0 ? " · " + item.labels.join(", ") : "") +
+          (item.assignees.length > 0 ? " · assignee: " + item.assignees.join(", ") : "") +
           (item.parent ? " · parent: " + item.parent.title : "") +
           (item.milestone ? " · milestone: " + item.milestone : "") +
-          (item.iteration ? " · iteration: " + item.iteration : ""),
+          (item.iteration ? " · iteration: " + item.iteration : "") +
+          (item.taskCompletion
+            ? " · tasks: " + String(item.taskCompletion.completed) + "/" + String(item.taskCompletion.total)
+            : "") +
+          (item.weight !== null ? " · weight: " + String(item.weight) : "") +
+          (item.dueDate ? " · due: " + item.dueDate : ""),
       ),
     );
   }
@@ -483,6 +505,11 @@ async function loadStorySummary(
     labels: issue.labels ?? [],
     milestone: namedValue(issue.milestone),
     iteration: namedValue(issue.iteration),
+    assignees: usernames(issue.assignees),
+    startDate: issue.start_date ?? null,
+    dueDate: issue.due_date ?? null,
+    weight: issue.weight ?? null,
+    taskCompletion: compactTaskCompletion(issue.task_completion_status),
     parent: compactParent(issue.parent ?? issue.epic),
     updatedAt: issue.updated_at ?? null,
     webUrl: issue.web_url ?? null,
@@ -531,10 +558,45 @@ function compactWorkItem(issue: GitLabIssue): SyncWorkItem {
     labels: issue.labels ?? [],
     milestone: namedValue(issue.milestone),
     iteration: namedValue(issue.iteration),
+    assignees: usernames(issue.assignees),
+    startDate: issue.start_date ?? null,
+    dueDate: issue.due_date ?? null,
+    weight: issue.weight ?? null,
+    taskCompletion: compactTaskCompletion(issue.task_completion_status),
     parent: compactParent(issue.parent ?? issue.epic),
     updatedAt: issue.updated_at ?? null,
     webUrl: issue.web_url ?? null,
   };
+}
+
+function compactTaskCompletion(value: unknown): SyncWorkItem["taskCompletion"] {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.count !== "number" || typeof record.completed_count !== "number") {
+    return null;
+  }
+  return {
+    completed: record.completed_count,
+    total: record.count,
+  };
+}
+
+function usernames(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const username = record.username ?? record.name;
+      return typeof username === "string" && username.trim() ? username : null;
+    })
+    .filter((username): username is string => username !== null);
 }
 
 function inspectPlanningHealth(issues: GitLabIssue[]): SyncPlanningHealth {
