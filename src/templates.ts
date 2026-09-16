@@ -60,7 +60,7 @@ export const OFLOW_README_MARKDOWN = [
   "- GitLab credentials live outside the repository; use oflow auth login.",
   "- oflow reads GitLab through its typed REST API; explicit group-epic reads use GraphQL, while glab and MCP remain optional integrations.",
   "- oflow glab api is an explicit GET-only fallback for unwrapped endpoints.",
-  "- Use work/sync filters and --limit to keep agent context small on larger projects.",
+  "- Use work/sync filters, --limit, and sync --stale-days when an explicit age threshold is useful to keep planning context focused.",
   "- In sync JSON, check pagination.hasNextPage before treating a collection as complete.",
   "- Use oflow audit --json to inspect local plan lifecycle history; it never contacts GitLab or contains tokens.",
   "- Use plan issues labels --stories <iid,...> for bounded multi-story workflow-label changes.",

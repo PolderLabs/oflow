@@ -64,6 +64,7 @@ oflow iteration --group --state current --json # parent-group sprint schedule
 oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
 oflow sync --epics --json      # include a bounded group-epic snapshot (opt-in)
 oflow sync --label "Ready" --limit 20 --json
+oflow sync --stale-days 14 --json # flag returned work items with no recent update
 oflow assess --story 42 --json # story progress, acceptance, and local evidence
 oflow capabilities --json      # show implemented, planned, and optional paths
 oflow audit --json             # read local plan lifecycle history
@@ -155,6 +156,11 @@ results to stories created by one user. These filters reduce both API response
 size and the context an agent must read.
 Use `--updated-before` to inspect an older slice without making oflow decide
 how many days qualifies as stale.
+Use `sync --stale-days 14` when an explicit age threshold is useful; it adds an
+advisory stale-work-item finding from the `updated_at` values already returned
+by the issue query and makes no extra GitLab request. The threshold is opt-in
+and bounded to 1..3650 days; missing or invalid timestamps are treated as
+unknown.
 `work --json` includes the same `query`, compact `pagination`, and
 `workItemsMayBeTruncated` metadata as `sync`, alongside a compact `issues` array
 containing state, labels,

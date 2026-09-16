@@ -25,6 +25,7 @@ export interface SyncOptions {
   issueFilters?: GitLabIssueFilters;
   issueLimit?: number;
   includeEpics?: boolean;
+  staleDays?: number;
 }
 
 export interface SyncResult {
@@ -46,6 +47,7 @@ export interface SyncResult {
     issueLimit: number;
     issueFilters: GitLabIssueFilters;
     includeEpics: boolean;
+    staleDays: number | null;
   };
   mergeRequests: SyncMergeRequest[];
   pipelines: SyncPipeline[];
@@ -89,6 +91,7 @@ export interface SyncPlanningHealth {
       | "missing-acceptance-criteria"
       | "unassigned-work-item"
       | "untimeboxed-work-item"
+      | "stale-work-item"
       | "conflicting-board-labels";
     message: string;
     storyIids: number[];
@@ -243,6 +246,7 @@ export async function syncProject(
   const state = options.state ?? "opened";
   const issueLimit = options.issueLimit ?? 50;
   const issueFilters = options.issueFilters ?? {};
+  const staleDays = validateStaleDays(options.staleDays);
   const warnings: string[] = [];
 
   if (
@@ -345,6 +349,7 @@ export async function syncProject(
       issueLimit,
       issueFilters,
       includeEpics: options.includeEpics === true,
+      staleDays,
     },
     mergeRequests: mergeRequestsPage.items.map(compactMergeRequest),
     pipelines: pipelinesPage.items.map(compactPipeline),
@@ -378,7 +383,7 @@ export async function syncProject(
       iterations: iterationsPage.items.length,
       epics: groupEpics.epics.length,
     },
-    planningHealth: inspectPlanningHealth(issuesPage.items, boardsPage.boards),
+    planningHealth: inspectPlanningHealth(issuesPage.items, boardsPage.boards, staleDays),
     warnings,
   };
   return result;
@@ -393,7 +398,8 @@ export function formatSyncMarkdown(result: SyncResult): string {
     "Branch: " + (result.repository.branch ?? "detached/unknown"),
     "Work-item query: " + result.query.state +
       "; limit " + String(result.query.issueLimit) +
-      (formatIssueFilters(result.query.issueFilters) || ""),
+      (formatIssueFilters(result.query.issueFilters) || "") +
+      (result.query.staleDays === null ? "" : "; stale after " + String(result.query.staleDays) + " days"),
     "",
     "## Snapshot",
     "",
@@ -696,7 +702,11 @@ function usernames(value: unknown): string[] {
     .filter((username): username is string => username !== null);
 }
 
-function inspectPlanningHealth(issues: GitLabIssue[], boards: SyncBoard[]): SyncPlanningHealth {
+function inspectPlanningHealth(
+  issues: GitLabIssue[],
+  boards: SyncBoard[],
+  staleDays: number | null,
+): SyncPlanningHealth {
   const findings: SyncPlanningHealth["findings"] = [];
   const describedIssues = issues.filter((issue) => typeof issue.description === "string");
   const missingCriteria = describedIssues.filter(
@@ -737,6 +747,24 @@ function inspectPlanningHealth(issues: GitLabIssue[], boards: SyncBoard[]): Sync
     });
   }
 
+  if (staleDays !== null) {
+    const cutoff = Date.now() - staleDays * 24 * 60 * 60 * 1000;
+    const stale = issues.filter((issue) => {
+      if (typeof issue.updated_at !== "string") {
+        return false;
+      }
+      const updatedAt = Date.parse(issue.updated_at);
+      return Number.isFinite(updatedAt) && updatedAt < cutoff;
+    });
+    if (stale.length > 0) {
+      findings.push({
+        code: "stale-work-item",
+        message: `${stale.length} work item${stale.length === 1 ? " has" : "s have"} not changed in the last ${staleDays} day${staleDays === 1 ? "" : "s"}`,
+        storyIids: stale.slice(0, 10).map((issue) => issue.iid),
+      });
+    }
+  }
+
   for (const board of boards) {
     const boardLabels = [...new Set(
       board.lists
@@ -760,6 +788,19 @@ function inspectPlanningHealth(issues: GitLabIssue[], boards: SyncBoard[]): Sync
   }
 
   return { findings };
+}
+
+function validateStaleDays(value: number | undefined): number | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (!Number.isSafeInteger(value) || value < 1 || value > 3650) {
+    throw new OflowError(
+      "Stale days must be an integer between 1 and 3650.",
+      "INVALID_STALE_DAYS",
+    );
+  }
+  return value;
 }
 
 function compactMergeRequest(mergeRequest: GitLabMergeRequest): SyncMergeRequest {

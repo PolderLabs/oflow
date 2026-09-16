@@ -16,6 +16,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
   const previousToken = process.env.GITLAB_TOKEN;
   process.env.GITLAB_TOKEN = "sync-test-token";
   let pipelineRequests = 0;
+  const staleUpdatedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
   try {
     await run("git", ["init", "-q", root]);
     await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
@@ -35,8 +36,8 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
       if (path.endsWith("/pipelines")) pipelineRequests += 1;
       const responses = new Map([
         ["/api/v4/projects/team%2Fproject", { id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project", default_branch: "main" }],
-        ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story", "Ready", "Doing"], description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", assignees: [], milestone: null, iteration: null, task_completion_status: { count: 3, completed_count: 1 }, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
-        ["/api/v4/projects/team%2Fproject/issues/1", { iid: 1, title: "Choose a pod", description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", state: "opened", labels: ["User Story"], task_completion_status: { count: 3, completed_count: 1 }, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }],
+        ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story", "Ready", "Doing"], description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", assignees: [], milestone: null, iteration: null, task_completion_status: { count: 3, completed_count: 1 }, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: staleUpdatedAt, web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
+        ["/api/v4/projects/team%2Fproject/issues/1", { iid: 1, title: "Choose a pod", description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", state: "opened", labels: ["User Story"], task_completion_status: { count: 3, completed_count: 1 }, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: staleUpdatedAt, web_url: "https://gitlab.example.test/team/project/-/issues/1" }],
         ["/api/v4/projects/team%2Fproject/issues/1/notes", [{ id: 4, body: "Blocked on hardware access", author: { username: "zakar" }, created_at: "2026-01-01T00:00:00Z" }]],
         ["/api/v4/projects/team%2Fproject/issues/1/related_merge_requests", [{ iid: 3, title: "Reservation UI", state: "opened", draft: false, source_branch: "story/1", target_branch: "main" }]],
         ["/api/v4/projects/team%2Fproject/merge_requests", [{ iid: 3, title: "Reservation UI", state: "opened", draft: false, source_branch: "story/1", target_branch: "main" }]],
@@ -61,6 +62,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.equal(result.project.path, "team/project");
     assert.equal(result.stats.workItems, 1);
     assert.equal(result.query.issueLimit, 50);
+    assert.equal(result.query.staleDays, null);
     assert.deepEqual(result.query.issueFilters, {});
     assert.equal(result.workItemsMayBeTruncated, false);
     assert.equal(result.pagination.workItems.returned, 1);
@@ -90,6 +92,17 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.deepEqual(storyResult.story.taskCompletion, { completed: 1, total: 3 });
     assert.equal(storyResult.story.notes[0].body, "Blocked on hardware access");
     assert.equal(storyResult.story.recentNotes, 1);
+
+    const staleResult = await syncProject(root, { staleDays: 1 });
+    assert.equal(staleResult.query.staleDays, 1);
+    assert.deepEqual(
+      staleResult.planningHealth.findings.find((finding) => finding.code === "stale-work-item"),
+      {
+        code: "stale-work-item",
+        message: "1 work item has not changed in the last 1 day",
+        storyIids: [1],
+      },
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

@@ -65,6 +65,12 @@ identifies capped results. Agents should treat a `true` truncation flag as a
 prompt to narrow the filters or request a larger limit before making planning
 decisions.
 
+Use `oflow sync --stale-days 14 --json` to add an advisory
+`stale-work-item` planning-health finding for returned work items whose
+`updated_at` is older than the explicit threshold. This reuses the issue
+response, makes no extra API request, is bounded to 1..3650 days, and treats
+missing or invalid timestamps as unknown rather than stale.
+
 It emits human-readable Markdown and a compact `--json` result. Descriptions
 are excluded from the overall snapshot and fetched only for the selected story,
 so the result is suitable for low-token agent handoff. Local implementation and

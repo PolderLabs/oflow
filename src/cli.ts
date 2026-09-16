@@ -113,6 +113,7 @@ interface CliOptions {
   search?: string;
   updatedAfter?: string;
   updatedBefore?: string;
+  staleDays?: string;
   limit?: string;
   board?: string;
   list?: string;
@@ -235,6 +236,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           storyIid,
           issueFilters: collectIssueFilters(options),
           includeEpics: options.epics,
+          staleDays: options.staleDays === undefined
+            ? undefined
+            : parseStaleDays(options.staleDays),
           issueLimit: options.limit === undefined
             ? undefined
             : parseIssueLimit(options.limit, 100),
@@ -705,6 +709,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--search" ||
       argument === "--updated-after" ||
       argument === "--updated-before" ||
+      argument === "--stale-days" ||
       argument === "--limit" ||
       argument === "--board" ||
       argument === "--list" ||
@@ -769,6 +774,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.updatedAfter = value;
       } else if (argument === "--updated-before") {
         options.updatedBefore = value;
+      } else if (argument === "--stale-days") {
+        options.staleDays = value;
       } else if (argument === "--limit") {
         options.limit = value;
       } else if (argument === "--board") {
@@ -850,6 +857,12 @@ function parseArgs(argv: string[]): CliOptions {
       options.updatedAfter = argument.slice("--updated-after=".length);
     } else if (argument.startsWith("--updated-before=")) {
       options.updatedBefore = argument.slice("--updated-before=".length);
+    } else if (argument.startsWith("--stale-days=")) {
+      const value = argument.slice("--stale-days=".length);
+      if (!value) {
+        throw new OflowError("--stale-days requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.staleDays = value;
     } else if (argument.startsWith("--limit=")) {
       options.limit = argument.slice("--limit=".length);
     } else if (argument.startsWith("--board=")) {
@@ -1034,6 +1047,23 @@ function parseIssueLimit(value: string | undefined, defaultLimit: number): numbe
     throw new OflowError(
       "Issue limit must be an integer between 1 and 100.",
       "INVALID_ISSUE_LIMIT",
+    );
+  }
+  return parsed;
+}
+
+function parseStaleDays(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new OflowError(
+      "Stale days must be an integer between 1 and 3650.",
+      "INVALID_STALE_DAYS",
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 3650) {
+    throw new OflowError(
+      "Stale days must be an integer between 1 and 3650.",
+      "INVALID_STALE_DAYS",
     );
   }
   return parsed;
@@ -1276,6 +1306,7 @@ function helpText(): string {
     "  --stories 1,2 use with plan issues labels/update for bounded bulk changes",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
+    "  sync --stale-days <n>  add an advisory stale-work-item finding without extra API calls",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",
     "  iteration --group  read the parent-group sprint schedule (requires group access)",
   ].join("\n") + "\n";
@@ -1303,6 +1334,7 @@ function assertBulkPlanningOptions(options: CliOptions): void {
     ["--search", options.search],
     ["--updated-after", options.updatedAfter],
     ["--updated-before", options.updatedBefore],
+    ["--stale-days", options.staleDays],
     ["--limit", options.limit],
     ["--board", options.board],
     ["--list", options.list],
