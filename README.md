@@ -26,6 +26,22 @@ AGENTS.md       # managed instructions, preserved if it already exists
 CLAUDE.md       # managed instructions when Claude is detected
 ```
 
+When using a local checkout of oflow instead of a published npm package, make
+the `bin` entry available as the normal `oflow` command once:
+
+```bash
+cd /path/to/agent-workflow
+npm install
+npm run build
+npm link
+oflow --help
+```
+
+`npm link` creates a user-level npm symlink to this checkout. After source
+changes, rerun `npm run build`; no token or project state is copied into the
+oflow repository. Without a link, `node dist/cli.js ...` remains a valid local
+fallback.
+
 It never writes tokens or user-level Claude/Codex settings.
 
 ## Commands

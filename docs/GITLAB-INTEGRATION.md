@@ -234,9 +234,15 @@ Use the PAT already configured with `oflow` and the direct REST commands today:
 cd /home/zakar/projects/09-nestpod-modulaire-priveruimtes
 oflow doctor --check-api
 oflow work --state opened
+oflow iteration --state current --json
 oflow context --story <iid> --json
 oflow verify --story <iid> --json
 ```
+
+If `oflow` is not on `PATH` because you are running this repository from a
+checkout, install its local executable with `npm install`, `npm run build`, and
+`npm link` from the oflow checkout. The link only exposes the CLI; credentials
+remain in the user-level oflow configuration directory.
 
 Install `glab` separately only when you want its human CLI or when a future
 `oflow` capability explicitly reports it as a supported fallback. Do not
