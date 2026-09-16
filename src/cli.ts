@@ -17,6 +17,7 @@ import { assessStory, formatAssessmentMarkdown } from "./assess.js";
 import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
 import {
   chooseMergeRequest,
+  compactWorkItems,
   formatContextMarkdown,
   formatMergeRequestTemplate,
   formatWorkItemsMarkdown,
@@ -148,16 +149,27 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       }
       case "work": {
         const state = normalizeIssueState(options.state);
+        const filters = collectIssueFilters(options);
+        const limit = parseIssueLimit(options.limit, 100);
         const issues = await listWorkItems(
           root,
           state,
-          collectIssueFilters(options),
-          parseIssueLimit(options.limit, 100),
+          filters,
+          limit,
         );
         print(
           options.json,
-          { state, issues },
-          formatWorkItemsMarkdown(issues, state),
+          {
+            state,
+            issues: compactWorkItems(issues),
+            query: { state, issueLimit: limit, issueFilters: filters },
+            workItemsMayBeTruncated: issues.length === limit,
+          },
+          formatWorkItemsMarkdown(issues, state, {
+            issueLimit: limit,
+            issueFilters: filters,
+            mayBeTruncated: issues.length === limit,
+          }),
         );
         return 0;
       }

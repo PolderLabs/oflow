@@ -106,6 +106,12 @@ Use `--label`, `--milestone`, `--assignee`, `--search`, and
 `work` and 50 for `sync`. `--assignee none` finds unassigned items and
 `--assignee any` finds assigned items. These filters reduce both API response
 size and the context an agent must read.
+`work --json` includes the same `query` and `workItemsMayBeTruncated` metadata
+as `sync`, alongside a compact `issues` array containing state, labels,
+assignees, timebox, parent, timestamps, and links—not descriptions. Markdown
+output shows the effective query and marks a result as “more may exist” when it
+reaches the requested limit. Use `context --story <iid>` when the description
+and acceptance criteria are needed.
 
 Use `--epic <id>` to assign an issue to an existing epic, or `--epic none` on
 an update to clear the association. This uses GitLab's `epic_id` issue field;

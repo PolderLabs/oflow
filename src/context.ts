@@ -31,15 +31,65 @@ export async function listWorkItems(
   return new GitLabClient(remote.host).listIssues(remote.projectPath, state, limit, filters);
 }
 
+export interface WorkItemSummary {
+  iid: number;
+  title: string;
+  state: string | null;
+  labels: string[];
+  milestone: string | null;
+  iteration: string | null;
+  assignees: string[];
+  parent: {
+    iid: number | null;
+    title: string;
+    webUrl: string | null;
+  } | null;
+  updatedAt: string | null;
+  webUrl: string | null;
+}
+
+export function compactWorkItems(issues: GitLabIssue[]): WorkItemSummary[] {
+  return issues.map((issue) => ({
+    iid: issue.iid,
+    title: oneLine(issue.title),
+    state: issue.state ?? null,
+    labels: issue.labels ?? [],
+    milestone: namedValue(issue.milestone),
+    iteration: namedValue(issue.iteration),
+    assignees: (issue.assignees ?? [])
+      .map((assignee) => assignee.username ?? assignee.name)
+      .filter((assignee): assignee is string => typeof assignee === "string"),
+    parent: compactParent(issue.parent ?? issue.epic),
+    updatedAt: issue.updated_at ?? null,
+    webUrl: issue.web_url ?? null,
+  }));
+}
+
+export interface WorkItemsDisplayOptions {
+  issueLimit: number;
+  issueFilters: GitLabIssueFilters;
+  mayBeTruncated: boolean;
+}
+
 export function formatWorkItemsMarkdown(
   issues: GitLabIssue[],
   state: IssueState,
+  options?: WorkItemsDisplayOptions,
 ): string {
+  const query = options
+    ? "Query: " + state +
+      "; limit " + String(options.issueLimit) +
+      (formatIssueFilters(options.issueFilters) || "")
+    : "";
+  const count = options?.mayBeTruncated
+    ? "Count: " + String(issues.length) + " (more may exist)"
+    : "Count: " + String(issues.length);
   const lines = [
     "# oflow work",
     "",
     "State: " + state,
-    "Count: " + issues.length,
+    query,
+    count,
     "",
   ];
   if (issues.length === 0) {
@@ -63,6 +113,41 @@ export function formatWorkItemsMarkdown(
     "",
   );
   return lines.join("\n");
+}
+
+function formatIssueFilters(filters: GitLabIssueFilters): string {
+  const entries = Object.entries(filters)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => key + "=" + JSON.stringify(value));
+  return entries.length > 0 ? "; filters: " + entries.join(", ") : "";
+}
+
+function namedValue(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const name = value.name ?? value.title;
+  return typeof name === "string" && name.trim() ? oneLine(name) : null;
+}
+
+function compactParent(value: unknown): WorkItemSummary["parent"] {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const title = value.title ?? value.name;
+  if (typeof title !== "string" || !title.trim()) {
+    return null;
+  }
+  const iid = typeof value.iid === "number"
+    ? value.iid
+    : typeof value.parent_iid === "number"
+      ? value.parent_iid
+      : null;
+  return {
+    iid,
+    title: oneLine(title),
+    webUrl: typeof value.web_url === "string" ? value.web_url : null,
+  };
 }
 
 export async function loadStoryContext(
