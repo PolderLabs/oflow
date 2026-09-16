@@ -103,7 +103,7 @@ This is the immediate implementation focus.
 - [ ] Permit a `glab` apply adapter only after the same plan and approval gates
   are implemented and tested.
 - [x] Implement post-apply verification for issue updates.
-- [ ] Add a durable audit trail beyond the plan artifact.
+- [x] Add a durable local JSONL audit trail beyond the plan artifact.
 - [x] Update issue/work-item fields through the guarded plan path.
 - [x] Create work items through guarded plans; creation is non-retryable.
 - [x] Close/reopen and assign work items through guarded issue updates.

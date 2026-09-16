@@ -66,6 +66,7 @@ oflow sync --epics --json      # include a bounded group-epic snapshot (opt-in)
 oflow sync --label "Ready" --limit 20 --json
 oflow assess --story 42 --json # story progress, acceptance, and local evidence
 oflow capabilities --json      # show implemented, planned, and optional paths
+oflow audit --json             # read local plan lifecycle history
 oflow glab api <endpoint>      # optional read-only glab API fallback
 oflow start --story 42        # remember the active story locally
 oflow context --story 42     # print story, epic, MRs, pipelines, and notes
@@ -177,6 +178,13 @@ acceptance-aware description template command.
 checklist progress to the deterministic evidence. It recommends the smallest
 planning follow-up when an owner or milestone/iteration is missing, while
 leaving the final status judgment to the agent.
+
+`oflow audit --json` reads the local `.oflow/state/audit.jsonl` lifecycle log.
+It records successful plan creation, approval, apply, and verification events
+without storing tokens, issue descriptions, note bodies, or other full
+payloads. The file is ignored by Git and the command never contacts GitLab, so
+it is a low-cost way to review what an agent or user changed through oflow. Use
+`--limit 1..100` to keep the output bounded.
 
 Use `--epic <id>` to assign an issue to an existing epic, or `--epic none` on
 an update to clear the association. This uses GitLab's `epic_id` issue field;

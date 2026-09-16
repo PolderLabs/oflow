@@ -140,6 +140,7 @@ oflow epic --iid <iid> [--json]
 oflow iteration [--state opened|upcoming|current|closed|all] [--limit <n>] [--json]
 oflow iteration --group [--state opened|upcoming|current|closed|all] [--limit <n>] [--json]
 oflow assess --story <iid> [--json]
+oflow audit [--limit <n>] [--json]
 oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
 oflow mr --iid <iid> [--full] [--json]
@@ -294,6 +295,15 @@ missing. It classifies only explicit evidence;
 it does not claim that local code satisfies a criterion merely because files
 changed. The agent performs the final reasoning and may then create a guarded
 plan.
+
+`oflow audit --json` is a local-only, bounded read of the plan lifecycle audit
+log. Successful `created`, `approved`, `applied`, and `verified` transitions
+are appended to `.oflow/state/audit.jsonl`. Entries contain the operation kind,
+target, changed field names, counts, and verification outcome, but not tokens,
+issue descriptions, note bodies, or full request payloads. The command makes
+no GitLab request and is useful for reviewing agent activity without spending
+API or model context budget. Use `--limit 1..100`; newest events are returned
+first and `mayBeTruncated` signals that older entries were omitted.
 
 Project sync preserves parent/epic references when GitLab includes them on the
 work-item response, without issuing a second request per story. `oflow epic`

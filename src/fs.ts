@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { OflowError } from "./errors.js";
 import type { FileAction } from "./types.js";
@@ -31,6 +31,11 @@ export async function readText(filePath: string): Promise<string | null> {
 export async function writeText(filePath: string, content: string): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, content, "utf8");
+}
+
+export async function appendText(filePath: string, content: string): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
+  await appendFile(filePath, content, "utf8");
 }
 
 export async function readJson<T>(filePath: string): Promise<T | null> {

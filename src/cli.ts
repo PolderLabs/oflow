@@ -58,6 +58,7 @@ import {
   formatPlanMarkdown,
   verifyPlan,
 } from "./plan.js";
+import { formatAuditMarkdown, readAudit } from "./audit.js";
 import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.js";
 import { formatSyncMarkdown, syncProject } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
@@ -250,6 +251,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       case "capabilities": {
         const result = await getCapabilities();
         print(options.json, result, formatCapabilitiesMarkdown(result));
+        return 0;
+      }
+      case "audit": {
+        const result = await readAudit(
+          root,
+          options.limit === undefined
+            ? undefined
+            : parseIssueLimit(options.limit, 100),
+        );
+        print(options.json, result, formatAuditMarkdown(result));
         return 0;
       }
       case "plan": {
@@ -1232,6 +1243,7 @@ function helpText(): string {
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
+    "  audit [--limit <n>] [--json]         read local plan lifecycle history",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue create --title <title>   prepare an auditable issue create",
     "  plan issue update --story <iid>     prepare an auditable issue update",

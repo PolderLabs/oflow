@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { recordPlanEvent } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
@@ -249,6 +250,7 @@ export async function createIssueCreatePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -310,6 +312,7 @@ export async function createIssueUpdatePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -423,6 +426,7 @@ export async function createIssueNotePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -470,6 +474,7 @@ export async function createLabelCreatePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -535,6 +540,7 @@ export async function createLabelUpdatePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -583,6 +589,7 @@ export async function createMilestoneCreatePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -631,6 +638,7 @@ export async function createMilestoneUpdatePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -674,6 +682,7 @@ export async function createBoardCreatePlan(
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -810,6 +819,7 @@ async function writePlan(root: string, operation: PlanOperation): Promise<Stored
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
+  await recordPlanEvent(root, plan, "created");
   return { path, plan };
 }
 
@@ -820,6 +830,7 @@ export async function approvePlan(root: string, input: string): Promise<StoredPl
   stored.plan.state = "approved";
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
+  await recordPlanEvent(root, stored.plan, "approved");
   return stored;
 }
 
@@ -953,6 +964,7 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
   stored.plan.state = "applied";
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
+  await recordPlanEvent(root, stored.plan, "applied");
   return stored;
 }
 
@@ -1060,6 +1072,7 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
   }
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
+  await recordPlanEvent(root, stored.plan, "verified");
   return stored;
 }
 

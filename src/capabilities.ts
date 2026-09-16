@@ -166,6 +166,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "glab api",
         "Depends on endpoint",
       ),
+      capability(
+        "audit.read",
+        "implemented",
+        "read",
+        "Local plan lifecycle history",
+        "local JSONL",
+        "No GitLab permission",
+      ),
     ],
   };
 }

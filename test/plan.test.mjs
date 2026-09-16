@@ -24,6 +24,7 @@ import {
   createMilestoneUpdatePlan,
   verifyPlan,
 } from "../dist/plan.js";
+import { readAudit } from "../dist/audit.js";
 
 const run = promisify(execFile);
 
@@ -140,6 +141,17 @@ test("issue update plans require approval and verify the applied result", async 
     assert.equal(verifiedLabelDelta.plan.state, "verified");
     assert.equal(verifiedLabelDelta.plan.verification.passed, true);
     assert.deepEqual(issue.labels.sort(), ["Keep", "User Story"]);
+
+    const audit = await readAudit(root);
+    assert.equal(audit.events.length, 12);
+    assert.deepEqual(
+      audit.events.slice(-4).reverse().map((event) => event.action),
+      ["created", "approved", "applied", "verified"],
+    );
+    assert.equal(audit.events[0].operation.kind, "issue.update");
+    assert.deepEqual(audit.events[0].details.fields, ["add_labels", "remove_labels"]);
+    assert.ok(!JSON.stringify(audit.events).includes("Choose a pod now"));
+    assert.ok(!JSON.stringify(audit.events).includes("secret"));
 
     await assert.rejects(
       () => createIssueUpdatePlan(root, 42, {
