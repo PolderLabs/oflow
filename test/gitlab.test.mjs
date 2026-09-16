@@ -178,6 +178,73 @@ test("lists iteration cadences through the bounded GraphQL query", async () => {
   }
 });
 
+test("sets and clears an issue iteration through the guarded GraphQL mutation", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody = "";
+  let responseBody = JSON.stringify({
+    data: {
+      issueSetIteration: {
+        errors: [],
+        issue: { iid: "42" },
+      },
+    },
+  });
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://gitlab.example.test/api/graphql");
+    requestBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => responseBody,
+    };
+  };
+  try {
+    const client = new GitLabClient("gitlab.example.test", "test-token");
+    const assigned = await client.setIssueIteration(
+      "team/project",
+      42,
+      "gid://gitlab/Iteration/53",
+    );
+    assert.deepEqual(assigned, { iid: 42 });
+    const body = JSON.parse(requestBody);
+    assert.match(body.query, /issueSetIteration\(input: \$input\)/);
+    assert.deepEqual(body.variables, {
+      input: {
+        projectPath: "team/project",
+        iid: "42",
+        iterationId: "gid://gitlab/Iteration/53",
+      },
+    });
+
+    responseBody = JSON.stringify({
+      data: {
+        issueSetIteration: {
+          errors: [],
+          issue: { iid: "42" },
+        },
+      },
+    });
+    assert.deepEqual(await client.setIssueIteration("team/project", 42, null), { iid: 42 });
+    assert.equal(JSON.parse(requestBody).variables.input.iterationId, null);
+
+    responseBody = JSON.stringify({
+      data: {
+        issueSetIteration: {
+          errors: ["Iteration is not visible to this project"],
+          issue: null,
+        },
+      },
+    });
+    await assert.rejects(
+      () => client.setIssueIteration("team/project", 42, "gid://gitlab/Iteration/53"),
+      { code: "GITLAB_ITERATION_UPDATE_FAILED" },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("lists group epics through the bounded Work Item GraphQL query", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";

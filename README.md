@@ -82,6 +82,8 @@ oflow mr --iid 8 --full       # include the MR description when needed
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
 oflow plan issue update --story 42 --add-labels "Ready" --remove-labels "In Progress"
+oflow plan issue update --story 42 --iteration "Sprint 2"
+oflow plan issue update --story 42 --iteration none # clear the sprint
 oflow plan assess --story 42 --assignee zakar --milestone "Sprint 1"
 oflow plan issues labels --stories 17,18,23 --add-labels "Ready"
 oflow plan issue update --story 42 --epic 12
@@ -126,7 +128,9 @@ The current release uses the GitLab REST API for deterministic, compact
 planning snapshots and guarded Scrum writes: updating issues/work items (including
 assignment by username and existing epic association),
 adding issue notes, creating/updating project labels and milestones, and
-creating/updating boards and label-backed board lists.
+creating/updating boards and label-backed board lists. Single-story iteration
+assignment uses GitLab's guarded GraphQL `IssueSetIteration` mutation; bulk
+iteration and cadence writes are not yet enabled.
 `oflow sync --json` gathers bounded project, work-item, label, milestone, board,
 iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
@@ -161,8 +165,11 @@ from `sync`, so ordinary project handoffs do not pay for group cadence data.
 
 Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`, `--search`,
 `--updated-after`, and `--updated-before` with `work` or `sync` to filter issues server-side.
-`--iteration` accepts a title, `none`, or `any`; it is a read-only filter
-because iteration assignment remains version-sensitive. Use
+`--iteration` accepts a title, `none`, or `any` for read-only work/sync filters.
+For a single story, `plan issue update --story <iid> --iteration <title|iid|none>`
+resolves a project-visible iteration and creates a guarded GraphQL assignment
+plan. It must be the only issue change in that plan; bulk iteration assignment
+and cadence/group writes remain staged. Use
 `--limit 1..100` to cap the returned work items; the default is 100 for
 `work` and 50 for `sync`. `--assignee none` finds unassigned items and
 `--assignee any` finds assigned items. `--epic <id|none|any>` narrows results
@@ -265,11 +272,12 @@ GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
 REST adapter as the predictable core and does not silently invoke or configure
 MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
 The current apply-capable operations are `plan issue create`, `plan issue update`
-(including guarded assignment and existing epic association), `plan issue note`,
+(including guarded assignment, existing epic association, and single-story
+iteration assignment), `plan issue note`,
 `plan label create/update`, `plan milestone create/update`, and guarded board/
 board-list administration, plus bounded bulk issue-label and owner/timebox
-updates; board-card movement, iteration assignment, and merge-request writes
-remain roadmap work.
+updates; board-card movement, bulk iteration assignment, cadence writes, and
+merge-request writes remain roadmap work.
 Board-card movement is represented by guarded issue label updates rather than a
 separate unsafe card mutation. `oflow glab api` only permits an explicit GET
 through glab, so it cannot bypass the write gates.

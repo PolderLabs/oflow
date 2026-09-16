@@ -685,6 +685,68 @@ export class GitLabClient {
     return (await this.listProjectIterationsPage(projectPath, state, limit)).items;
   }
 
+  async setIssueIteration(
+    projectPath: string,
+    issueIid: number,
+    iterationId: string | null,
+  ): Promise<{ iid: number }> {
+    const data = await this.requestGraphQL(
+      `mutation IssueSetIteration($input: IssueSetIterationInput!) {
+        issueSetIteration(input: $input) {
+          errors
+          issue { iid }
+        }
+      }`,
+      {
+        input: {
+          projectPath,
+          iid: String(issueIid),
+          iterationId,
+        },
+      },
+    );
+    if (!isRecord(data) || !isRecord(data.issueSetIteration)) {
+      throw new OflowError(
+        "GitLab GraphQL returned no issue-iteration mutation response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    const mutation = data.issueSetIteration;
+    if (!Array.isArray(mutation.errors) || mutation.errors.some((error) => typeof error !== "string")) {
+      throw new OflowError(
+        "GitLab GraphQL returned an invalid issue-iteration mutation response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    if (mutation.errors.length > 0) {
+      throw new OflowError(
+        "GitLab could not set issue #" + String(issueIid) + " iteration: " + mutation.errors.join("; "),
+        "GITLAB_ITERATION_UPDATE_FAILED",
+      );
+    }
+    if (!isRecord(mutation.issue)) {
+      throw new OflowError(
+        "GitLab GraphQL did not return the updated issue.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    const returnedIid = typeof mutation.issue.iid === "string" && /^\d+$/.test(mutation.issue.iid)
+      ? Number(mutation.issue.iid)
+      : mutation.issue.iid;
+    if (
+      typeof returnedIid !== "number" ||
+      !Number.isSafeInteger(returnedIid) ||
+      returnedIid < 1 ||
+      returnedIid !== issueIid
+    ) {
+      throw new OflowError(
+        "GitLab GraphQL returned an invalid updated issue IID.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return { iid: returnedIid };
+  }
+
   async getIssueNotes(projectPath: string, iid: number): Promise<GitLabNote[]> {
     return this.request<GitLabNote[]>(
       "/projects/" +
@@ -852,7 +914,7 @@ export class GitLabClient {
 
   private async requestGraphQL(
     query: string,
-    variables: Record<string, string | number>,
+    variables: Record<string, unknown>,
   ): Promise<unknown> {
     let lastError: GitLabApiError | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {

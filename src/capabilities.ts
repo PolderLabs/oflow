@@ -111,6 +111,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Work Item: Update (including epic association); User: Read when resolving usernames",
       ),
       capability(
+        "iteration-assignment.write",
+        "implemented",
+        "apply",
+        "Work Item iteration assignment",
+        "GraphQL",
+        "Project: Update (Mutation: IssueSetIteration); Project: Read for target iteration lookup",
+      ),
+      capability(
         "work-items.bulk-labels.update",
         "implemented",
         "apply",

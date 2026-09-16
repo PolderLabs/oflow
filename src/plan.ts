@@ -20,6 +20,7 @@ import type {
   GitLabMilestoneCreate,
   GitLabMilestoneUpdate,
   GitLabNote,
+  GitLabIteration,
 } from "./types.js";
 
 export const PLAN_DIRECTORY = ".oflow/state/plans";
@@ -33,6 +34,17 @@ export interface IssueUpdateOperation {
   projectPath: string;
   issueIid: number;
   changes: GitLabIssueUpdate;
+  expectedUpdatedAt?: string | null;
+}
+
+export interface IssueIterationUpdateOperation {
+  kind: "issue.iteration.update";
+  host: string;
+  projectPath: string;
+  issueIid: number;
+  iterationId: string | null;
+  iterationIid: number | null;
+  iterationTitle: string | null;
   expectedUpdatedAt?: string | null;
 }
 
@@ -148,6 +160,7 @@ export interface BoardListUpdateOperation {
 export type PlanOperation =
   | IssueCreateOperation
   | IssueUpdateOperation
+  | IssueIterationUpdateOperation
   | BulkIssueLabelsUpdateOperation
   | BulkIssuePlanningUpdateOperation
   | IssueNoteCreateOperation
@@ -177,6 +190,9 @@ export interface PlanArtifact {
     body?: string;
     state?: string | null;
     webUrl?: string | null;
+    iterationId?: string | null;
+    iterationIid?: number | null;
+    iterationTitle?: string | null;
     noteId?: number;
     labelId?: number;
     name?: string;
@@ -332,6 +348,41 @@ export async function createIssueUpdatePlan(
   await writeJson(path, plan);
   await recordPlanEvent(root, plan, "created");
   return { path, plan };
+}
+
+export async function createIssueIterationUpdatePlan(
+  root: string,
+  issueIid: number,
+  iterationReference: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateIssueIid(issueIid);
+  const reference = requiredText(iterationReference, "Iteration");
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const currentIssue = await client.getIssue(remote.projectPath, issueIid);
+  const target = isIterationClearReference(reference)
+    ? { iterationId: null, iterationIid: null, iterationTitle: null }
+    : resolveIterationTarget(
+        await client.listProjectIterations(remote.projectPath, "all", 100),
+        reference,
+      );
+  return writePlan(root, {
+    kind: "issue.iteration.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIid,
+    iterationId: target.iterationId,
+    iterationIid: target.iterationIid,
+    iterationTitle: target.iterationTitle,
+    expectedUpdatedAt: currentIssue.updated_at ?? null,
+  });
 }
 
 export async function createBulkIssueLabelsPlan(
@@ -893,6 +944,25 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
       stored.plan.operation.changes,
     );
     stored.plan.result = compactIssue(result);
+  } else if (stored.plan.operation.kind === "issue.iteration.update") {
+    await assertIssueFresh(
+      client,
+      stored.plan.operation.projectPath,
+      stored.plan.operation.issueIid,
+      stored.plan.operation.expectedUpdatedAt,
+    );
+    const result = await client.setIssueIteration(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.issueIid,
+      stored.plan.operation.iterationId,
+    );
+    stored.plan.result = {
+      kind: "issue.iteration.update",
+      iid: result.iid,
+      iterationId: stored.plan.operation.iterationId,
+      iterationIid: stored.plan.operation.iterationIid,
+      iterationTitle: stored.plan.operation.iterationTitle,
+    };
   } else if (stored.plan.operation.kind === "issues.labels.update") {
     const results = existingBulkResults(stored.plan, "issues.labels.update");
     try {
@@ -1059,6 +1129,14 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
         ),
         stored.plan.operation.changes,
       )
+    : stored.plan.operation.kind === "issue.iteration.update"
+    ? verifyIssueIteration(
+        await client.getIssue(
+          stored.plan.operation.projectPath,
+          stored.plan.operation.issueIid,
+        ),
+        stored.plan.operation,
+      )
     : stored.plan.operation.kind === "issues.labels.update"
       ? verifyBulkIssueLabels(
           await Promise.all(
@@ -1140,6 +1218,12 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       ? Object.entries(plan.operation.changes)
         .map(([key, value]) => "- " + key + ": " + String(value))
         .join("\n")
+      : plan.operation.kind === "issue.iteration.update"
+        ? [
+            "- issue_iid: " + plan.operation.issueIid,
+            "- iteration: " + (plan.operation.iterationTitle ?? "none") +
+              (plan.operation.iterationIid === null ? "" : " (#" + plan.operation.iterationIid + ")"),
+          ].join("\n")
       : plan.operation.kind === "issues.labels.update"
         ? [
             "- issue_iids: " + plan.operation.issueIids.join(", "),
@@ -1227,6 +1311,8 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       ? "Create issue:"
       : plan.operation.kind === "issue.update"
       ? "Changes:"
+      : plan.operation.kind === "issue.iteration.update"
+      ? "Iteration change:"
       : plan.operation.kind === "issues.labels.update"
         ? "Bulk label changes:"
       : plan.operation.kind === "issues.planning.update"
@@ -1316,6 +1402,9 @@ function isSupportedOperation(
       Boolean(operation.changes && typeof operation.changes === "object") &&
       validExpectedUpdatedAt(operation.expectedUpdatedAt);
   }
+  if (operation.kind === "issue.iteration.update") {
+    return validIssueIterationOperation(operation);
+  }
   if (operation.kind === "issues.labels.update") {
     const addLabelsValid = operation.add_labels === undefined ||
       (typeof operation.add_labels === "string" && operation.add_labels.trim().length > 0);
@@ -1398,6 +1487,22 @@ function validIssueOperation(
   return "issueIid" in operation &&
     Number.isSafeInteger(operation.issueIid) &&
     operation.issueIid >= 1;
+}
+
+function validIssueIterationOperation(
+  operation: PlanOperation,
+): operation is IssueIterationUpdateOperation {
+  return operation.kind === "issue.iteration.update" &&
+    Number.isSafeInteger(operation.issueIid) &&
+    operation.issueIid >= 1 &&
+    (operation.iterationId === null ||
+      (typeof operation.iterationId === "string" &&
+        /^gid:\/\/gitlab\/Iteration\/\d+$/.test(operation.iterationId))) &&
+    (operation.iterationId === null
+      ? operation.iterationIid === null && operation.iterationTitle === null
+      : typeof operation.iterationIid === "number" && Number.isSafeInteger(operation.iterationIid) && operation.iterationIid > 0 &&
+        typeof operation.iterationTitle === "string" && operation.iterationTitle.trim().length > 0) &&
+    validExpectedUpdatedAt(operation.expectedUpdatedAt);
 }
 
 function validIssueCreateOperation(
@@ -1926,6 +2031,10 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   if (result.kind === "issue.note.create") {
     return "note #" + String(result.noteId ?? "unknown") + " created";
   }
+  if (result.kind === "issue.iteration.update") {
+    return "issue #" + String(result.iid ?? "unknown") + " iteration set to " +
+      JSON.stringify(result.iterationTitle ?? "none");
+  }
   if (result.kind === "label.create" || result.kind === "label.update") {
     return "label " + JSON.stringify(result.name ?? "unknown") + " (" +
       (result.color ?? "unknown") + ")";
@@ -2008,6 +2117,38 @@ function verifyIssue(
   if (changes.state_event !== undefined) {
     const expected = changes.state_event === "close" ? "closed" : "opened";
     checks.push(check("state", expected, issue.state ?? ""));
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: failed.map(
+      (item) => "GitLab did not report the requested " + item.field + " value.",
+    ),
+  };
+}
+
+function verifyIssueIteration(
+  issue: GitLabIssue,
+  operation: IssueIterationUpdateOperation,
+): PlanVerification {
+  const checks: PlanVerification["checks"] = [];
+  if (operation.iterationId === null) {
+    checks.push(check("iteration", "none", namedValue(issue.iteration) ?? "none"));
+  } else {
+    const iteration = issue.iteration;
+    const record = iteration && typeof iteration === "object"
+      ? iteration as Record<string, unknown>
+      : null;
+    const actualIid = record && (typeof record.iid === "number" || typeof record.iid === "string")
+      ? String(record.iid)
+      : "";
+    const actualId = record && (typeof record.id === "number" || typeof record.id === "string")
+      ? String(record.id).split("/").pop() ?? ""
+      : "";
+    checks.push(check("iteration_iid", String(operation.iterationIid ?? ""), actualIid));
+    checks.push(check("iteration_id", globalIdNumericPart(operation.iterationId), actualId));
+    checks.push(check("iteration", operation.iterationTitle ?? "", namedValue(issue.iteration)));
   }
   const failed = checks.filter((item) => !item.passed);
   return {
@@ -2458,6 +2599,57 @@ function requiredText(value: string | undefined, field: string): string {
   return normalized;
 }
 
+function isIterationClearReference(value: string): boolean {
+  return ["none", "null", "unassigned"].includes(value.toLowerCase());
+}
+
+function resolveIterationTarget(
+  iterations: GitLabIteration[],
+  reference: string,
+): Pick<IssueIterationUpdateOperation, "iterationId" | "iterationIid" | "iterationTitle"> {
+  const numericReference = /^\d+$/.test(reference) ? Number(reference) : null;
+  const matches = numericReference === null
+    ? iterations.filter((iteration) =>
+        typeof iteration.title === "string" &&
+        iteration.title.trim().toLowerCase() === reference.toLowerCase())
+    : iterations.filter((iteration) =>
+        iteration.iid === numericReference || iteration.id === numericReference);
+  if (matches.length === 0) {
+    throw new OflowError(
+      "Could not find project-visible iteration " + JSON.stringify(reference) + ". Use its exact title, IID, or none.",
+      "ITERATION_NOT_FOUND",
+    );
+  }
+  if (matches.length > 1) {
+    throw new OflowError(
+      "Iteration reference " + JSON.stringify(reference) + " matched more than one iteration; use a unique iteration IID.",
+      "ITERATION_NOT_UNIQUE",
+    );
+  }
+  const iteration = matches[0];
+  if (!Number.isSafeInteger(iteration.id) || iteration.id < 1 ||
+    !Number.isSafeInteger(iteration.iid) || iteration.iid < 1 ||
+    typeof iteration.title !== "string" || iteration.title.trim() === "") {
+    throw new OflowError(
+      "GitLab returned an invalid iteration target.",
+      "INVALID_GITLAB_RESPONSE",
+    );
+  }
+  return {
+    iterationId: iterationGlobalId(iteration.id),
+    iterationIid: iteration.iid,
+    iterationTitle: iteration.title,
+  };
+}
+
+function iterationGlobalId(id: number): string {
+  return "gid://gitlab/Iteration/" + String(id);
+}
+
+function globalIdNumericPart(id: string): string {
+  return /\/(\d+)$/.exec(id)?.[1] ?? "";
+}
+
 function findLabel(labels: GitLabLabel[], reference: string): GitLabLabel | undefined {
   const byName = labels.find((label) => label.name === reference);
   if (byName) {
@@ -2473,7 +2665,11 @@ function formatTarget(operation: PlanOperation): string {
   if (operation.kind === "issue.create") {
     return "new issue " + JSON.stringify(operation.issue.title);
   }
-  if (operation.kind === "issue.update" || operation.kind === "issue.note.create") {
+  if (
+    operation.kind === "issue.update" ||
+    operation.kind === "issue.iteration.update" ||
+    operation.kind === "issue.note.create"
+  ) {
     return "issue #" + operation.issueIid;
   }
   if (operation.kind === "issues.labels.update") {

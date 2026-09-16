@@ -32,7 +32,8 @@ agent -> oflow intent/sync/plan/approve/apply/verify
 The current release implements the REST path for compact project-scoped read
 commands, the guarded issue-update/note/label/milestone/board/board-list plans,
 including existing epic association through issue `epic_id`, bounded bulk
-owner/timebox planning updates, and an explicit
+owner/timebox planning updates, and a single-story iteration assignment plan
+that uses the GraphQL `IssueSetIteration` mutation. It also provides an explicit
 read-only `oflow glab api` fallback. Group epic listing and hierarchy reads use
 an explicit, bounded Work Item GraphQL path; they are not included in the
 default sync because they require parent-group access and an extra request.
@@ -178,10 +179,17 @@ milestone timeboxes to GitLab's documented issue update fields:
 creating the local plan, then applies and verifies each target sequentially.
 Iteration assignment is not silently approximated with a milestone: GitLab's
 current `PUT /projects/:id/issues/:issue_iid` documentation does not list
-`iteration_id` or `iteration_title` as update attributes. Keep iteration
-assignment plan-only until a version-aware adapter can prove the supported
-endpoint and permission model. See the [Issues API](https://docs.gitlab.com/api/issues/)
-and [Iterations API](https://docs.gitlab.com/api/iterations/).
+`iteration_id` or `iteration_title` as update attributes. For one story,
+`oflow plan issue update --story <iid> --iteration <title|iid|none>` resolves
+the project-visible iteration and uses the documented GraphQL
+`issueSetIteration` mutation inside the same guarded plan/apply/verify flow.
+The operation requires a project-visible iteration, `Project: Update` with
+the `IssueSetIteration` mutation permission, and a GitLab version exposing that
+GraphQL mutation. Bulk assignment and cadence/group writes remain staged. See
+the [Issues API](https://docs.gitlab.com/api/issues/),
+[Iterations API](https://docs.gitlab.com/api/iterations/),
+[GraphQL API](https://docs.gitlab.com/api/graphql/), and
+[GraphQL fine-grained permissions](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_graphql/).
 
 GitLab's fine-grained REST permission mapping also gives us an explicit way to
 document each capability. For the current Scrum scope, start with the

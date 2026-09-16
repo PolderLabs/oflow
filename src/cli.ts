@@ -49,6 +49,7 @@ import {
   createLabelCreatePlan,
   createLabelUpdatePlan,
   createIssueCreatePlan,
+  createIssueIterationUpdatePlan,
   createIssueNotePlan,
   createIssueUpdatePlan,
   createBoardCreatePlan,
@@ -381,6 +382,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               );
             }
             const stored = await createIssueNotePlan(root, storyIid, options.body);
+            print(options.json, stored, formatPlanMarkdown(stored));
+            return 0;
+          }
+          if (options.iteration !== undefined) {
+            assertIssueIterationPlanOptions(options);
+            const stored = await createIssueIterationUpdatePlan(
+              root,
+              storyIid,
+              options.iteration,
+            );
             print(options.json, stored, formatPlanMarkdown(stored));
             return 0;
           }
@@ -1349,6 +1360,7 @@ function helpText(): string {
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue create --title <title>   prepare an auditable issue create",
     "  plan issue update --story <iid>     prepare an auditable issue update",
+    "  plan issue update --story <iid> --iteration <title|iid|none>",
     "  plan issues labels --stories 1,2    prepare guarded bulk label changes",
     "  plan issues update --stories 1,2    prepare guarded owner/timebox changes",
     "  plan assess --story <iid>           prepare owner/timebox plan from assessment",
@@ -1424,6 +1436,50 @@ function assertBulkPlanningOptions(options: CliOptions): void {
     throw new OflowError(
       "plan issues update supports only --milestone and --assignee; use plan issue update for other fields.",
       "UNSUPPORTED_BULK_ISSUE_FIELD",
+    );
+  }
+}
+
+function assertIssueIterationPlanOptions(options: CliOptions): void {
+  const unsupported = [
+    ["--title", options.title],
+    ["--description", options.description],
+    ["--body", options.body],
+    ["--name", options.name],
+    ["--color", options.color],
+    ["--new-name", options.newName],
+    ["--label", options.label],
+    ["--start-date", options.startDate],
+    ["--due-date", options.dueDate],
+    ["--weight", options.weight],
+    ["--labels", options.labels],
+    ["--add-labels", options.addLabels],
+    ["--remove-labels", options.removeLabels],
+    ["--milestone", options.milestone],
+    ["--epic", options.epic],
+    ["--assignee", options.assignee],
+    ["--state", options.state],
+    ["--author", options.author],
+    ["--search", options.search],
+    ["--updated-after", options.updatedAfter],
+    ["--updated-before", options.updatedBefore],
+    ["--stale-days", options.staleDays],
+    ["--limit", options.limit],
+    ["--board", options.board],
+    ["--list", options.list],
+    ["--position", options.position],
+    ["--iid", options.iid],
+    ["--stories", options.stories],
+    ["--group", options.group ? "true" : undefined],
+    ["--epics", options.epics ? "true" : undefined],
+    ["--cached", options.cached ? "true" : undefined],
+    ["--refresh", options.refresh ? "true" : undefined],
+    ["--full", options.full ? "true" : undefined],
+  ].filter(([, value]) => value !== undefined);
+  if (unsupported.length > 0) {
+    throw new OflowError(
+      "Iteration assignment is a single-field issue plan; do not combine --iteration with other issue or filter flags.",
+      "UNSUPPORTED_ITERATION_COMBINATION",
     );
   }
 }

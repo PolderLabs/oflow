@@ -44,7 +44,7 @@ export const WORKFLOW_MARKDOWN = [
   "Treat pagination.hasNextPage as evidence that a bounded collection needs a narrower filter or a larger limit.",
   "oflow does not configure or invoke MCP servers. Use plan assess --story <iid> --assignee <username> --milestone <title> when the assessment has a confirmed owner/timebox, or use plan issue update (including",
   "--labels for replacement or --add-labels/--remove-labels to preserve unrelated labels,",
-  "--assignee username or --epic <id|none>), plan issues labels --stories <iid,...> for",
+  "--assignee username or --epic <id|none> or --iteration <title|iid|none>), plan issues labels --stories <iid,...> for",
   "bounded multi-story label changes, plan issues update --stories <iid,...> for",
   "bounded owner/timebox changes, plan issue create/note, or",
   "plan label/milestone/board/board-list create/update, then approve, apply, and verify for supported writes. Do not",
@@ -110,7 +110,7 @@ export function agentInstructionBlock(agent: AgentName): string {
     "access is missing, use oflow auth login; never place a token in the repository.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
     "in the merge request, and run oflow verify --story <iid> before handoff. Use",
-    "oflow epic --iid <iid> for group hierarchy, oflow iteration --group --state current --json when group sprint access is available, and use oflow plan assess --story <iid> or plan issues labels/update --stories <iid,...> or plan issue update/note, label/milestone/board/board-list create/update followed by",
+    "oflow epic --iid <iid> for group hierarchy, oflow iteration --group --state current --json when group sprint access is available, and use oflow plan assess --story <iid> or plan issues labels/update --stories <iid,...> or plan issue update --iteration <title|iid|none>, plan issue update/note, label/milestone/board/board-list create/update followed by",
     "approve/apply/verify for supported writes; do not make other remote planning",
     "changes without an explicit supported plan.",
   ].join("\n");

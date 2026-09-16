@@ -92,6 +92,7 @@ export interface GitLabIssue {
   assignees?: Array<Record<string, unknown>>;
   author?: Record<string, unknown> | null;
   milestone?: Record<string, unknown> | null;
+  iteration?: Record<string, unknown> | null;
   epic?: Record<string, unknown> | null;
   parent?: Record<string, unknown> | null;
   references?: Record<string, unknown> | null;

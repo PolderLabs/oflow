@@ -12,6 +12,7 @@ import {
   createBulkIssueLabelsPlan,
   createBulkIssuePlanningPlan,
   createIssueCreatePlan,
+  createIssueIterationUpdatePlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
   createIssueNotePlan,
@@ -184,6 +185,118 @@ test("issue update plans require approval and verify the applied result", async 
     stored.operation.changes.title = "tampered";
     await writeFile(created.path, JSON.stringify(stored));
     await assert.rejects(() => approvePlan(root, created.path), { code: "INVALID_PLAN_STATE" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("issue iteration plans resolve, guard, apply, and verify assignment", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-iteration-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "iteration-plan-test-token";
+  const iteration = {
+    id: 53,
+    iid: 13,
+    title: "Sprint 2",
+    state: "upcoming",
+    start_date: "2026-09-28",
+    due_date: "2026-10-11",
+  };
+  const issue = {
+    iid: 42,
+    title: "Choose a pod",
+    state: "opened",
+    iteration: null,
+    updated_at: "2026-09-17T10:00:00Z",
+  };
+  let mutationCalls = 0;
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/iterations")) {
+        return response([iteration]);
+      }
+      if (url.pathname === "/api/graphql") {
+        const body = JSON.parse(String(init?.body ?? ""));
+        assert.match(body.query, /issueSetIteration/);
+        mutationCalls += 1;
+        const targetId = body.variables.input.iterationId;
+        issue.iteration = targetId === null
+          ? null
+          : { id: 53, iid: 13, title: "Sprint 2" };
+        return response({
+          data: {
+            issueSetIteration: {
+              errors: [],
+              issue: { iid: "42" },
+            },
+          },
+        });
+      }
+      return response(issue);
+    };
+
+    const created = await createIssueIterationUpdatePlan(root, 42, "sprint 2");
+    assert.equal(created.plan.state, "draft");
+    assert.deepEqual(created.plan.operation, {
+      kind: "issue.iteration.update",
+      host: "gitlab.example.test",
+      projectPath: "team/project",
+      issueIid: 42,
+      iterationId: "gid://gitlab/Iteration/53",
+      iterationIid: 13,
+      iterationTitle: "Sprint 2",
+      expectedUpdatedAt: "2026-09-17T10:00:00Z",
+    });
+    assert.equal(mutationCalls, 0);
+    assert.match(formatPlanMarkdown(created), /Iteration change:/);
+
+    await assert.rejects(() => applyPlan(root, created.path), { code: "INVALID_PLAN_STATE" });
+    await approvePlan(root, created.path);
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.state, "applied");
+    assert.deepEqual(applied.plan.result, {
+      kind: "issue.iteration.update",
+      iid: 42,
+      iterationId: "gid://gitlab/Iteration/53",
+      iterationIid: 13,
+      iterationTitle: "Sprint 2",
+    });
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+    assert.equal(mutationCalls, 1);
+
+    const cleared = await createIssueIterationUpdatePlan(root, 42, "none");
+    assert.equal(cleared.plan.operation.iterationId, null);
+    await approvePlan(root, cleared.path);
+    await applyPlan(root, cleared.path);
+    const verifiedClear = await verifyPlan(root, cleared.path);
+    assert.equal(verifiedClear.plan.state, "verified");
+    assert.equal(verifiedClear.plan.verification.passed, true);
+    assert.equal(mutationCalls, 2);
+    const audit = await readAudit(root);
+    assert.deepEqual(audit.events[0].details.fields, ["iteration"]);
+
+    await assert.rejects(
+      () => createIssueIterationUpdatePlan(root, 42, "Sprint 9"),
+      { code: "ITERATION_NOT_FOUND" },
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
