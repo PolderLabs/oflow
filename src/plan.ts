@@ -210,6 +210,7 @@ export interface PlanArtifact {
     name?: string;
     color?: string;
     description?: string | null;
+    noteReused?: boolean;
     milestoneId?: number;
     milestoneIid?: number;
     boardId?: number;
@@ -1091,12 +1092,21 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     stored.plan.result = { kind: "issues.planning.update", issues: results };
     delete stored.plan.applyError;
   } else if (stored.plan.operation.kind === "issue.note.create") {
-    const result = await client.createIssueNote(
-      stored.plan.operation.projectPath,
-      stored.plan.operation.issueIid,
-      { body: stored.plan.operation.body },
+    const operation = stored.plan.operation;
+    const existing = (await client.getIssueNotes(
+      operation.projectPath,
+      operation.issueIid,
+    )).find((note) => note.body === operation.body);
+    const result = existing ?? await client.createIssueNote(
+        operation.projectPath,
+        operation.issueIid,
+        { body: operation.body },
+      );
+    stored.plan.result = compactNote(
+      result,
+      operation.issueIid,
+      existing !== undefined,
     );
-    stored.plan.result = compactNote(result, stored.plan.operation.issueIid);
   } else if (stored.plan.operation.kind === "label.create") {
     const result = await client.createLabel(
       stored.plan.operation.projectPath,
@@ -2087,12 +2097,14 @@ function compactBulkIssueIterationIssue(
 function compactNote(
   note: GitLabNote,
   issueIid: number,
+  reused = false,
 ): NonNullable<PlanArtifact["result"]> {
   return {
     kind: "issue.note.create",
     iid: issueIid,
     noteId: note.id,
     body: note.body,
+    noteReused: reused,
     webUrl: null,
   };
 }
@@ -2156,7 +2168,8 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
     return String(result.issues?.length ?? 0) + " issues updated";
   }
   if (result.kind === "issue.note.create") {
-    return "note #" + String(result.noteId ?? "unknown") + " created";
+    return "note #" + String(result.noteId ?? "unknown") +
+      (result.noteReused ? " already present" : " created");
   }
   if (result.kind === "issue.iteration.update") {
     return "issue #" + String(result.iid ?? "unknown") + " iteration set to " +

@@ -815,7 +815,65 @@ test("issue note plans create a note once and verify its body", async () => {
     const applied = await applyPlan(root, created.path);
     assert.equal(applied.plan.state, "applied");
     assert.equal(applied.plan.result.noteId, 10);
+    assert.equal(applied.plan.result.noteReused, false);
     await assert.rejects(() => applyPlan(root, created.path), { code: "INVALID_PLAN_STATE" });
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("issue note apply reuses an exact existing note during recovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-note-recovery-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "note-recovery-test-token";
+  const notes = [];
+  let createCalls = 0;
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/notes") && (init?.method ?? "GET") === "POST") {
+        createCalls += 1;
+        throw new Error("the recovery test must not create a duplicate note");
+      }
+      if (url.pathname.endsWith("/notes")) {
+        return response(notes);
+      }
+      return response({
+        iid: 42,
+        title: "Choose a pod",
+        state: "opened",
+        labels: [],
+        web_url: "https://gitlab.example.test/team/project/-/issues/42",
+      });
+    };
+
+    const created = await createIssueNotePlan(root, 42, "Progress: API contract confirmed.");
+    await approvePlan(root, created.path);
+    notes.push({ id: 99, body: "Progress: API contract confirmed.", noteable_iid: 42 });
+
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.state, "applied");
+    assert.equal(applied.plan.result.noteId, 99);
+    assert.equal(applied.plan.result.noteReused, true);
+    assert.equal(createCalls, 0);
     const verified = await verifyPlan(root, created.path);
     assert.equal(verified.plan.state, "verified");
     assert.equal(verified.plan.verification.passed, true);

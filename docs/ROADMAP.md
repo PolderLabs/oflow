@@ -128,7 +128,9 @@ This is the immediate implementation focus.
 - [ ] Create/update epics and broader relationships at group scope.
 - [ ] Create/update iterations/cadences only after validating the target
   GitLab version and permission model.
-- [ ] Make safe retries idempotent and refuse ambiguous duplicate operations.
+- [ ] Make safe retries idempotent and refuse ambiguous duplicate operations;
+  issue-note recovery now reuses an exact existing body, while other create
+  operations remain non-retryable until their identity can be proven.
 - [ ] Keep deletion disabled by default; add it only as an explicitly gated
   capability.
 
