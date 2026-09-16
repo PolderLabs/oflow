@@ -2,7 +2,13 @@ import { OflowError } from "./errors.js";
 import { getGitLabToken, redactGitLabToken } from "./auth.js";
 import type {
   GitLabIssue,
+  GitLabIssueUpdate,
+  GitLabBoard,
+  GitLabBoardList,
+  GitLabIteration,
+  GitLabLabel,
   GitLabMergeRequest,
+  GitLabMilestone,
   GitLabNote,
   GitLabPipeline,
   GitLabProject,
@@ -73,13 +79,14 @@ export class GitLabClient {
   async listIssues(
     projectPath: string,
     state: IssueState = "opened",
+    limit = 100,
   ): Promise<GitLabIssue[]> {
     const result = await this.request<unknown>(
       "/projects/" +
         encodeURIComponent(projectPath) +
         "/issues?state=" +
         encodeURIComponent(state) +
-        "&per_page=100&order_by=updated_at&sort=desc",
+        "&per_page=" + String(limit) + "&order_by=updated_at&sort=desc",
     );
     if (!Array.isArray(result)) {
       throw new OflowError(
@@ -88,6 +95,108 @@ export class GitLabClient {
       );
     }
     return result as GitLabIssue[];
+  }
+
+  async updateIssue(
+    projectPath: string,
+    iid: number,
+    changes: GitLabIssueUpdate,
+  ): Promise<GitLabIssue> {
+    return this.request<GitLabIssue>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/issues/" +
+        String(iid),
+      { method: "PUT", form: changes as Record<string, string | number | boolean | undefined> },
+    );
+  }
+
+  async listLabels(projectPath: string, limit = 100): Promise<GitLabLabel[]> {
+    return this.listResponse<GitLabLabel>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/labels?per_page=" +
+        String(limit) +
+        "&with_counts=true",
+      "label list",
+    );
+  }
+
+  async listMilestones(
+    projectPath: string,
+    state: "active" | "closed" | "all" = "active",
+    limit = 100,
+  ): Promise<GitLabMilestone[]> {
+    const stateQuery = state === "all" ? "" : "&state=" + state;
+    return this.listResponse<GitLabMilestone>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/milestones?per_page=" +
+        String(limit) +
+        stateQuery +
+        "&include_ancestors=true",
+      "milestone list",
+    );
+  }
+
+  async listBoards(projectPath: string, limit = 100): Promise<GitLabBoard[]> {
+    return this.listResponse<GitLabBoard>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/boards?per_page=" +
+        String(limit),
+      "board list",
+    );
+  }
+
+  async listBoardLists(
+    projectPath: string,
+    boardId: number,
+    limit = 100,
+  ): Promise<GitLabBoardList[]> {
+    return this.listResponse<GitLabBoardList>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/boards/" +
+        String(boardId) +
+        "/lists?per_page=" +
+        String(limit),
+      "board list entries",
+    );
+  }
+
+  async listGroupIterations(
+    groupPath: string,
+    state: "opened" | "upcoming" | "current" | "closed" | "all" = "all",
+    limit = 100,
+  ): Promise<GitLabIteration[]> {
+    const stateQuery = state === "all" ? "" : "&state=" + state;
+    return this.listResponse<GitLabIteration>(
+      "/groups/" +
+        encodeURIComponent(groupPath) +
+        "/iterations?per_page=" +
+        String(limit) +
+        stateQuery +
+        "&include_ancestors=true",
+      "iteration list",
+    );
+  }
+
+  async listProjectIterations(
+    projectPath: string,
+    state: "opened" | "upcoming" | "current" | "closed" | "all" = "all",
+    limit = 100,
+  ): Promise<GitLabIteration[]> {
+    const stateQuery = state === "all" ? "" : "&state=" + state;
+    return this.listResponse<GitLabIteration>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/iterations?per_page=" +
+        String(limit) +
+        stateQuery +
+        "&include_ancestors=true",
+      "project iteration list",
+    );
   }
 
   async getIssueNotes(projectPath: string, iid: number): Promise<GitLabNote[]> {
@@ -102,14 +211,23 @@ export class GitLabClient {
 
   async listMergeRequests(
     projectPath: string,
-    storyIid: number,
+    storyIid?: number,
+    state: IssueState = storyIid ? "all" : "opened",
+    limit = 20,
   ): Promise<GitLabMergeRequest[]> {
-    const result = await this.request<GitLabMergeRequest[]>(
+    const result = await this.listResponse<GitLabMergeRequest>(
       "/projects/" +
         encodeURIComponent(projectPath) +
-        "/merge_requests?state=all&per_page=100&search=" +
-        encodeURIComponent("#" + storyIid),
+        "/merge_requests?state=" +
+        encodeURIComponent(state) +
+        "&per_page=" +
+        String(limit) +
+        (storyIid ? "&search=" + encodeURIComponent("#" + storyIid) : ""),
+      "merge request list",
     );
+    if (!storyIid) {
+      return result;
+    }
     return result.filter((mergeRequest) => {
       const text =
         String(mergeRequest.title ?? "") +
@@ -125,28 +243,46 @@ export class GitLabClient {
   async listPipelines(
     projectPath: string,
     ref?: string | null,
+    limit = 20,
   ): Promise<GitLabPipeline[]> {
     const query = ref ? "&ref=" + encodeURIComponent(ref) : "";
     return this.request<GitLabPipeline[]>(
       "/projects/" +
         encodeURIComponent(projectPath) +
-        "/pipelines?per_page=20&order_by=id&sort=desc" +
+        "/pipelines?per_page=" + String(limit) + "&order_by=id&sort=desc" +
         query,
     );
   }
 
-  private async request<T>(path: string): Promise<T> {
+  private async listResponse<T>(path: string, label: string): Promise<T[]> {
+    const result = await this.request<unknown>(path);
+    if (!Array.isArray(result)) {
+      throw new OflowError(
+        "GitLab API returned an invalid " + label + " response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return result as T[];
+  }
+
+  private async request<T>(
+    path: string,
+    options: { method?: string; form?: Record<string, string | number | boolean | undefined> } = {},
+  ): Promise<T> {
     let lastError: GitLabApiError | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
       try {
+        const headers: Record<string, string> = {
+          Accept: "application/json",
+          ...(options.form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+          ...(process.env.GITLAB_TOKEN_TYPE?.toLowerCase() === "bearer"
+            ? { Authorization: "Bearer " + this.token }
+            : { "PRIVATE-TOKEN": this.token }),
+        };
         const response = await fetch(this.baseUrl + path, {
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            ...(process.env.GITLAB_TOKEN_TYPE?.toLowerCase() === "bearer"
-              ? { Authorization: "Bearer " + this.token }
-              : { "PRIVATE-TOKEN": this.token }),
-          },
+          method: options.method ?? "GET",
+          headers,
+          ...(options.form ? { body: new URLSearchParams(stringifyForm(options.form)) } : {}),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         const bodyText = await response.text();
@@ -199,6 +335,16 @@ export class GitLabClient {
     }
     throw lastError ?? new GitLabApiError("GitLab API request failed", 0);
   }
+}
+
+function stringifyForm(
+  form: Record<string, string | number | boolean | undefined>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(form)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [key, String(value)]),
+  );
 }
 
 function parseRetryAfter(value: string | null): number | null {

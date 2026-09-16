@@ -40,10 +40,16 @@ oflow auth clear              # remove the stored token for this host
 oflow doctor                  # check local setup and GitLab access prerequisites
 oflow doctor --check-api      # also make a read-only GitLab API request
 oflow work                    # list open GitLab issues/work items
+oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
+oflow capabilities --json      # show implemented, planned, and optional paths
 oflow start --story 42        # remember the active story locally
 oflow context --story 42     # print story, epic, MRs, pipelines, and notes
 oflow mr --story 42           # print an acceptance-aware MR description
 oflow verify --story 42       # check MR evidence and the latest pipeline
+oflow plan issue update --story 42 --labels "Ready,backend"
+oflow approve .oflow/state/plans/<plan-id>.json
+oflow apply .oflow/state/plans/<plan-id>.json
+oflow verify --plan .oflow/state/plans/<plan-id>.json
 ```
 
 For API-backed commands, the easiest interactive setup is:
@@ -71,13 +77,21 @@ command-line argument. A read-only `read_api` token is sufficient for
 `context` and `verify`; use broader write scopes only for tools that explicitly
 need them.
 
-The current release uses the GitLab REST API for deterministic read-only
-context and verification. GitLab's official `glab` CLI is an optional
-companion—not a replacement for the API or its permissions—and the GitLab MCP
-server is an optional agent-facing path. `oflow` does not currently invoke or
-configure either one: it complements them. Remote changes must be explicit and
-follow `plan -> approve -> apply -> verify`; `oflow` does not create or update
-GitLab issues, merge requests, comments, labels, or branches.
+The current release uses the GitLab REST API for deterministic, compact
+planning snapshots and the first guarded write: updating an issue/work item.
+`oflow sync --json` gathers bounded project, work-item, label, milestone, board,
+iteration, merge-request, and pipeline evidence without descriptions unless a
+specific story is selected. The agent performs the reasoning over that data;
+oflow does not require an embedded model or spend tokens generating a duplicate
+summary.
+
+GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
+and future endpoint fallbacks—not a replacement for GitLab permissions. The
+GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
+REST adapter as the predictable core and does not silently invoke or configure
+MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
+The current apply-capable operation is `plan issue update`; comments, labels,
+boards, milestones, iterations, and merge-request writes remain roadmap work.
 
 See [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the backend,
 authentication, security, and implementation decision record.
@@ -127,13 +141,12 @@ contract.
 
 ## Scrum and planning roadmap
 
-The next product focus is Scrum/planning: work items, acceptance criteria,
-labels, issue boards, milestones, epics, and group-level iterations/sprints.
-See [`docs/SCRUM-PLANNING.md`](docs/SCRUM-PLANNING.md) for the agent contract
-and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged implementation plan.
-The planned `oflow sync` command will gather evidence and help an agent assess
-progress; it will remain read-only. Future writes will use explicit
-`plan -> approve -> apply -> verify` transitions.
+The current product focus is Scrum/planning: work items, acceptance criteria,
+labels, issue boards, milestones, iterations, merge-request evidence, and
+pipelines. See [`docs/SCRUM-PLANNING.md`](docs/SCRUM-PLANNING.md) for the agent
+contract and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged implementation
+plan. `oflow sync` is the compact read-only handoff; future writes will extend
+the same explicit `plan -> approve -> apply -> verify` transitions.
 
 ## License
 

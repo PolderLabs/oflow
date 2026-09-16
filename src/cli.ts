@@ -13,6 +13,7 @@ import {
   readTokenFromStdin,
   saveGitLabToken,
 } from "./auth.js";
+import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
 import {
   chooseMergeRequest,
   formatContextMarkdown,
@@ -25,9 +26,17 @@ import { OflowError } from "./errors.js";
 import { formatDoctor, doctor } from "./doctor.js";
 import { getGitLabRemote, getRepoRoot } from "./git.js";
 import { formatInstallResult, installProject } from "./install.js";
+import {
+  applyPlan,
+  approvePlan,
+  createIssueUpdatePlan,
+  formatPlanMarkdown,
+  verifyPlan,
+} from "./plan.js";
 import { resolveStoryIid, startSession } from "./state.js";
+import { formatSyncMarkdown, syncProject } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
-import type { IssueState } from "./types.js";
+import type { GitLabIssueUpdate, IssueState } from "./types.js";
 
 interface CliOptions {
   command: string;
@@ -41,6 +50,13 @@ interface CliOptions {
   dryRun: boolean;
   tokenStdin: boolean;
   checkApi: boolean;
+  planResource?: string;
+  planOperation?: string;
+  planPath?: string;
+  title?: string;
+  description?: string;
+  labels?: string;
+  milestone?: string;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -85,6 +101,61 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         );
         return 0;
       }
+      case "sync": {
+        const state = normalizeIssueState(options.state);
+        const storyIid = options.story
+          ? await resolveStoryIid(root, options.story)
+          : undefined;
+        const result = await syncProject(root, { state, storyIid });
+        print(options.json, result, formatSyncMarkdown(result));
+        return result.warnings.length === 0 ? 0 : 1;
+      }
+      case "capabilities": {
+        const result = await getCapabilities();
+        print(options.json, result, formatCapabilitiesMarkdown(result));
+        return 0;
+      }
+      case "plan": {
+        if (options.planResource !== "issue" || options.planOperation !== "update") {
+          throw new OflowError(
+            "Use oflow plan issue update --story <iid> with one or more changes.",
+            "UNSUPPORTED_PLAN",
+          );
+        }
+        const storyIid = await resolveStoryIid(root, options.story);
+        const changes: GitLabIssueUpdate = {
+          title: options.title,
+          description: options.description,
+          labels: options.labels,
+          milestone: options.milestone,
+          state_event: normalizeIssueUpdateState(options.state),
+        };
+        const stored = await createIssueUpdatePlan(root, storyIid, changes);
+        print(options.json, stored, formatPlanMarkdown(stored));
+        return 0;
+      }
+      case "approve": {
+        if (!options.planPath) {
+          throw new OflowError(
+            "approve requires a .oflow/state/plans/<plan-id>.json path.",
+            "MISSING_PLAN_PATH",
+          );
+        }
+        const stored = await approvePlan(root, options.planPath);
+        print(options.json, stored, formatPlanMarkdown(stored));
+        return 0;
+      }
+      case "apply": {
+        if (!options.planPath) {
+          throw new OflowError(
+            "apply requires a .oflow/state/plans/<plan-id>.json path.",
+            "MISSING_PLAN_PATH",
+          );
+        }
+        const stored = await applyPlan(root, options.planPath);
+        print(options.json, stored, formatPlanMarkdown(stored));
+        return 0;
+      }
       case "doctor": {
         const result = await doctor(root, { checkApi: options.checkApi });
         print(options.json, result, formatDoctor(result));
@@ -114,6 +185,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "verify": {
+        if (options.planPath) {
+          const stored = await verifyPlan(root, options.planPath);
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return stored.plan.verification?.passed ? 0 : 1;
+        }
         const storyIid = await resolveStoryIid(root, options.story);
         const context = await loadStoryContext(root, storyIid);
         const mergeRequest = chooseMergeRequest(context);
@@ -205,6 +281,17 @@ function parseArgs(argv: string[]): CliOptions {
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
     options.authAction = argv[1];
     firstOptionIndex = 2;
+  } else if (command === "plan") {
+    options.planResource = argv[1];
+    options.planOperation = argv[2];
+    firstOptionIndex = 3;
+  } else if (
+    (command === "approve" || command === "apply") &&
+    argv[1] &&
+    !argv[1].startsWith("-")
+  ) {
+    options.planPath = argv[1];
+    firstOptionIndex = 2;
   }
 
   for (let index = firstOptionIndex; index < argv.length; index += 1) {
@@ -222,7 +309,12 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--state" ||
       argument === "--agent" ||
       argument === "--root" ||
-      argument === "--host"
+      argument === "--host" ||
+      argument === "--title" ||
+      argument === "--description" ||
+      argument === "--labels" ||
+      argument === "--milestone" ||
+      argument === "--plan"
     ) {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) {
@@ -237,6 +329,16 @@ function parseArgs(argv: string[]): CliOptions {
         options.agent = value;
       } else if (argument === "--host") {
         options.host = value;
+      } else if (argument === "--title") {
+        options.title = value;
+      } else if (argument === "--description") {
+        options.description = value;
+      } else if (argument === "--labels") {
+        options.labels = value;
+      } else if (argument === "--milestone") {
+        options.milestone = value;
+      } else if (argument === "--plan") {
+        options.planPath = value;
       } else {
         options.root = value;
       }
@@ -254,6 +356,20 @@ function parseArgs(argv: string[]): CliOptions {
         throw new OflowError("--host requires a value.", "MISSING_FLAG_VALUE");
       }
       options.host = value;
+    } else if (argument.startsWith("--title=")) {
+      options.title = argument.slice("--title=".length);
+    } else if (argument.startsWith("--description=")) {
+      options.description = argument.slice("--description=".length);
+    } else if (argument.startsWith("--labels=")) {
+      options.labels = argument.slice("--labels=".length);
+    } else if (argument.startsWith("--milestone=")) {
+      options.milestone = argument.slice("--milestone=".length);
+    } else if (argument.startsWith("--plan=")) {
+      const value = argument.slice("--plan=".length);
+      if (!value) {
+        throw new OflowError("--plan requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.planPath = value;
     } else if (
       argument === "--token" ||
       argument === "--gitlab-token" ||
@@ -284,6 +400,24 @@ function normalizeIssueState(value: string | undefined): IssueState {
   throw new OflowError(
     "Unknown issue state \"" + value + "\". Use opened, closed, or all.",
     "INVALID_ISSUE_STATE",
+  );
+}
+
+function normalizeIssueUpdateState(
+  value: string | undefined,
+): GitLabIssueUpdate["state_event"] {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === "closed") {
+    return "close";
+  }
+  if (value === "opened") {
+    return "reopen";
+  }
+  throw new OflowError(
+    "Unknown issue update state \"" + value + "\". Use opened or closed.",
+    "INVALID_ISSUE_UPDATE_STATE",
   );
 }
 
@@ -408,6 +542,11 @@ function helpText(): string {
     "  install [--agent auto|claude|codex|both] [--dry-run]",
     "  doctor [--check-api]",
     "  work [--state opened|closed|all]    list current GitLab work items",
+    "  sync [--story <iid>] [--json]       compact project and Scrum snapshot",
+    "  capabilities [--json]               show supported and planned operations",
+    "  plan issue update --story <iid>     prepare an auditable issue update",
+    "  approve <plan.json>                  approve a local plan artifact",
+    "  apply <plan.json>                    apply an approved plan",
     "  start --story <iid>",
     "  context --story <iid> [--json]",
     "  mr --story <iid>",
@@ -418,6 +557,7 @@ function helpText(): string {
     "  --json         print machine-readable output",
     "  --dry-run      preview install changes",
     "  --token-stdin  read a token without putting it in shell history",
+    "  --plan <path>  verify a plan artifact instead of a story",
   ].join("\n") + "\n";
 }
 

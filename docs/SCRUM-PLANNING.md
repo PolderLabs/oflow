@@ -1,8 +1,10 @@
 # oflow Scrum and Planning Contract
 
-This document defines the intended Scrum and planning expansion for `oflow`.
-It is the source of truth for implementation, agent instructions, tests, and
-future GitLab/MCP adapters.
+This document defines the Scrum and planning contract for `oflow`. It is the
+source of truth for implementation, agent instructions, tests, and future
+GitLab/MCP adapters. The implemented surface is deliberately smaller than
+the complete GitLab API and is expanded only behind capability discovery and
+tests.
 
 ## Goal
 
@@ -18,24 +20,26 @@ An agent should be able to enter a repository and answer, with evidence:
 The agent must be able to propose changes to GitLab planning data, but remote
 changes must remain explicit and auditable.
 
-## `oflow sync` intent
+## `oflow sync`
 
-`oflow sync` is the planned, read-only planning command. It should gather and
-normalize:
+`oflow sync` is the compact, read-only planning command. It gathers and
+normalizes the currently supported subset:
 
 1. The current repository, branch, and local workflow configuration.
-2. The selected story or the active story inferred from local state/branch.
-3. The story description, comments, labels, assignees, milestone, iteration,
-   parent/child work items, and linked planning objects.
-4. Relevant project and group boards, lists, labels, milestones, epics,
-   iterations, and iteration cadences.
-5. Local implementation evidence: changed files, tests, test results, and
-   relevant documentation.
-6. Existing GitLab evidence currently supported by `context` and `verify`.
+2. Project work items, with compact labels, milestone/iteration, state, and
+   links. The default query is bounded to 50 items.
+3. Open merge requests and current-branch pipelines, bounded to 20 and 10.
+4. Project labels, active milestones, boards/lists, and project-visible
+   iterations.
+5. When `--story <iid>` is supplied, that story's acceptance criteria, notes
+   count, merge requests, and pipelines.
 
-It should emit both human-readable Markdown and stable `--json` output. The
-JSON result is the handoff format for Claude, Codex, or another agent. Sync is
-not allowed to create, update, delete, comment on, or otherwise mutate GitLab.
+It emits human-readable Markdown and a compact `--json` result. Descriptions
+are excluded from the overall snapshot and fetched only for the selected story,
+so the result is suitable for low-token agent handoff. Local implementation and
+test evidence still comes from repository inspection and `oflow verify`.
+Sync is not allowed to create, update, delete, comment on, or otherwise mutate
+GitLab.
 
 ### AI responsibility
 
@@ -85,10 +89,11 @@ so project-only access cannot be assumed to be enough. The authenticated GitLab
 user also needs a suitable planning role. See the [GitLab iterations
 documentation](https://docs.gitlab.com/user/group/iterations/).
 
-## Planned command surface
+## Command surface
 
-Names are provisional until implemented. Commands must expose a stable JSON
-shape and a useful Markdown view.
+Implemented commands expose a stable JSON shape and a useful Markdown view.
+The remaining GitLab resource commands are roadmap entries and must not be
+assumed to exist just because the API supports them.
 
 ### Read and analysis
 
@@ -96,18 +101,13 @@ shape and a useful Markdown view.
 oflow capabilities --json
 oflow sync [--story <iid>] [--json]
 oflow work [--state opened|closed|all] [filters]
-oflow issue show --story <iid> [--json]
-oflow label list [--scope project|group]
-oflow board list [--scope project|group]
-oflow board show <id> [--json]
-oflow milestone list [--scope project|group]
-oflow sprint list [--group <path>]
-oflow epic list [--group <path>]
+oflow context --story <iid> [--json]
+oflow verify --story <iid> [--json]
 ```
 
-Existing `context` and `verify` remain supported. `sync` should eventually
-compose and supersede their overlapping inspection without breaking the local
-workflow contract.
+Label, board, milestone, sprint, epic, and issue-show subcommands remain
+planned. `sync` composes the currently supported overlapping inspection without
+breaking the local workflow contract.
 
 ### Explicit mutations
 
@@ -126,6 +126,21 @@ oflow apply .oflow/state/plans/<plan-id>.json
 oflow verify --plan .oflow/state/plans/<plan-id>.json
 ```
 
+The currently implemented plan operation is issue/work-item update:
+
+```bash
+oflow plan issue update --story <iid> \
+  --title "Updated title" \
+  --labels "Ready,backend" \
+  --state closed
+```
+
+It validates that the target exists while creating the local plan, requires an
+unchanged digest for approval and apply, checks the current Git remote before
+writing, and re-reads the issue during verification. Notes, label resources,
+board movement, milestones, iterations, and merge-request writes are not yet
+apply-capable.
+
 The exact syntax may change, but the state transition must not:
 
 ```text
@@ -143,14 +158,16 @@ flow.
 When an agent is asked to “sync oflow”, “check progress”, or “see where we are”:
 
 1. Read `AGENTS.md`, `README.md`, `.oflow/WORKFLOW.md`, and relevant local code.
-2. Run the implemented `oflow sync` command, or today use `oflow work`,
-   `oflow context --story <iid>`, and `oflow verify --story <iid>`.
+2. Run `oflow sync --json` for the compact project snapshot. Add
+   `--story <iid>` when assessing one story, then use `oflow context` and
+   `oflow verify` for detailed acceptance evidence.
 3. Preserve the exact story and acceptance-criterion IDs.
 4. Compare GitLab planning state with local implementation and verification
    evidence.
 5. Report status, blockers, ambiguities, and the smallest next steps.
-6. If a GitLab change is useful, generate a plan and show it before approval.
-7. Only after explicit approval may an apply-capable adapter mutate GitLab.
+6. If a GitLab issue change is useful, generate a plan and show it before
+   approval. Use `oflow capabilities --json` before selecting a mutation.
+7. Only after explicit approval may the REST adapter mutate GitLab.
 8. Re-run sync/verification and report the resulting GitLab links and evidence.
 
 An agent may reason and recommend automatically. It must not silently update a
@@ -172,11 +189,12 @@ oflow plan/apply
        +-- GitLab MCP adapter (when exposed by the agent runtime)
 ```
 
-The current release implements only direct REST reads. `glab` is an optional
-external executable and must not become an npm/runtime dependency. GitLab's
-hosted MCP server and `glab mcp serve` are separate integrations; the latter is
-currently documented by GitLab as experimental. Neither one changes the
-workflow safety rules.
+The current release implements direct REST reads plus the guarded REST issue
+update plan. `glab` is detected as an optional external executable but is not
+required and must not become an npm/runtime dependency. GitLab's hosted MCP
+server and `glab mcp serve` are separate integrations; the latter is currently
+documented by GitLab as experimental. Neither one changes the workflow safety
+rules or is silently invoked by `oflow`.
 
 MCP configuration and authorization belong to the agent/runtime user
 configuration, never to the repository. `oflow` must not assume that an MCP

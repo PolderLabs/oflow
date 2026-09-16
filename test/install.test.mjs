@@ -27,9 +27,9 @@ test("install is idempotent and preserves the managed marker", async () => {
     assert.ok(agents.includes("Read .oflow/WORKFLOW.md"));
 
     const workflow = await readFile(join(root, ".oflow", "WORKFLOW.md"), "utf8");
-    assert.ok(workflow.includes("oflow sync when available"));
-    assert.ok(workflow.includes("Do not use planned commands until oflow capabilities"));
-    assert.ok(workflow.includes("plan -> approve -> apply -> verify"));
+    assert.ok(workflow.includes("oflow sync --json"));
+    assert.ok(workflow.includes("currently supported remote write"));
+    assert.ok(workflow.includes("approve, apply, and verify"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

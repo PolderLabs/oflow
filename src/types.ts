@@ -85,6 +85,63 @@ export interface GitLabIssue {
   [key: string]: unknown;
 }
 
+export interface GitLabIssueUpdate {
+  title?: string;
+  description?: string;
+  labels?: string;
+  milestone?: string;
+  state_event?: "close" | "reopen";
+}
+
+export interface GitLabLabel {
+  id?: number;
+  name: string;
+  color?: string;
+  description?: string | null;
+  open_issues_count?: number;
+  closed_issues_count?: number;
+  open_merge_requests_count?: number;
+  [key: string]: unknown;
+}
+
+export interface GitLabMilestone {
+  id: number;
+  iid: number;
+  title: string;
+  description?: string | null;
+  state?: string;
+  start_date?: string | null;
+  due_date?: string | null;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface GitLabBoard {
+  id: number;
+  name: string;
+  lists?: GitLabBoardList[];
+  [key: string]: unknown;
+}
+
+export interface GitLabBoardList {
+  id: number;
+  label?: { name?: string; color?: string } | null;
+  position?: number;
+  [key: string]: unknown;
+}
+
+export interface GitLabIteration {
+  id: number;
+  iid: number;
+  title?: string | null;
+  description?: string | null;
+  state?: string;
+  start_date?: string | null;
+  due_date?: string | null;
+  web_url?: string;
+  [key: string]: unknown;
+}
+
 export interface GitLabNote {
   id: number;
   body: string;

@@ -42,6 +42,39 @@ test("lists project work items by state", async () => {
   }
 });
 
+test("updates an issue with a form-encoded write request", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestMethod = "";
+  let requestBody = "";
+  globalThis.fetch = async (input, init) => {
+    requestMethod = init?.method ?? "";
+    requestBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ iid: 42, title: "Updated story", state: "closed" }),
+    };
+  };
+  try {
+    const issue = await new GitLabClient("gitlab.example.test", "test-token")
+      .updateIssue("team/project", 42, {
+        title: "Updated story",
+        labels: "User Story,Ready",
+        state_event: "close",
+      });
+    assert.equal(issue.title, "Updated story");
+    assert.equal(requestMethod, "PUT");
+    assert.match(requestBody, /title=Updated\+story/);
+    const body = new URLSearchParams(requestBody);
+    assert.equal(body.get("title"), "Updated story");
+    assert.equal(body.get("labels"), "User Story,Ready");
+    assert.equal(body.get("state_event"), "close");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("redacts tokens from API errors", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => ({

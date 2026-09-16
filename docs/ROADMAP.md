@@ -19,6 +19,8 @@ The product boundary remains:
 - Read, plan, apply, and verify are separate operations.
 - REST, `glab`, and MCP are provider execution mechanisms, not separate
   workflow rules.
+- The current usable milestone is compact Scrum/project reads plus one guarded
+  issue update operation; broader writes remain explicitly staged.
 
 ## Integration strategy
 
@@ -52,43 +54,48 @@ backend selection policy.
 - [x] Pipeline-aware verification
 - [x] Explicit MCP boundary documentation
 
-The current CLI remains read-only against GitLab.
+The current CLI is read-mostly against GitLab. `sync`, `work`, `context`, and
+`verify` are read-only; `plan issue update` is the first write path and can only
+mutate after approval.
 
 ### Phase 1 — Scrum and planning read model
 
 This is the immediate implementation focus.
 
-- [ ] Add `oflow capabilities --json` with supported, planned, and unavailable
+- [x] Add `oflow capabilities --json` with supported, planned, and unavailable
   operations plus required token boundaries/permissions.
-- [ ] Detect optional `glab` in `oflow doctor` without making it a hard
-  dependency or exposing credentials.
-- [ ] Add `oflow sync` as a deterministic, read-only planning snapshot.
-- [ ] Expand the GitLab adapter for project/group planning metadata.
-- [ ] List and inspect project/group boards and board lists.
-- [ ] List and inspect project/group labels.
-- [ ] List and inspect project/group milestones.
+- [x] Detect optional `glab` without making it a hard dependency or exposing
+  credentials.
+- [x] Add `oflow sync` as a deterministic, read-only planning snapshot.
+- [x] Expand the GitLab adapter for project planning metadata.
+- [x] List and inspect project boards and board lists.
+- [x] List and inspect project labels.
+- [x] List and inspect project milestones.
 - [ ] List and inspect group epics and parent/child relationships.
-- [ ] List project-visible and group iterations/sprints.
+- [x] List project-visible iterations/sprints.
 - [ ] Inspect iteration cadences where the GitLab version supports them.
 - [ ] Add filters for state, label, milestone, iteration, assignee, author, and
   updated time.
 - [ ] Add pagination, response validation, retries, and useful unsupported
   endpoint errors for every new collection.
-- [ ] Produce a stable JSON evidence model for agent handoff.
+- [x] Produce a compact JSON evidence model for project, Scrum, merge-request,
+  and pipeline handoff.
 - [ ] Add an opt-in read-only `glab api` fallback for capabilities not yet
   wrapped by the typed REST adapter, with strict JSON parsing and backend
   reporting.
 
 ### Phase 2 — Safe Scrum mutations
 
-- [ ] Define a versioned plan artifact schema.
-- [ ] Implement plan creation without remote writes.
-- [ ] Implement explicit approval with plan identity and digest checks.
-- [ ] Implement apply through a GitLab REST adapter.
+- [x] Define a versioned plan artifact schema.
+- [x] Implement issue-update plan creation without remote writes.
+- [x] Implement explicit approval with plan identity and digest checks.
+- [x] Implement issue-update apply through a GitLab REST adapter.
 - [ ] Permit a `glab` apply adapter only after the same plan and approval gates
   are implemented and tested.
-- [ ] Implement post-apply verification and an audit trail.
-- [ ] Create/update/close/assign work items.
+- [x] Implement post-apply verification for issue updates.
+- [ ] Add a durable audit trail beyond the plan artifact.
+- [x] Update issue/work-item fields through the guarded plan path.
+- [ ] Create/close/assign work items.
 - [ ] Add and update work-item comments/notes.
 - [ ] Create/update/apply/remove labels.
 - [ ] Create/update/assign milestones.
@@ -114,8 +121,9 @@ This is the immediate implementation focus.
 
 ### Phase 4 — Delivery integration (later)
 
-Merge requests and delivery automation are intentionally postponed until the
-Scrum model and mutation safety are stable.
+Merge-request writes and delivery automation are intentionally postponed until
+the Scrum model and mutation safety are stable. Merge-request and pipeline
+reads are already included in the compact sync/context evidence.
 
 - [ ] Merge-request creation, updates, discussions, and review state
 - [ ] Branch and repository operations

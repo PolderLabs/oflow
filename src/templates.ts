@@ -14,7 +14,7 @@ export const WORKFLOW_MARKDOWN = [
   "3. Resolve the active story with oflow start --story <iid> or the branch naming convention.",
   "4. Run oflow context --story <iid> and preserve the story's acceptance criterion IDs.",
   "5. If GitLab access is missing, run oflow auth login; never put tokens in this repository.",
-  "6. When asked to sync or assess progress, run oflow sync when available; until then use oflow context and oflow verify.",
+  "6. When asked to sync or assess progress, run oflow sync --json and use oflow capabilities --json to discover supported operations.",
   "7. State the plan and identify anything ambiguous before making code changes.",
   "",
   "## While working",
@@ -36,10 +36,10 @@ export const WORKFLOW_MARKDOWN = [
   "",
   "## Safety",
   "",
-  "Read-only context and verification commands may run automatically. oflow does",
-  "not configure or invoke MCP servers. Use a configured GitLab MCP only for",
-  "explicit approved mutations, which must follow plan -> approve -> apply -> verify.",
-  "Do not use planned commands until oflow capabilities reports them as supported.",
+  "Read-only context, sync, and verification commands may run automatically.",
+  "oflow does not configure or invoke MCP servers. Use plan issue update, then",
+  "approve, apply, and verify for the currently supported remote write. Do not",
+  "use planned commands until oflow capabilities reports them as supported.",
 ].join("\n");
 
 export const OFLOW_README_MARKDOWN = [
@@ -51,12 +51,12 @@ export const OFLOW_README_MARKDOWN = [
   "- WORKFLOW.md is the shared agent workflow contract.",
   "- templates/merge-request.md is the acceptance-aware MR template.",
   "- GitLab credentials live outside the repository; use oflow auth login.",
-  "- oflow reads GitLab through its REST API; it does not configure or invoke MCP servers.",
+  "- oflow reads GitLab through its typed REST API; glab and MCP remain optional integrations.",
   "- state/ and cache/ are local and ignored; they may contain active context.",
-  "- Scrum/planning roadmap: work items, acceptance criteria, labels, boards, milestones, epics, and group-level iterations.",
+  "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, MRs, and pipelines.",
   "",
-  "Run oflow doctor --check-api to inspect setup and API access, oflow work",
-  "to list open stories, or oflow context --story <iid> for one story.",
+  "Run oflow doctor --check-api to inspect setup and API access, oflow sync",
+  "--json for a compact snapshot, or oflow context --story <iid> for one story.",
 ].join("\n");
 
 export const MERGE_REQUEST_TEMPLATE_MARKDOWN = [
@@ -87,10 +87,11 @@ export function agentInstructionBlock(agent: AgentName): string {
     "This repository is managed by oflow. Read .oflow/WORKFLOW.md before changing code.",
     "Use oflow work to list current stories, then use oflow context --story <iid>",
     "to load the selected story and acceptance criteria. When asked to sync progress,",
-    "use oflow sync when available, otherwise combine context and verify. If API",
+    "use oflow sync --json and oflow capabilities --json. If API",
     "access is missing, use oflow auth login; never place a token in the repository.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
-    "in the merge request, and run oflow verify --story <iid> before handoff. Do not",
-    "make remote planning changes without an explicit plan and approval.",
+    "in the merge request, and run oflow verify --story <iid> before handoff. Use",
+    "oflow plan issue update followed by approve/apply/verify for supported writes; do",
+    "not make other remote planning changes without an explicit supported plan.",
   ].join("\n");
 }

@@ -29,9 +29,9 @@ agent -> oflow intent/sync/plan/approve/apply/verify
                     +-- MCP adapter (optional agent/runtime path)
 ```
 
-The current release only implements the REST path for read-only commands.
-This document describes the target architecture; it does not claim that
-`oflow` already invokes `glab` or MCP.
+The current release implements the REST path for compact read commands and the
+guarded issue-update plan. This document does not claim that `oflow` silently
+invokes `glab` or MCP; both remain optional integrations.
 
 ## What the four options actually provide
 
@@ -178,14 +178,13 @@ Every capability must expose:
 ## Implementation sequence
 
 1. Keep current direct REST reads as the baseline and finish the Scrum read
-   model (`capabilities`, `sync`, boards, labels, milestones, epics,
-   iterations, and cadences).
-2. Add backend-neutral capability metadata and `oflow doctor` detection for
-   optional `glab` availability, version, host, and authentication status
-   without exposing credentials.
+   model (group epics, iterations, and cadences remain).
+2. Add backend-neutral capability metadata and optional `glab` availability
+   detection without exposing credentials.
 3. Add a small, opt-in `glab api` bridge for endpoints not yet wrapped by
    REST, starting read-only and with strict JSON parsing.
-4. Implement plan artifacts and approval before any `glab` or REST mutation.
+4. Implement plan artifacts and approval before any additional `glab` or REST
+   mutation; issue updates already use this path.
 5. Add MCP capability discovery/bridging only where the agent runtime can
    provide stable structured results.
 6. Expand into merge requests, pipelines, releases, security, and other

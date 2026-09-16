@@ -1,5 +1,7 @@
 export * from "./agents.js";
 export * from "./auth.js";
+export * from "./backends.js";
+export * from "./capabilities.js";
 export * from "./config.js";
 export * from "./context.js";
 export * from "./criteria.js";
@@ -9,6 +11,8 @@ export * from "./fs.js";
 export * from "./git.js";
 export * from "./gitlab.js";
 export * from "./install.js";
+export * from "./plan.js";
+export * from "./sync.js";
 export * from "./state.js";
 export * from "./templates.js";
 export * from "./types.js";
