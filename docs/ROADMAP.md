@@ -68,6 +68,7 @@ This is the immediate implementation focus.
 - [x] Detect optional `glab` without making it a hard dependency or exposing
   credentials.
 - [x] Add `oflow sync` as a deterministic, read-only planning snapshot.
+- [x] Add a token-light `oflow sync --summary` handoff for agent orientation.
 - [x] Expand the GitLab adapter for project planning metadata.
 - [x] List and inspect project boards and board lists.
 - [x] List and inspect project labels.

@@ -330,8 +330,8 @@ non-idempotent POST; label updates use the idempotent PUT endpoint. Milestone
 creation also disables retries for the non-idempotent POST. Board creation and
 board-list creation likewise disable retries; board updates and list reordering
 use idempotent PUT requests. Board-card movement is represented by guarded issue
-label updates, not an unverified board-card mutation. Board deletion, bulk
-cadence writes, and merge-request writes are not yet apply-capable. The supported
+label updates, not an unverified board-card mutation. Board deletion, cadence
+writes, and merge-request writes are not yet apply-capable. The supported
 board endpoint behavior is documented by GitLab's [project issue boards
 API](https://docs.gitlab.com/api/boards/).
 
