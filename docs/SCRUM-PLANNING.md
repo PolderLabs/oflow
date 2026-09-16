@@ -322,14 +322,14 @@ Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before
 writing, and re-read GitLab during verification. Issue creation is a
 non-idempotent POST and therefore is never automatically retried. Issue
-assignment resolves
-usernames before the plan is written. Note creation disables automatic
-request retries because repeating a non-idempotent POST could create duplicate
-comments. Label creation also disables automatic retries because it is a
-non-idempotent POST; label updates use the idempotent PUT endpoint. Milestone
-creation also disables retries for the non-idempotent POST. Board creation and
-board-list creation likewise disable retries; board updates and list reordering
-use idempotent PUT requests. Board-card movement is represented by guarded issue
+assignment resolves usernames before the plan is written. Note, label,
+milestone, board, and board-list creation all disable automatic request
+retries because their POST requests are non-idempotent. If an approved plan is
+resumed after a request may have succeeded, oflow re-reads the relevant
+collection and reuses a single exact match for those uniquely-identifiable
+resources. It refuses mismatched fields or multiple matches with
+`PLAN_RESOURCE_CONFLICT` rather than creating a duplicate. Updates use
+idempotent PUT requests. Board-card movement is represented by guarded issue
 label updates, not an unverified board-card mutation. Board deletion, cadence
 writes, and merge-request writes are not yet apply-capable. The supported
 board endpoint behavior is documented by GitLab's [project issue boards

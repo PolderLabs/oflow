@@ -981,6 +981,38 @@ test("label plans create and update labels through approval and verification", a
     const verifiedUpdate = await verifyPlan(root, updated.path);
     assert.equal(verifiedUpdate.plan.state, "verified");
     assert.equal(verifiedUpdate.plan.verification.passed, true);
+
+    const recovered = await createLabelCreatePlan(root, {
+      name: "Recovery label",
+      color: "#123456",
+      description: "Created before apply",
+    });
+    await approvePlan(root, recovered.path);
+    labels.push({
+      id: 8,
+      name: "Recovery label",
+      color: "#123456",
+      description: "Created before apply",
+    });
+    const appliedRecovery = await applyPlan(root, recovered.path);
+    assert.equal(appliedRecovery.plan.result.resourceReused, true);
+    assert.equal((await verifyPlan(root, recovered.path)).plan.state, "verified");
+
+    const conflict = await createLabelCreatePlan(root, {
+      name: "Conflicting label",
+      color: "#123456",
+      description: "Expected description",
+    });
+    await approvePlan(root, conflict.path);
+    labels.push({
+      id: 9,
+      name: "Conflicting label",
+      color: "#654321",
+      description: "Different description",
+    });
+    await assert.rejects(() => applyPlan(root, conflict.path), {
+      code: "PLAN_RESOURCE_CONFLICT",
+    });
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
@@ -1034,8 +1066,15 @@ test("milestone plans create and update timeboxes through approval and verificat
         });
         return response(milestone);
       }
-      if (url.pathname.endsWith("/milestones/5")) {
-        return response(milestones.find((item) => item.iid === 5));
+      if (/\/milestones\/\d+$/.test(url.pathname)) {
+        const iid = Number(url.pathname.split("/").pop());
+        return response(milestones.find((item) => item.iid === iid));
+      }
+      if (url.pathname.endsWith("/milestones") && method === "POST") {
+        const body = new URLSearchParams(String(init.body));
+        if (body.get("title") === "Sprint 6") {
+          throw new Error("the recovery test must not create a duplicate milestone");
+        }
       }
       return response(milestones);
     };
@@ -1060,6 +1099,25 @@ test("milestone plans create and update timeboxes through approval and verificat
     const verifiedUpdate = await verifyPlan(root, updated.path);
     assert.equal(verifiedUpdate.plan.state, "verified");
     assert.equal(verifiedUpdate.plan.verification.passed, true);
+
+    const recovered = await createMilestoneCreatePlan(root, {
+      title: "Sprint 6",
+      start_date: "2027-02-01",
+      due_date: "2027-02-21",
+    });
+    await approvePlan(root, recovered.path);
+    milestones.push({
+      id: 52,
+      iid: 6,
+      title: "Sprint 6",
+      description: null,
+      start_date: "2027-02-01",
+      due_date: "2027-02-21",
+      state: "active",
+    });
+    const appliedRecovery = await applyPlan(root, recovered.path);
+    assert.equal(appliedRecovery.plan.result.resourceReused, true);
+    assert.equal((await verifyPlan(root, recovered.path)).plan.state, "verified");
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
@@ -1095,6 +1153,9 @@ test("board and label-backed board-list plans stay guarded and verify remote sta
       if (path.endsWith("/boards") && method === "GET") return response(boards);
       if (path.endsWith("/boards") && method === "POST") {
         const body = new URLSearchParams(String(init.body));
+        if (body.get("name") === "Recovery board") {
+          throw new Error("the recovery test must not create a duplicate board");
+        }
         const board = { id: 3, name: body.get("name") };
         boards.push(board);
         return response(board);
@@ -1110,20 +1171,26 @@ test("board and label-backed board-list plans stay guarded and verify remote sta
         return response(boards[0]);
       }
       if (path.endsWith("/labels") && method === "GET") return response(labels);
-      if (path.endsWith("/boards/1/lists") && method === "GET") return response(lists);
       if (path.endsWith("/boards/1/lists") && method === "POST") {
         const body = new URLSearchParams(String(init.body));
+        if (Number(body.get("label_id")) === 6) {
+          throw new Error("the recovery test must not create a duplicate board list");
+        }
         const list = { id: 4, label: { id: Number(body.get("label_id")), name: "Ready" }, position: 2 };
         lists.push(list);
         return response(list);
       }
+      if (path.endsWith("/boards/1/lists") && method === "GET") return response(lists);
       if (path.endsWith("/boards/1/lists/2") && method === "GET") return response(lists[0]);
       if (path.endsWith("/boards/1/lists/2") && method === "PUT") {
         const body = new URLSearchParams(String(init.body));
         lists[0].position = Number(body.get("position"));
         return response(lists[0]);
       }
-      if (path.endsWith("/boards/1/lists/4") && method === "GET") return response(lists[1]);
+      if (/\/boards\/1\/lists\/\d+$/.test(path) && method === "GET") {
+        const list = lists.find((item) => item.id === Number(path.split("/").pop()));
+        return response(list);
+      }
       return response({});
     };
 
@@ -1143,6 +1210,21 @@ test("board and label-backed board-list plans stay guarded and verify remote sta
     const appliedList = await applyPlan(root, listCreated.path);
     assert.equal(appliedList.plan.result.listId, 4);
     assert.equal((await verifyPlan(root, listCreated.path)).plan.state, "verified");
+
+    const recoveredBoard = await createBoardCreatePlan(root, "Recovery board");
+    await approvePlan(root, recoveredBoard.path);
+    boards.push({ id: 4, name: "Recovery board" });
+    const appliedBoardRecovery = await applyPlan(root, recoveredBoard.path);
+    assert.equal(appliedBoardRecovery.plan.result.resourceReused, true);
+    assert.equal((await verifyPlan(root, recoveredBoard.path)).plan.state, "verified");
+
+    labels.push({ id: 6, name: "Done", color: "#00AA00" });
+    const recoveredList = await createBoardListCreatePlan(root, 1, "Done");
+    await approvePlan(root, recoveredList.path);
+    lists.push({ id: 5, label: { id: 6, name: "Done" }, position: 3 });
+    const appliedListRecovery = await applyPlan(root, recoveredList.path);
+    assert.equal(appliedListRecovery.plan.result.resourceReused, true);
+    assert.equal((await verifyPlan(root, recoveredList.path)).plan.state, "verified");
 
     const listUpdated = await createBoardListUpdatePlan(root, 1, 2, 0);
     await approvePlan(root, listUpdated.path);

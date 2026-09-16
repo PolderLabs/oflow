@@ -211,6 +211,7 @@ export interface PlanArtifact {
     color?: string;
     description?: string | null;
     noteReused?: boolean;
+    resourceReused?: boolean;
     milestoneId?: number;
     milestoneIid?: number;
     boardId?: number;
@@ -1108,21 +1109,43 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
       existing !== undefined,
     );
   } else if (stored.plan.operation.kind === "label.create") {
-    const result = await client.createLabel(
-      stored.plan.operation.projectPath,
-      {
-        name: stored.plan.operation.name,
-        color: stored.plan.operation.color,
-        description: stored.plan.operation.description,
-      },
+    const operation = stored.plan.operation;
+    const existing = findUniqueNamedResource(
+      await client.listLabels(operation.projectPath),
+      operation.name,
+      (label) => label.name,
+      "project label",
     );
-    stored.plan.result = compactLabel(result, "label.create");
+    let reused = false;
+    const result = existing === undefined
+      ? await client.createLabel(
+          operation.projectPath,
+          {
+            name: operation.name,
+            color: operation.color,
+            description: operation.description,
+          },
+        )
+      : existing;
+    if (existing !== undefined) {
+      assertLabelCreateRecoveryMatch(existing, operation);
+      reused = true;
+    }
+    stored.plan.result = compactLabel(result, "label.create", reused);
   } else if (stored.plan.operation.kind === "board.create") {
-    const result = await client.createBoard(
-      stored.plan.operation.projectPath,
-      { name: stored.plan.operation.name },
+    const operation = stored.plan.operation;
+    const existing = findUniqueNamedResource(
+      await client.listBoards(operation.projectPath),
+      operation.name,
+      (board) => board.name,
+      "project board",
     );
-    stored.plan.result = compactBoard(result, "board.create");
+    const reused = existing !== undefined;
+    const result = existing ?? await client.createBoard(
+      operation.projectPath,
+      { name: operation.name },
+    );
+    stored.plan.result = compactBoard(result, "board.create", reused);
   } else if (stored.plan.operation.kind === "board.update") {
     const result = await client.updateBoard(
       stored.plan.operation.projectPath,
@@ -1131,12 +1154,24 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
     stored.plan.result = compactBoard(result, "board.update");
   } else if (stored.plan.operation.kind === "board-list.create") {
-    const result = await client.createBoardList(
-      stored.plan.operation.projectPath,
-      stored.plan.operation.boardId,
-      { label_id: stored.plan.operation.labelId },
+    const operation = stored.plan.operation;
+    const lists = await client.listBoardLists(operation.projectPath, operation.boardId);
+    const matchingLists = lists.filter((list) => list.label?.id === operation.labelId);
+    if (matchingLists.length > 1) {
+      throw new OflowError(
+        "Board " + String(operation.boardId) + " has multiple lists for label #" +
+          String(operation.labelId) + "; refusing ambiguous recovery.",
+        "PLAN_RESOURCE_CONFLICT",
+      );
+    }
+    const existing = matchingLists[0];
+    const reused = existing !== undefined;
+    const result = existing ?? await client.createBoardList(
+      operation.projectPath,
+      operation.boardId,
+      { label_id: operation.labelId },
     );
-    stored.plan.result = compactBoardList(result, "board-list.create");
+    stored.plan.result = compactBoardList(result, "board-list.create", reused);
   } else if (stored.plan.operation.kind === "board-list.update") {
     const result = await client.updateBoardList(
       stored.plan.operation.projectPath,
@@ -1154,16 +1189,27 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
       );
       stored.plan.result = compactLabel(result, "label.update");
     } else if (stored.plan.operation.kind === "milestone.create") {
-      const result = await client.createMilestone(
-        stored.plan.operation.projectPath,
+      const operation = stored.plan.operation;
+      const existing = findUniqueNamedResource(
+        await client.listMilestones(operation.projectPath, "all"),
+        operation.title,
+        (milestone) => milestone.title,
+        "project milestone",
+      );
+      const reused = existing !== undefined;
+      if (existing !== undefined) {
+        assertMilestoneCreateRecoveryMatch(existing, operation);
+      }
+      const result = existing ?? await client.createMilestone(
+        operation.projectPath,
         {
-          title: stored.plan.operation.title,
-          description: stored.plan.operation.description,
-          start_date: stored.plan.operation.start_date,
-          due_date: stored.plan.operation.due_date,
+          title: operation.title,
+          description: operation.description,
+          start_date: operation.start_date,
+          due_date: operation.due_date,
         },
       );
-      stored.plan.result = compactMilestone(result, "milestone.create");
+      stored.plan.result = compactMilestone(result, "milestone.create", reused);
     } else {
       const result = await client.updateMilestone(
         stored.plan.operation.projectPath,
@@ -2112,6 +2158,7 @@ function compactNote(
 function compactLabel(
   label: GitLabLabel,
   kind: "label.create" | "label.update",
+  reused = false,
 ): NonNullable<PlanArtifact["result"]> {
   return {
     kind,
@@ -2119,12 +2166,14 @@ function compactLabel(
     name: label.name,
     color: label.color,
     description: label.description ?? null,
+    ...(kind === "label.create" ? { resourceReused: reused } : {}),
   };
 }
 
 function compactMilestone(
   milestone: GitLabMilestone,
   kind: "milestone.create" | "milestone.update",
+  reused = false,
 ): NonNullable<PlanArtifact["result"]> {
   return {
     kind,
@@ -2133,29 +2182,34 @@ function compactMilestone(
     name: milestone.title,
     description: milestone.description ?? null,
     state: milestone.state ?? null,
+    ...(kind === "milestone.create" ? { resourceReused: reused } : {}),
   };
 }
 
 function compactBoard(
   board: GitLabBoard,
   kind: "board.create" | "board.update",
+  reused = false,
 ): NonNullable<PlanArtifact["result"]> {
   return {
     kind,
     boardId: board.id,
     name: board.name,
+    ...(kind === "board.create" ? { resourceReused: reused } : {}),
   };
 }
 
 function compactBoardList(
   list: GitLabBoardList,
   kind: "board-list.create" | "board-list.update",
+  reused = false,
 ): NonNullable<PlanArtifact["result"]> {
   return {
     kind,
     listId: list.id,
     position: list.position,
     name: list.label?.name,
+    ...(kind === "board-list.create" ? { resourceReused: reused } : {}),
   };
 }
 
@@ -2177,19 +2231,23 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   }
   if (result.kind === "label.create" || result.kind === "label.update") {
     return "label " + JSON.stringify(result.name ?? "unknown") + " (" +
-      (result.color ?? "unknown") + ")";
+      (result.color ?? "unknown") + ")" +
+      (result.resourceReused ? " already present" : "");
   }
   if (result.kind === "milestone.create" || result.kind === "milestone.update") {
     return "milestone " + JSON.stringify(result.name ?? "unknown") + " (" +
-      (result.state ?? "unknown") + ")";
+      (result.state ?? "unknown") + ")" +
+      (result.resourceReused ? " already present" : "");
   }
   if (result.kind === "board.create" || result.kind === "board.update") {
     return "board " + JSON.stringify(result.name ?? "unknown") +
-      " (#" + String(result.boardId ?? "unknown") + ")";
+      " (#" + String(result.boardId ?? "unknown") + ")" +
+      (result.resourceReused ? " already present" : "");
   }
   if (result.kind === "board-list.create" || result.kind === "board-list.update") {
     return "board list " + JSON.stringify(result.name ?? "unknown") +
-      " (#" + String(result.listId ?? "unknown") + ")";
+      " (#" + String(result.listId ?? "unknown") + ")" +
+      (result.resourceReused ? " already present" : "");
   }
   return (
     (result.title ?? "issue updated") +
@@ -2835,6 +2893,61 @@ function findLabel(labels: GitLabLabel[], reference: string): GitLabLabel | unde
   return Number.isSafeInteger(id) && id > 0
     ? labels.find((label) => label.id === id)
     : undefined;
+}
+
+function findUniqueNamedResource<T>(
+  items: T[],
+  expectedName: string,
+  getName: (item: T) => string | undefined,
+  resourceName: string,
+): T | undefined {
+  const matches = items.filter((item) => getName(item) === expectedName);
+  if (matches.length > 1) {
+    throw new OflowError(
+      "Found multiple " + resourceName + " entries named " + JSON.stringify(expectedName) +
+        "; refusing ambiguous recovery.",
+      "PLAN_RESOURCE_CONFLICT",
+    );
+  }
+  return matches[0];
+}
+
+function assertLabelCreateRecoveryMatch(
+  label: GitLabLabel,
+  operation: LabelCreateOperation,
+): void {
+  const colorMatches = typeof label.color === "string" &&
+    label.color.toLowerCase() === operation.color.toLowerCase();
+  const descriptionMatches = optionalText(label.description) === optionalText(operation.description);
+  if (!colorMatches || !descriptionMatches) {
+    throw new OflowError(
+      "A project label named " + JSON.stringify(operation.name) +
+        " already exists with different color or description; refusing duplicate recovery.",
+      "PLAN_RESOURCE_CONFLICT",
+    );
+  }
+}
+
+function assertMilestoneCreateRecoveryMatch(
+  milestone: GitLabMilestone,
+  operation: MilestoneCreateOperation,
+): void {
+  const datesMatch = optionalText(milestone.start_date) === optionalText(operation.start_date) &&
+    optionalText(milestone.due_date) === optionalText(operation.due_date);
+  const descriptionMatches = optionalText(milestone.description) === optionalText(operation.description);
+  const stateMatches = typeof milestone.state !== "string" ||
+    milestone.state.toLowerCase() === "active";
+  if (!datesMatch || !descriptionMatches || !stateMatches) {
+    throw new OflowError(
+      "A project milestone named " + JSON.stringify(operation.title) +
+        " already exists with different planning data; refusing duplicate recovery.",
+      "PLAN_RESOURCE_CONFLICT",
+    );
+  }
+}
+
+function optionalText(value: string | null | undefined): string {
+  return value ?? "";
 }
 
 function formatTarget(operation: PlanOperation): string {
