@@ -127,6 +127,11 @@ assignees, reviewers, merge status, and pipeline status); add `--full` when the
 description is needed for evidence review. `mr --story <iid>` remains the
 acceptance-aware description template command.
 
+`assess --story <iid> --json` adds story-level owner, timebox, and task
+checklist progress to the deterministic evidence. It recommends the smallest
+planning follow-up when an owner or milestone/iteration is missing, while
+leaving the final status judgment to the agent.
+
 Use `--epic <id>` to assign an issue to an existing epic, or `--epic none` on
 an update to clear the association. This uses GitLab's `epic_id` issue field;
 it is available on Premium and Ultimate, and the association is verified after

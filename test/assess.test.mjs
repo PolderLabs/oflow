@@ -47,6 +47,11 @@ test("assess combines explicit MR evidence with compact local repository evidenc
           description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod",
           state: "opened",
           labels: ["User Story"],
+          assignees: [],
+          milestone: null,
+          iteration: null,
+          task_completion_status: { count: 4, completed_count: 1 },
+          weight: 2,
           web_url: "https://gitlab.example.test/team/project/-/issues/1",
         }],
         ["/api/v4/projects/team%2Fproject/issues/1/notes", []],
@@ -76,6 +81,10 @@ test("assess combines explicit MR evidence with compact local repository evidenc
     assert.equal(result.status, "satisfied");
     assert.equal(result.criteria[0].status, "satisfied");
     assert.equal(result.remote.mergeRequest.iid, 3);
+    assert.deepEqual(result.story.assignees, []);
+    assert.deepEqual(result.story.taskCompletion, { completed: 1, total: 4 });
+    assert.ok(result.nextActions.includes("Assign an owner or explicitly confirm why the story is unassigned."));
+    assert.ok(result.nextActions.includes("Assign a milestone or iteration before sprint commitment."));
     assert.equal(result.local.clean, false);
     assert.ok(result.local.changedFiles.includes("README.md"));
     assert.match(formatAssessmentMarkdown(result), /Status: satisfied/);

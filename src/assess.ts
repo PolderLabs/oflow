@@ -30,8 +30,16 @@ export interface AssessmentResult {
     title: string;
     state: string | null;
     labels: string[];
+    assignees: string[];
     milestone: string | null;
     iteration: string | null;
+    startDate: string | null;
+    dueDate: string | null;
+    weight: number | null;
+    taskCompletion: {
+      completed: number;
+      total: number;
+    } | null;
     webUrl: string | null;
   };
   status: AssessmentStatus;
@@ -101,6 +109,9 @@ export async function assessStory(
   });
   const local = await collectLocalEvidence(root);
   const status = overallStatus(criteria, verification.pipelineStatus, blockers);
+  const milestone = namedValue(context.story.milestone);
+  const iteration = namedValue(context.story.iteration);
+  const assignees = usernamesFrom(context.story.assignees);
   return {
     generatedAt: new Date().toISOString(),
     story: {
@@ -108,8 +119,13 @@ export async function assessStory(
       title: compact(context.story.title, 240),
       state: context.story.state ?? null,
       labels: context.story.labels ?? [],
-      milestone: namedValue(context.story.milestone),
-      iteration: namedValue(context.story.iteration),
+      assignees,
+      milestone,
+      iteration,
+      startDate: context.story.start_date ?? null,
+      dueDate: context.story.due_date ?? null,
+      weight: context.story.weight ?? null,
+      taskCompletion: compactTaskCompletion(context.story.task_completion_status),
       webUrl: context.story.web_url ?? null,
     },
     status,
@@ -143,7 +159,15 @@ export async function assessStory(
     },
     local,
     blockers,
-    nextActions: nextActions(status, criteria, mergeRequest, pipeline, local),
+    nextActions: nextActions(
+      status,
+      criteria,
+      mergeRequest,
+      pipeline,
+      local,
+      assignees.length > 0,
+      milestone !== null || iteration !== null,
+    ),
     warnings: context.warnings,
   };
 }
@@ -154,6 +178,11 @@ export function formatAssessmentMarkdown(result: AssessmentResult): string {
     "",
     "Story: " + linkOrText("#" + result.story.iid + " " + result.story.title, result.story.webUrl),
     "Status: " + result.status,
+    "Assignees: " + (result.story.assignees.length > 0 ? result.story.assignees.join(", ") : "none"),
+    "Timebox: " + (result.story.milestone ?? result.story.iteration ?? "none"),
+    ...(result.story.taskCompletion
+      ? ["Tasks: " + result.story.taskCompletion.completed + "/" + result.story.taskCompletion.total]
+      : []),
     "Branch: " + (result.local.branch ?? "detached/unknown"),
     "Working tree: " + (result.local.clean ? "clean" : "changes present"),
     "",
@@ -246,8 +275,16 @@ function nextActions(
   mergeRequest: { iid: number } | null,
   pipeline: { status?: string } | null,
   local: LocalEvidence,
+  hasAssignee: boolean,
+  hasTimebox: boolean,
 ): string[] {
   const actions: string[] = [];
+  if (!hasAssignee) {
+    actions.push("Assign an owner or explicitly confirm why the story is unassigned.");
+  }
+  if (!hasTimebox) {
+    actions.push("Assign a milestone or iteration before sprint commitment.");
+  }
   if (!mergeRequest) {
     actions.push("Create or link a merge request for the story.");
   }
@@ -306,6 +343,29 @@ function namedValue(value: unknown): string | null {
   const record = value as Record<string, unknown>;
   const name = record.name ?? record.title;
   return typeof name === "string" ? name : null;
+}
+
+function usernamesFrom(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map((item) => item.username ?? item.name)
+      .filter((username): username is string => typeof username === "string" && username.trim().length > 0)
+    : [];
+}
+
+function compactTaskCompletion(value: unknown): AssessmentResult["story"]["taskCompletion"] {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.count !== "number" || typeof record.completed_count !== "number") {
+    return null;
+  }
+  return {
+    completed: record.completed_count,
+    total: record.count,
+  };
 }
 
 function compact(value: string, maxLength: number): string {
