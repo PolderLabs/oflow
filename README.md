@@ -49,6 +49,8 @@ oflow glab api <endpoint>      # optional read-only glab API fallback
 oflow start --story 42        # remember the active story locally
 oflow context --story 42     # print story, epic, MRs, pipelines, and notes
 oflow mr --story 42           # print an acceptance-aware MR description
+oflow mr --iid 8 --json       # read one compact merge-request status
+oflow mr --iid 8 --full       # include the MR description when needed
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
 oflow plan issue update --story 42 --epic 12
@@ -112,6 +114,12 @@ assignees, timebox, parent, timestamps, and links—not descriptions. Markdown
 output shows the effective query and marks a result as “more may exist” when it
 reaches the requested limit. Use `context --story <iid>` when the description
 and acceptance criteria are needed.
+
+`mr --iid <iid>` reads one project merge request without changing it. Its
+default JSON/Markdown shape is compact review state (branches, labels,
+assignees, reviewers, merge status, and pipeline status); add `--full` when the
+description is needed for evidence review. `mr --story <iid>` remains the
+acceptance-aware description template command.
 
 Use `--epic <id>` to assign an issue to an existing epic, or `--epic none` on
 an update to clear the association. This uses GitLab's `epic_id` issue field;

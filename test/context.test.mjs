@@ -1,6 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compactWorkItems, formatWorkItemsMarkdown } from "../dist/context.js";
+import {
+  compactMergeRequest,
+  compactWorkItems,
+  formatMergeRequestMarkdown,
+  formatWorkItemsMarkdown,
+} from "../dist/context.js";
+
+test("merge request summaries stay compact unless full description is requested", () => {
+  const mergeRequest = {
+    iid: 8,
+    title: "  Review pod access  ",
+    description: "acceptance evidence",
+    state: "opened",
+    draft: true,
+    author: { username: "zakar" },
+    assignees: [{ username: "alice" }],
+    reviewers: [{ name: "Bob" }],
+    labels: ["review"],
+    source_branch: "feature/access",
+    target_branch: "dev",
+    detailed_merge_status: "ci_still_running",
+    pipeline: { status: "running" },
+    updated_at: "2026-01-01T00:00:00Z",
+    web_url: "https://gitlab.example.test/team/project/-/merge_requests/8",
+  };
+  const summary = compactMergeRequest(mergeRequest);
+  assert.equal("description" in summary, false);
+  assert.equal(summary.pipelineStatus, "running");
+  assert.match(formatMergeRequestMarkdown(summary), /Merge status: ci_still_running/);
+  assert.equal(compactMergeRequest(mergeRequest, true).description, "acceptance evidence");
+});
 
 test("work items compact away descriptions while preserving planning state", () => {
   const [item] = compactWorkItems([{

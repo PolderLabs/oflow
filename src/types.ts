@@ -241,11 +241,16 @@ export interface GitLabMergeRequest {
   description?: string | null;
   state?: string;
   web_url?: string;
+  author?: Record<string, unknown> | null;
+  assignees?: Array<Record<string, unknown>>;
+  reviewers?: Array<Record<string, unknown>>;
+  labels?: string[];
   source_branch?: string;
   target_branch?: string;
   draft?: boolean;
   merge_status?: string;
   detailed_merge_status?: string;
+  pipeline?: Record<string, unknown> | null;
   updated_at?: string;
   [key: string]: unknown;
 }

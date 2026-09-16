@@ -125,6 +125,7 @@ oflow sync [--story <iid>] [--json]
 oflow assess --story <iid> [--json]
 oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
+oflow mr --iid <iid> [--full] [--json]
 oflow context --story <iid> [--json]
 oflow verify --story <iid> [--json]
 ```

@@ -88,6 +88,15 @@ export class GitLabClient {
     );
   }
 
+  async getMergeRequest(projectPath: string, iid: number): Promise<GitLabMergeRequest> {
+    return this.request<GitLabMergeRequest>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/merge_requests/" +
+        String(iid),
+    );
+  }
+
   async listIssues(
     projectPath: string,
     state: IssueState = "opened",

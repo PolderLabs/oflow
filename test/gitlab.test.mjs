@@ -42,6 +42,28 @@ test("lists project work items by state", async () => {
   }
 });
 
+test("reads one merge request by project-local IID", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  globalThis.fetch = async (input) => {
+    requestUrl = String(input);
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ iid: 8, title: "Review pod access", state: "opened" }),
+    };
+  };
+  try {
+    const mergeRequest = await new GitLabClient("gitlab.example.test", "test-token")
+      .getMergeRequest("team/project", 8);
+    assert.equal(mergeRequest.iid, 8);
+    assert.match(requestUrl, /\/projects\/team%2Fproject\/merge_requests\/8$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("applies server-side work-item filters without downloading descriptions", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";

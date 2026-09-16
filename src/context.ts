@@ -31,6 +31,100 @@ export async function listWorkItems(
   return new GitLabClient(remote.host).listIssues(remote.projectPath, state, limit, filters);
 }
 
+export async function loadMergeRequest(
+  root: string,
+  mergeRequestIid: number,
+): Promise<GitLabMergeRequest> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  if (!Number.isSafeInteger(mergeRequestIid) || mergeRequestIid < 1) {
+    throw new OflowError(
+      "Merge request IID must be a positive integer.",
+      "INVALID_MERGE_REQUEST_IID",
+    );
+  }
+
+  const remote = await getGitLabRemote(root);
+  return new GitLabClient(remote.host).getMergeRequest(remote.projectPath, mergeRequestIid);
+}
+
+export interface MergeRequestSummary {
+  iid: number;
+  title: string;
+  state: string | null;
+  draft: boolean;
+  author: string | null;
+  assignees: string[];
+  reviewers: string[];
+  labels: string[];
+  sourceBranch: string | null;
+  targetBranch: string | null;
+  mergeStatus: string | null;
+  detailedMergeStatus: string | null;
+  pipelineStatus: string | null;
+  updatedAt: string | null;
+  webUrl: string | null;
+  description?: string | null;
+}
+
+export function compactMergeRequest(
+  mergeRequest: GitLabMergeRequest,
+  includeDescription = false,
+): MergeRequestSummary {
+  const summary: MergeRequestSummary = {
+    iid: mergeRequest.iid,
+    title: oneLine(mergeRequest.title),
+    state: mergeRequest.state ?? null,
+    draft: mergeRequest.draft === true,
+    author: usernameFrom(mergeRequest.author),
+    assignees: usernamesFrom(mergeRequest.assignees),
+    reviewers: usernamesFrom(mergeRequest.reviewers),
+    labels: mergeRequest.labels ?? [],
+    sourceBranch: mergeRequest.source_branch ?? null,
+    targetBranch: mergeRequest.target_branch ?? null,
+    mergeStatus: mergeRequest.merge_status ?? null,
+    detailedMergeStatus: mergeRequest.detailed_merge_status ?? null,
+    pipelineStatus: isRecord(mergeRequest.pipeline)
+      ? typeof mergeRequest.pipeline.status === "string"
+        ? mergeRequest.pipeline.status
+        : null
+      : null,
+    updatedAt: mergeRequest.updated_at ?? null,
+    webUrl: mergeRequest.web_url ?? null,
+  };
+  if (includeDescription) {
+    summary.description = mergeRequest.description ?? null;
+  }
+  return summary;
+}
+
+export function formatMergeRequestMarkdown(summary: MergeRequestSummary): string {
+  const lines = [
+    "# oflow mr",
+    "",
+    "MR !" + String(summary.iid) + ": " + summary.title,
+    "State: " + (summary.state ?? "unknown") + (summary.draft ? " · draft" : ""),
+    "Author: " + (summary.author ?? "unknown"),
+    "Assignees: " + (summary.assignees.length > 0 ? summary.assignees.join(", ") : "none"),
+    "Reviewers: " + (summary.reviewers.length > 0 ? summary.reviewers.join(", ") : "none"),
+    "Labels: " + (summary.labels.length > 0 ? summary.labels.join(", ") : "none"),
+    "Branch: " + (summary.sourceBranch ?? "unknown") + " -> " + (summary.targetBranch ?? "unknown"),
+    "Merge status: " + (summary.detailedMergeStatus ?? summary.mergeStatus ?? "unknown"),
+    "Pipeline: " + (summary.pipelineStatus ?? "unknown"),
+    "Updated: " + (summary.updatedAt ?? "unknown"),
+    "URL: " + (summary.webUrl ?? "unknown"),
+  ];
+  if (summary.description !== undefined) {
+    lines.push("", "## Description", "", summary.description?.trim() || "_No description._");
+  }
+  return lines.join("\n") + "\n";
+}
+
 export interface WorkItemSummary {
   iid: number;
   title: string;
@@ -128,6 +222,22 @@ function namedValue(value: unknown): string | null {
   }
   const name = value.name ?? value.title;
   return typeof name === "string" && name.trim() ? oneLine(name) : null;
+}
+
+function usernameFrom(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const username = value.username ?? value.name;
+  return typeof username === "string" && username.trim() ? username : null;
+}
+
+function usernamesFrom(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+      .map(usernameFrom)
+      .filter((username): username is string => username !== null)
+    : [];
 }
 
 function compactParent(value: unknown): WorkItemSummary["parent"] {

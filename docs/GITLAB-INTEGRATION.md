@@ -205,8 +205,9 @@ Every capability must expose:
    mutation; issue updates already use this path.
 5. Add MCP capability discovery/bridging only where the agent runtime can
    provide stable structured results.
-6. Expand into merge requests, pipelines, releases, security, and other
-   GitLab product families later, each with separate permissions and tests.
+6. Keep merge-request reads compact and deterministic; expand into merge-
+   request writes, pipelines, releases, security, and other GitLab product
+   families later, each with separate permissions and tests.
 
 ## Current recommendation for NestPod
 

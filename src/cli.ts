@@ -17,10 +17,13 @@ import { assessStory, formatAssessmentMarkdown } from "./assess.js";
 import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
 import {
   chooseMergeRequest,
+  compactMergeRequest,
   compactWorkItems,
   formatContextMarkdown,
+  formatMergeRequestMarkdown,
   formatMergeRequestTemplate,
   formatWorkItemsMarkdown,
+  loadMergeRequest,
   listWorkItems,
   loadStoryContext,
 } from "./context.js";
@@ -95,6 +98,8 @@ interface CliOptions {
   board?: string;
   list?: string;
   position?: string;
+  iid?: string;
+  full: boolean;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -431,6 +436,15 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "mr": {
+        if (options.iid !== undefined) {
+          const mergeRequest = await loadMergeRequest(
+            root,
+            parsePositiveInteger(options.iid, "merge request IID"),
+          );
+          const summary = compactMergeRequest(mergeRequest, options.full);
+          print(options.json, summary, formatMergeRequestMarkdown(summary));
+          return 0;
+        }
         const storyIid = await resolveStoryIid(root, options.story);
         const context = await loadStoryContext(root, storyIid);
         const output = formatMergeRequestTemplate(context);
@@ -529,6 +543,7 @@ function parseArgs(argv: string[]): CliOptions {
     dryRun: false,
     tokenStdin: false,
     checkApi: false,
+    full: false,
   };
 
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
@@ -587,6 +602,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--board" ||
       argument === "--list" ||
       argument === "--position" ||
+      argument === "--iid" ||
       argument === "--plan"
     ) {
       const value = argv[index + 1];
@@ -642,6 +658,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.list = value;
       } else if (argument === "--position") {
         options.position = value;
+      } else if (argument === "--iid") {
+        options.iid = value;
       } else if (argument === "--plan") {
         options.planPath = value;
       } else {
@@ -701,6 +719,14 @@ function parseArgs(argv: string[]): CliOptions {
       options.list = argument.slice("--list=".length);
     } else if (argument.startsWith("--position=")) {
       options.position = argument.slice("--position=".length);
+    } else if (argument.startsWith("--iid=")) {
+      const value = argument.slice("--iid=".length);
+      if (!value) {
+        throw new OflowError("--iid requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.iid = value;
+    } else if (argument === "--full") {
+      options.full = true;
     } else if (argument.startsWith("--plan=")) {
       const value = argument.slice("--plan=".length);
       if (!value) {
@@ -1037,6 +1063,7 @@ function helpText(): string {
     "  start --story <iid>",
     "  context --story <iid> [--json]",
     "  mr --story <iid>",
+    "  mr --iid <iid> [--full] [--json]",
     "  verify --story <iid> [--json]",
     "",
     "Options:",

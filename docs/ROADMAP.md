@@ -84,6 +84,8 @@ This is the immediate implementation focus.
   endpoint errors for every new collection.
 - [x] Produce a compact JSON evidence model for project, Scrum, merge-request,
   and pipeline handoff.
+- [x] Read one project merge request with compact review state and opt-in
+  description output.
 - [x] Add an opt-in read-only `glab api` fallback for capabilities not yet
   wrapped by the typed REST adapter, with strict JSON parsing and backend
   reporting.
