@@ -109,6 +109,21 @@ export interface GitLabLabelUpdate {
   description?: string;
 }
 
+export interface GitLabMilestoneCreate {
+  title: string;
+  description?: string;
+  start_date?: string;
+  due_date?: string;
+}
+
+export interface GitLabMilestoneUpdate {
+  title?: string;
+  description?: string;
+  start_date?: string;
+  due_date?: string;
+  state_event?: "close" | "activate";
+}
+
 export interface GitLabLabel {
   id?: number;
   name: string;

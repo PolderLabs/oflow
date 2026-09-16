@@ -99,7 +99,7 @@ This is the immediate implementation focus.
 - [x] Add issue/work-item progress notes through the guarded plan path.
 - [x] Create/update labels through guarded plans; keep deletion disabled.
 - [ ] Apply/remove labels from bulk planning workflows.
-- [ ] Create/update/assign milestones.
+- [x] Create/update project milestones through guarded plans; keep deletion disabled.
 - [ ] Create/update boards and lists.
 - [ ] Create/update epics and relationships at group scope.
 - [ ] Create/update iterations/cadences only after validating the target

@@ -95,6 +95,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Label: Create/Update",
       ),
       capability(
+        "milestones.write",
+        "implemented",
+        "apply",
+        "Project milestone",
+        "REST",
+        "Project Planning: Create/Update",
+      ),
+      capability(
         "boards.write",
         "planned",
         "plan-only",

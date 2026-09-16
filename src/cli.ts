@@ -34,13 +34,20 @@ import {
   createLabelUpdatePlan,
   createIssueNotePlan,
   createIssueUpdatePlan,
+  createMilestoneCreatePlan,
+  createMilestoneUpdatePlan,
   formatPlanMarkdown,
   verifyPlan,
 } from "./plan.js";
 import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.js";
 import { formatSyncMarkdown, syncProject } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
-import type { GitLabIssueUpdate, GitLabLabelUpdate, IssueState } from "./types.js";
+import type {
+  GitLabIssueUpdate,
+  GitLabLabelUpdate,
+  GitLabMilestoneUpdate,
+  IssueState,
+} from "./types.js";
 
 interface CliOptions {
   command: string;
@@ -66,6 +73,8 @@ interface CliOptions {
   color?: string;
   newName?: string;
   label?: string;
+  startDate?: string;
+  dueDate?: string;
   labels?: string;
   milestone?: string;
 }
@@ -201,9 +210,44 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           print(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
+        if (options.planResource === "milestone" && options.planOperation === "create") {
+          if (options.title === undefined) {
+            throw new OflowError(
+              "plan milestone create requires --title.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createMilestoneCreatePlan(root, {
+            title: options.title,
+            description: options.description,
+            start_date: options.startDate,
+            due_date: options.dueDate,
+          });
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "milestone" && options.planOperation === "update") {
+          if (options.milestone === undefined) {
+            throw new OflowError(
+              "plan milestone update requires --milestone <iid>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const milestoneIid = parsePositiveInteger(options.milestone, "milestone IID");
+          const changes: GitLabMilestoneUpdate = {
+            title: options.title,
+            description: options.description,
+            start_date: options.startDate,
+            due_date: options.dueDate,
+            state_event: normalizeMilestoneUpdateState(options.state),
+          };
+          const stored = await createMilestoneUpdatePlan(root, milestoneIid, changes);
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
         {
           throw new OflowError(
-            "Use oflow plan issue update/note or plan label create/update with the required fields.",
+            "Use oflow plan issue update/note, plan label create/update, or plan milestone create/update with the required fields.",
             "UNSUPPORTED_PLAN",
           );
         }
@@ -395,6 +439,8 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--color" ||
       argument === "--new-name" ||
       argument === "--label" ||
+      argument === "--start-date" ||
+      argument === "--due-date" ||
       argument === "--labels" ||
       argument === "--milestone" ||
       argument === "--plan"
@@ -426,6 +472,10 @@ function parseArgs(argv: string[]): CliOptions {
         options.newName = value;
       } else if (argument === "--label") {
         options.label = value;
+      } else if (argument === "--start-date") {
+        options.startDate = value;
+      } else if (argument === "--due-date") {
+        options.dueDate = value;
       } else if (argument === "--labels") {
         options.labels = value;
       } else if (argument === "--milestone") {
@@ -463,6 +513,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.newName = argument.slice("--new-name=".length);
     } else if (argument.startsWith("--label=")) {
       options.label = argument.slice("--label=".length);
+    } else if (argument.startsWith("--start-date=")) {
+      options.startDate = argument.slice("--start-date=".length);
+    } else if (argument.startsWith("--due-date=")) {
+      options.dueDate = argument.slice("--due-date=".length);
     } else if (argument.startsWith("--labels=")) {
       options.labels = argument.slice("--labels=".length);
     } else if (argument.startsWith("--milestone=")) {
@@ -522,6 +576,35 @@ function normalizeIssueUpdateState(
     "Unknown issue update state \"" + value + "\". Use opened or closed.",
     "INVALID_ISSUE_UPDATE_STATE",
   );
+}
+
+function normalizeMilestoneUpdateState(
+  value: string | undefined,
+): GitLabMilestoneUpdate["state_event"] {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === "closed") {
+    return "close";
+  }
+  if (value === "active") {
+    return "activate";
+  }
+  throw new OflowError(
+    "Unknown milestone state \"" + value + "\". Use active or closed.",
+    "INVALID_MILESTONE_STATE",
+  );
+}
+
+function parsePositiveInteger(value: string, field: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new OflowError(field + " must be a positive integer.", "INVALID_MILESTONE_IID");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new OflowError(field + " must be a positive integer.", "INVALID_MILESTONE_IID");
+  }
+  return parsed;
 }
 
 function formatVerification(output: {
@@ -652,6 +735,8 @@ function helpText(): string {
     "  plan issue note --story <iid>       prepare an auditable issue note",
     "  plan label create --name --color    prepare an auditable label create",
     "  plan label update --label <name>    prepare an auditable label update",
+    "  plan milestone create --title       prepare an auditable milestone create",
+    "  plan milestone update --milestone  prepare an auditable milestone update",
     "  approve <plan.json>                  approve a local plan artifact",
     "  apply <plan.json>                    apply an approved plan",
     "  start --story <iid>",

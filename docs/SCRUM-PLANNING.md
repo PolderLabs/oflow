@@ -106,9 +106,10 @@ oflow context --story <iid> [--json]
 oflow verify --story <iid> [--json]
 ```
 
-Board, milestone, sprint, epic, and issue-show subcommands remain planned;
-label create/update plans are implemented, while `sync` composes the currently
-supported overlapping inspection without breaking the local workflow contract.
+Board, sprint, epic, and issue-show subcommands remain planned; label and
+milestone create/update plans are implemented, while `sync` composes the
+currently supported overlapping inspection without breaking the local workflow
+contract.
 
 ### Explicit mutations
 
@@ -140,6 +141,9 @@ oflow plan issue note --story <iid> \
 oflow plan label create --name "Ready" --color "#428BCA" \
   --description "Ready for implementation"
 oflow plan label update --label "Ready" --color "#36A269"
+oflow plan milestone create --title "Sprint 5" \
+  --start-date 2027-01-11 --due-date 2027-01-31
+oflow plan milestone update --milestone 1 --state closed
 ```
 
 Both validate that the target exists while creating the local plan, require an
@@ -147,9 +151,9 @@ unchanged digest for approval and apply, check the current Git remote before
 writing, and re-read GitLab during verification. Note creation disables automatic
 request retries because repeating a non-idempotent POST could create duplicate
 comments. Label creation also disables automatic retries because it is a
-non-idempotent POST; label updates use the idempotent PUT endpoint. Board
-movement, milestones, iterations, and merge-request writes are not yet
-apply-capable.
+non-idempotent POST; label updates use the idempotent PUT endpoint. Milestone
+creation also disables retries for the non-idempotent POST. Board movement,
+iterations, and merge-request writes are not yet apply-capable.
 
 The exact syntax may change, but the state transition must not:
 

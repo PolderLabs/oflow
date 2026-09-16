@@ -11,6 +11,9 @@ import type {
   GitLabLabel,
   GitLabLabelCreate,
   GitLabLabelUpdate,
+  GitLabMilestone,
+  GitLabMilestoneCreate,
+  GitLabMilestoneUpdate,
   GitLabNote,
 } from "./types.js";
 
@@ -52,11 +55,31 @@ export interface LabelUpdateOperation {
   changes: GitLabLabelUpdate;
 }
 
+export interface MilestoneCreateOperation {
+  kind: "milestone.create";
+  host: string;
+  projectPath: string;
+  title: string;
+  description?: string;
+  start_date?: string;
+  due_date?: string;
+}
+
+export interface MilestoneUpdateOperation {
+  kind: "milestone.update";
+  host: string;
+  projectPath: string;
+  milestoneIid: number;
+  changes: GitLabMilestoneUpdate;
+}
+
 export type PlanOperation =
   | IssueUpdateOperation
   | IssueNoteCreateOperation
   | LabelCreateOperation
-  | LabelUpdateOperation;
+  | LabelUpdateOperation
+  | MilestoneCreateOperation
+  | MilestoneUpdateOperation;
 
 export interface PlanArtifact {
   managedBy: "oflow";
@@ -79,6 +102,8 @@ export interface PlanArtifact {
     name?: string;
     color?: string;
     description?: string | null;
+    milestoneId?: number;
+    milestoneIid?: number;
   };
   verification?: PlanVerification;
 }
@@ -306,6 +331,102 @@ export async function createLabelUpdatePlan(
   return { path, plan };
 }
 
+export async function createMilestoneCreatePlan(
+  root: string,
+  milestone: GitLabMilestoneCreate,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const title = requiredText(milestone.title, "Milestone title");
+  const dates = validateMilestoneDates(milestone.start_date, milestone.due_date);
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const milestones = await client.listMilestones(remote.projectPath, "all");
+  if (milestones.some((item) => item.title === title)) {
+    throw new OflowError(
+      "A project-visible milestone named " + JSON.stringify(title) + " already exists.",
+      "MILESTONE_EXISTS",
+    );
+  }
+
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation: {
+      kind: "milestone.create",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      title,
+      description: milestone.description,
+      start_date: dates.startDate,
+      due_date: dates.dueDate,
+    },
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
+}
+
+export async function createMilestoneUpdatePlan(
+  root: string,
+  milestoneIid: number,
+  changes: GitLabMilestoneUpdate,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateMilestoneIid(milestoneIid);
+  const operationChanges = validateMilestoneChanges(changes);
+  if (Object.keys(operationChanges).length === 0) {
+    throw new OflowError(
+      "No milestone changes were provided. Use --title, --description, --start-date, --due-date, or --state.",
+      "EMPTY_PLAN",
+    );
+  }
+
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  await client.getMilestone(remote.projectPath, milestoneIid);
+
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation: {
+      kind: "milestone.update",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      milestoneIid,
+      changes: operationChanges,
+    },
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
+}
+
 export async function approvePlan(root: string, input: string): Promise<StoredPlan> {
   const stored = await loadPlan(root, input);
   assertState(stored.plan, "draft", "approve");
@@ -357,12 +478,32 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
     stored.plan.result = compactLabel(result, "label.create");
   } else {
-    const result = await client.updateLabel(
-      stored.plan.operation.projectPath,
-      stored.plan.operation.labelId ?? stored.plan.operation.label,
-      stored.plan.operation.changes,
-    );
-    stored.plan.result = compactLabel(result, "label.update");
+    if (stored.plan.operation.kind === "label.update") {
+      const result = await client.updateLabel(
+        stored.plan.operation.projectPath,
+        stored.plan.operation.labelId ?? stored.plan.operation.label,
+        stored.plan.operation.changes,
+      );
+      stored.plan.result = compactLabel(result, "label.update");
+    } else if (stored.plan.operation.kind === "milestone.create") {
+      const result = await client.createMilestone(
+        stored.plan.operation.projectPath,
+        {
+          title: stored.plan.operation.title,
+          description: stored.plan.operation.description,
+          start_date: stored.plan.operation.start_date,
+          due_date: stored.plan.operation.due_date,
+        },
+      );
+      stored.plan.result = compactMilestone(result, "milestone.create");
+    } else {
+      const result = await client.updateMilestone(
+        stored.plan.operation.projectPath,
+        stored.plan.operation.milestoneIid,
+        stored.plan.operation.changes,
+      );
+      stored.plan.result = compactMilestone(result, "milestone.update");
+    }
   }
   stored.plan.state = "applied";
   stored.plan.updatedAt = new Date().toISOString();
@@ -408,11 +549,21 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
           stored.plan.operation.body,
           stored.plan.result?.noteId,
         )
-      : verifyLabel(
+      : stored.plan.operation.kind === "label.create" || stored.plan.operation.kind === "label.update"
+        ? verifyLabel(
           await client.listLabels(stored.plan.operation.projectPath),
           stored.plan.operation,
           stored.plan.result?.labelId,
-        );
+        )
+        : verifyMilestone(
+            await client.getMilestone(
+              stored.plan.operation.projectPath,
+              stored.plan.operation.kind === "milestone.create"
+                ? resultMilestoneIid(stored.plan.result?.milestoneIid)
+                : stored.plan.operation.milestoneIid,
+            ),
+            stored.plan.operation,
+          );
   stored.plan.verification = verification;
   if (verification.passed) {
     stored.plan.state = "verified";
@@ -438,9 +589,26 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
               ? []
               : ["- description: " + plan.operation.description]),
           ].join("\n")
-        : Object.entries(plan.operation.changes)
-            .map(([key, value]) => "- " + key + ": " + String(value))
-            .join("\n");
+        : plan.operation.kind === "label.update"
+          ? Object.entries(plan.operation.changes)
+              .map(([key, value]) => "- " + key + ": " + String(value))
+              .join("\n")
+          : plan.operation.kind === "milestone.create"
+            ? [
+                "- title: " + plan.operation.title,
+                ...(plan.operation.description === undefined
+                  ? []
+                  : ["- description: " + plan.operation.description]),
+                ...(plan.operation.start_date === undefined
+                  ? []
+                  : ["- start_date: " + plan.operation.start_date]),
+                ...(plan.operation.due_date === undefined
+                  ? []
+                  : ["- due_date: " + plan.operation.due_date]),
+              ].join("\n")
+            : Object.entries(plan.operation.changes)
+                .map(([key, value]) => "- " + key + ": " + String(value))
+                .join("\n");
   const lines = [
     "# oflow plan",
     "",
@@ -456,7 +624,11 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
         ? "Note:"
         : plan.operation.kind === "label.create"
           ? "Create label:"
-          : "Update label:",
+          : plan.operation.kind === "label.update"
+            ? "Update label:"
+            : plan.operation.kind === "milestone.create"
+              ? "Create milestone:"
+              : "Update milestone:",
     operationSummary,
   ];
   if (plan.result) {
@@ -523,9 +695,21 @@ function isSupportedOperation(
       operation.name.trim().length > 0 &&
       operation.color.trim().length > 0;
   }
-  return operation.kind === "label.update" &&
-    typeof operation.label === "string" &&
-    operation.label.trim().length > 0 &&
+  if (operation.kind === "label.update") {
+    return typeof operation.label === "string" &&
+      operation.label.trim().length > 0 &&
+      Boolean(operation.changes && typeof operation.changes === "object") &&
+      Object.keys(operation.changes).length > 0;
+  }
+  if (operation.kind === "milestone.create") {
+    return typeof operation.title === "string" &&
+      operation.title.trim().length > 0 &&
+      isDateString(operation.start_date) &&
+      isDateString(operation.due_date);
+  }
+  return operation.kind === "milestone.update" &&
+    Number.isSafeInteger(operation.milestoneIid) &&
+    operation.milestoneIid > 0 &&
     Boolean(operation.changes && typeof operation.changes === "object") &&
     Object.keys(operation.changes).length > 0;
 }
@@ -649,6 +833,20 @@ function compactLabel(
   };
 }
 
+function compactMilestone(
+  milestone: GitLabMilestone,
+  kind: "milestone.create" | "milestone.update",
+): NonNullable<PlanArtifact["result"]> {
+  return {
+    kind,
+    milestoneId: milestone.id,
+    milestoneIid: milestone.iid,
+    name: milestone.title,
+    description: milestone.description ?? null,
+    state: milestone.state ?? null,
+  };
+}
+
 function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   if (result.kind === "issue.note.create") {
     return "note #" + String(result.noteId ?? "unknown") + " created";
@@ -656,6 +854,10 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   if (result.kind === "label.create" || result.kind === "label.update") {
     return "label " + JSON.stringify(result.name ?? "unknown") + " (" +
       (result.color ?? "unknown") + ")";
+  }
+  if (result.kind === "milestone.create" || result.kind === "milestone.update") {
+    return "milestone " + JSON.stringify(result.name ?? "unknown") + " (" +
+      (result.state ?? "unknown") + ")";
   }
   return (
     (result.title ?? "issue updated") +
@@ -751,6 +953,45 @@ function verifyLabel(
   };
 }
 
+function verifyMilestone(
+  milestone: GitLabMilestone,
+  operation: MilestoneCreateOperation | MilestoneUpdateOperation,
+): PlanVerification {
+  const changes = operation.kind === "milestone.create"
+    ? {
+        title: operation.title,
+        description: operation.description,
+        start_date: operation.start_date,
+        due_date: operation.due_date,
+      }
+    : operation.changes;
+  const checks: PlanVerification["checks"] = [];
+  if (changes.title !== undefined) {
+    checks.push(check("milestone.title", changes.title, milestone.title));
+  }
+  if (changes.description !== undefined) {
+    checks.push(check("milestone.description", changes.description, milestone.description ?? ""));
+  }
+  if (changes.start_date !== undefined) {
+    checks.push(check("milestone.start_date", changes.start_date, milestone.start_date ?? ""));
+  }
+  if (changes.due_date !== undefined) {
+    checks.push(check("milestone.due_date", changes.due_date, milestone.due_date ?? ""));
+  }
+  if (operation.kind === "milestone.update" && operation.changes.state_event !== undefined) {
+    const expected = operation.changes.state_event === "close" ? "closed" : "active";
+    checks.push(check("milestone.state", expected, milestone.state ?? ""));
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: failed.map(
+      (item) => "GitLab did not report the requested " + item.field + " value.",
+    ),
+  };
+}
+
 function check(
   field: string,
   expected: string,
@@ -779,6 +1020,98 @@ function cleanLabelChanges(changes: GitLabLabelUpdate): GitLabLabelUpdate {
   ) as GitLabLabelUpdate;
 }
 
+function validateMilestoneDates(
+  startDate: string | undefined,
+  dueDate: string | undefined,
+): { startDate?: string; dueDate?: string } {
+  const normalizedStart = validateDate(startDate, "Start date");
+  const normalizedDue = validateDate(dueDate, "Due date");
+  if (normalizedStart !== undefined && normalizedDue !== undefined && normalizedStart > normalizedDue) {
+    throw new OflowError("Start date cannot be after due date.", "INVALID_MILESTONE_DATE_RANGE");
+  }
+  return { startDate: normalizedStart, dueDate: normalizedDue };
+}
+
+function validateMilestoneChanges(changes: GitLabMilestoneUpdate): GitLabMilestoneUpdate {
+  const clean = Object.fromEntries(
+    Object.entries(changes).filter(([, value]) => value !== undefined),
+  ) as GitLabMilestoneUpdate;
+  const result: GitLabMilestoneUpdate = {};
+  if (clean.title !== undefined) {
+    result.title = requiredText(clean.title, "Milestone title");
+  }
+  if (clean.description !== undefined) {
+    result.description = clean.description;
+  }
+  const dates = validateMilestoneDates(clean.start_date, clean.due_date);
+  if (dates.startDate !== undefined) {
+    result.start_date = dates.startDate;
+  }
+  if (dates.dueDate !== undefined) {
+    result.due_date = dates.dueDate;
+  }
+  if (clean.state_event !== undefined) {
+    if (clean.state_event !== "close" && clean.state_event !== "activate") {
+      throw new OflowError(
+        "Unknown milestone state. Use closed or active.",
+        "INVALID_MILESTONE_STATE",
+      );
+    }
+    result.state_event = clean.state_event;
+  }
+  return result;
+}
+
+function validateDate(value: string | undefined, field: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isDateString(value)) {
+    throw new OflowError(
+      field + " must use YYYY-MM-DD.",
+      "INVALID_MILESTONE_DATE",
+    );
+  }
+  return value;
+}
+
+function isDateString(value: string | undefined): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (typeof value !== "string") {
+    return false;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.getUTCFullYear() === Number(match[1]) &&
+    date.getUTCMonth() === Number(match[2]) - 1 &&
+    date.getUTCDate() === Number(match[3]);
+}
+
+function validateMilestoneIid(milestoneIid: number): void {
+  if (!Number.isSafeInteger(milestoneIid) || milestoneIid < 1) {
+    throw new OflowError(
+      "Milestone IID must be a positive integer.",
+      "INVALID_MILESTONE_IID",
+    );
+  }
+}
+
+function resultMilestoneIid(milestoneIid: number | undefined): number {
+  if (milestoneIid === undefined) {
+    throw new OflowError(
+      "Applied milestone plan is missing its remote IID.",
+      "INVALID_PLAN",
+    );
+  }
+  validateMilestoneIid(milestoneIid);
+  return milestoneIid;
+}
+
 function requiredText(value: string | undefined, field: string): string {
   const normalized = value?.trim() ?? "";
   if (!normalized) {
@@ -805,7 +1138,13 @@ function formatTarget(operation: PlanOperation): string {
   if (operation.kind === "label.create") {
     return "label " + JSON.stringify(operation.name);
   }
-  return "label " + JSON.stringify(operation.label);
+  if (operation.kind === "label.update") {
+    return "label " + JSON.stringify(operation.label);
+  }
+  if (operation.kind === "milestone.create") {
+    return "milestone " + JSON.stringify(operation.title);
+  }
+  return "milestone #" + operation.milestoneIid;
 }
 
 function namedValue(value: unknown): string | null {

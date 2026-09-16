@@ -30,7 +30,7 @@ agent -> oflow intent/sync/plan/approve/apply/verify
 ```
 
 The current release implements the REST path for compact read commands, the
-guarded issue-update/note/label plans, and an explicit read-only `oflow glab api`
+guarded issue-update/note/label/milestone plans, and an explicit read-only `oflow glab api`
 fallback. This document does not claim that `oflow` silently invokes `glab` or
 MCP; both remain optional integrations.
 

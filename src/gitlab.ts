@@ -11,6 +11,8 @@ import type {
   GitLabLabelUpdate,
   GitLabMergeRequest,
   GitLabMilestone,
+  GitLabMilestoneCreate,
+  GitLabMilestoneUpdate,
   GitLabNoteCreate,
   GitLabNote,
   GitLabPipeline,
@@ -178,6 +180,57 @@ export class GitLabClient {
         stateQuery +
         "&include_ancestors=true",
       "milestone list",
+    );
+  }
+
+  async getMilestone(projectPath: string, iid: number): Promise<GitLabMilestone> {
+    return this.request<GitLabMilestone>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/milestones/" +
+        String(iid),
+    );
+  }
+
+  async createMilestone(
+    projectPath: string,
+    milestone: GitLabMilestoneCreate,
+  ): Promise<GitLabMilestone> {
+    return this.request<GitLabMilestone>(
+      "/projects/" + encodeURIComponent(projectPath) + "/milestones",
+      {
+        method: "POST",
+        form: {
+          title: milestone.title,
+          description: milestone.description,
+          start_date: milestone.start_date,
+          due_date: milestone.due_date,
+        },
+        retryable: false,
+      },
+    );
+  }
+
+  async updateMilestone(
+    projectPath: string,
+    iid: number,
+    changes: GitLabMilestoneUpdate,
+  ): Promise<GitLabMilestone> {
+    return this.request<GitLabMilestone>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/milestones/" +
+        String(iid),
+      {
+        method: "PUT",
+        form: {
+          title: changes.title,
+          description: changes.description,
+          start_date: changes.start_date,
+          due_date: changes.due_date,
+          state_event: changes.state_event,
+        },
+      },
     );
   }
 

@@ -13,6 +13,8 @@ import {
   createLabelUpdatePlan,
   createIssueNotePlan,
   createIssueUpdatePlan,
+  createMilestoneCreatePlan,
+  createMilestoneUpdatePlan,
   verifyPlan,
 } from "../dist/plan.js";
 
@@ -245,6 +247,85 @@ test("label plans create and update labels through approval and verification", a
     const updated = await createLabelUpdatePlan(root, "Ready", {
       new_name: "In progress",
       color: "#36A269",
+    });
+    await approvePlan(root, updated.path);
+    await applyPlan(root, updated.path);
+    const verifiedUpdate = await verifyPlan(root, updated.path);
+    assert.equal(verifiedUpdate.plan.state, "verified");
+    assert.equal(verifiedUpdate.plan.verification.passed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("milestone plans create and update timeboxes through approval and verification", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-milestone-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "milestone-plan-test-token";
+  const milestones = [];
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      if (url.pathname.endsWith("/milestones") && method === "POST") {
+        const body = new URLSearchParams(String(init.body));
+        const milestone = {
+          id: 51,
+          iid: 5,
+          title: body.get("title"),
+          description: body.get("description") ?? null,
+          start_date: body.get("start_date") ?? null,
+          due_date: body.get("due_date") ?? null,
+          state: "active",
+        };
+        milestones.push(milestone);
+        return response(milestone);
+      }
+      if (url.pathname.endsWith("/milestones/5") && method === "PUT") {
+        const milestone = milestones.find((item) => item.iid === 5);
+        const body = new URLSearchParams(String(init.body));
+        Object.assign(milestone, {
+          title: body.get("title") ?? milestone.title,
+          due_date: body.get("due_date") ?? milestone.due_date,
+          state: body.get("state_event") === "close" ? "closed" : milestone.state,
+        });
+        return response(milestone);
+      }
+      if (url.pathname.endsWith("/milestones/5")) {
+        return response(milestones.find((item) => item.iid === 5));
+      }
+      return response(milestones);
+    };
+
+    const created = await createMilestoneCreatePlan(root, {
+      title: "Sprint 5",
+      start_date: "2027-01-11",
+      due_date: "2027-01-31",
+    });
+    await approvePlan(root, created.path);
+    const appliedCreate = await applyPlan(root, created.path);
+    assert.equal(appliedCreate.plan.result.milestoneIid, 5);
+    const verifiedCreate = await verifyPlan(root, created.path);
+    assert.equal(verifiedCreate.plan.verification.passed, true);
+
+    const updated = await createMilestoneUpdatePlan(root, 5, {
+      title: "Sprint 5 - closed",
+      state_event: "close",
     });
     await approvePlan(root, updated.path);
     await applyPlan(root, updated.path);
