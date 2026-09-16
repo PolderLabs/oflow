@@ -155,6 +155,7 @@ All remote mutations use a plan artifact:
 ```bash
 oflow plan issue create ...
 oflow plan issue update ...
+oflow plan issues labels --stories <iid,...> ...
 oflow plan label create ...
 oflow plan board create ...
 oflow plan board update ...
@@ -189,6 +190,8 @@ oflow plan issue update --story <iid> \
   --weight 3 \
   --state closed
 oflow plan issue update --story <iid> \
+  --add-labels "Ready" --remove-labels "In Progress"
+oflow plan issues labels --stories <iid>,<iid>,<iid> \
   --add-labels "Ready" --remove-labels "In Progress"
 oflow plan issue note --story <iid> \
   --body "Progress: API contract confirmed."
@@ -230,6 +233,15 @@ workflow-state change, prefer `--add-labels` and `--remove-labels`; GitLab
 preserves other labels and oflow verifies that additions are present and
 removals are absent. Replacement cannot be mixed with additive/removal flags,
 and one label cannot be added and removed in the same plan.
+
+For a focused workflow-state change across multiple stories, use
+`plan issues labels --stories <iid,...>`. The command accepts additive and/or
+removal changes only, validates every issue before writing the plan, and caps a
+single plan at 50 issue IIDs. Apply is sequential so a partial failure leaves a
+reusable approved plan; repeating an additive/removal update is safe for the
+label operation itself, and verification checks every requested target. It does
+not replace complete label sets or change titles, descriptions, assignees,
+milestones, epics, or other issue fields.
 
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before

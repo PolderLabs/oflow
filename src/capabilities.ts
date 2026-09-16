@@ -95,6 +95,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Work Item: Update (including epic association); User: Read when resolving usernames",
       ),
       capability(
+        "work-items.bulk-labels.update",
+        "implemented",
+        "apply",
+        "Work Item labels",
+        "REST",
+        "Work Item: Update; Label: Read is recommended for planning",
+      ),
+      capability(
         "notes.write",
         "implemented",
         "apply",

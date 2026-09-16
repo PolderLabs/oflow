@@ -41,7 +41,8 @@ export const WORKFLOW_MARKDOWN = [
   "--author, --search, --updated-after, --updated-before, --limit) when a smaller server-side snapshot is enough.",
   "oflow does not configure or invoke MCP servers. Use plan issue update (including",
   "--labels for replacement or --add-labels/--remove-labels to preserve unrelated labels,",
-  "--assignee username or --epic <id|none>), plan issue create/note, or",
+  "--assignee username or --epic <id|none>), plan issues labels --stories <iid,...> for",
+  "bounded multi-story label changes, plan issue create/note, or",
   "plan label/milestone/board/board-list create/update, then approve, apply, and verify for supported writes. Do not",
   "use planned commands until oflow capabilities reports them as supported.",
 ].join("\n");
@@ -58,6 +59,7 @@ export const OFLOW_README_MARKDOWN = [
   "- oflow reads GitLab through its typed REST API; explicit group-epic reads use GraphQL, while glab and MCP remain optional integrations.",
   "- oflow glab api is an explicit GET-only fallback for unwrapped endpoints.",
   "- Use work/sync filters and --limit to keep agent context small on larger projects.",
+  "- Use plan issues labels --stories <iid,...> for bounded multi-story workflow-label changes.",
   "- state/ and cache/ are local and ignored; they may contain active context.",
   "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, group epics, MRs, and pipelines.",
   "",
@@ -100,7 +102,7 @@ export function agentInstructionBlock(agent: AgentName): string {
     "access is missing, use oflow auth login; never place a token in the repository.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
     "in the merge request, and run oflow verify --story <iid> before handoff. Use",
-    "oflow epic --iid <iid> for group hierarchy, and use oflow plan issue update/note, label/milestone/board/board-list create/update followed by",
+    "oflow epic --iid <iid> for group hierarchy, and use oflow plan issues labels --stories <iid,...> or plan issue update/note, label/milestone/board/board-list create/update followed by",
     "approve/apply/verify for supported writes; do not make other remote planning",
     "changes without an explicit supported plan.",
   ].join("\n");

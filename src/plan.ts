@@ -22,6 +22,7 @@ import type {
 } from "./types.js";
 
 export const PLAN_DIRECTORY = ".oflow/state/plans";
+const MAX_BULK_ISSUES = 50;
 
 export type PlanState = "draft" | "approved" | "applied" | "verified";
 
@@ -31,6 +32,15 @@ export interface IssueUpdateOperation {
   projectPath: string;
   issueIid: number;
   changes: GitLabIssueUpdate;
+}
+
+export interface BulkIssueLabelsUpdateOperation {
+  kind: "issues.labels.update";
+  host: string;
+  projectPath: string;
+  issueIids: number[];
+  add_labels?: string;
+  remove_labels?: string;
 }
 
 export interface IssueCreateOperation {
@@ -120,6 +130,7 @@ export interface BoardListUpdateOperation {
 export type PlanOperation =
   | IssueCreateOperation
   | IssueUpdateOperation
+  | BulkIssueLabelsUpdateOperation
   | IssueNoteCreateOperation
   | LabelCreateOperation
   | LabelUpdateOperation
@@ -156,6 +167,7 @@ export interface PlanArtifact {
     boardId?: number;
     listId?: number;
     position?: number;
+    issues?: Array<{ iid: number; labels: string[] }>;
   };
   verification?: PlanVerification;
 }
@@ -285,6 +297,32 @@ export async function createIssueUpdatePlan(
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
   await writeJson(path, plan);
   return { path, plan };
+}
+
+export async function createBulkIssueLabelsPlan(
+  root: string,
+  issueIids: number[],
+  changes: Pick<GitLabIssueUpdate, "add_labels" | "remove_labels">,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const normalizedIids = validateIssueIids(issueIids);
+  const operationChanges = validateBulkIssueLabelChanges(changes);
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  await Promise.all(normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)));
+  return writePlan(root, {
+    kind: "issues.labels.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIids: normalizedIids,
+    ...operationChanges,
+  });
 }
 
 export async function createIssueNotePlan(
@@ -760,6 +798,20 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
       stored.plan.operation.changes,
     );
     stored.plan.result = compactIssue(result);
+  } else if (stored.plan.operation.kind === "issues.labels.update") {
+    const results = [] as Array<{ iid: number; labels: string[] }>;
+    for (const issueIid of stored.plan.operation.issueIids) {
+      const result = await client.updateIssue(
+        stored.plan.operation.projectPath,
+        issueIid,
+        {
+          add_labels: stored.plan.operation.add_labels,
+          remove_labels: stored.plan.operation.remove_labels,
+        },
+      );
+      results.push({ iid: result.iid, labels: result.labels ?? [] });
+    }
+    stored.plan.result = { kind: "issues.labels.update", issues: results };
   } else if (stored.plan.operation.kind === "issue.note.create") {
     const result = await client.createIssueNote(
       stored.plan.operation.projectPath,
@@ -876,6 +928,14 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
         ),
         stored.plan.operation.changes,
       )
+    : stored.plan.operation.kind === "issues.labels.update"
+      ? verifyBulkIssueLabels(
+          await Promise.all(
+            stored.plan.operation.issueIids.map((issueIid) =>
+              client.getIssue(stored.plan.operation.projectPath, issueIid)),
+          ),
+          stored.plan.operation,
+        )
     : stored.plan.operation.kind === "issue.note.create"
       ? verifyIssueNote(
           await client.getIssueNotes(
@@ -940,6 +1000,16 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       ? Object.entries(plan.operation.changes)
         .map(([key, value]) => "- " + key + ": " + String(value))
         .join("\n")
+      : plan.operation.kind === "issues.labels.update"
+        ? [
+            "- issue_iids: " + plan.operation.issueIids.join(", "),
+            ...(plan.operation.add_labels === undefined
+              ? []
+              : ["- add_labels: " + plan.operation.add_labels]),
+            ...(plan.operation.remove_labels === undefined
+              ? []
+              : ["- remove_labels: " + plan.operation.remove_labels]),
+          ].join("\n")
       : plan.operation.kind === "issue.note.create"
         ? "- body: " + plan.operation.body
         : plan.operation.kind === "label.create"
@@ -1000,7 +1070,9 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
     plan.operation.kind === "issue.create"
       ? "Create issue:"
       : plan.operation.kind === "issue.update"
-        ? "Changes:"
+      ? "Changes:"
+      : plan.operation.kind === "issues.labels.update"
+        ? "Bulk label changes:"
       : plan.operation.kind === "issue.note.create"
         ? "Note:"
         : plan.operation.kind === "label.create"
@@ -1076,6 +1148,20 @@ function isSupportedOperation(
     return validIssueOperation(operation) &&
       Boolean(operation.changes && typeof operation.changes === "object");
   }
+  if (operation.kind === "issues.labels.update") {
+    const addLabelsValid = operation.add_labels === undefined ||
+      (typeof operation.add_labels === "string" && operation.add_labels.trim().length > 0);
+    const removeLabelsValid = operation.remove_labels === undefined ||
+      (typeof operation.remove_labels === "string" && operation.remove_labels.trim().length > 0);
+    return Array.isArray(operation.issueIids) &&
+      operation.issueIids.length > 0 &&
+      operation.issueIids.length <= MAX_BULK_ISSUES &&
+      new Set(operation.issueIids).size === operation.issueIids.length &&
+      operation.issueIids.every((issueIid) => Number.isSafeInteger(issueIid) && issueIid > 0) &&
+      (operation.add_labels !== undefined || operation.remove_labels !== undefined) &&
+      addLabelsValid &&
+      removeLabelsValid;
+  }
   if (operation.kind === "issue.note.create") {
     return validIssueOperation(operation) &&
       typeof operation.body === "string" &&
@@ -1145,6 +1231,58 @@ function validateIssueIid(issueIid: number): void {
   if (!Number.isSafeInteger(issueIid) || issueIid < 1) {
     throw new OflowError("Issue IID must be a positive integer.", "INVALID_ISSUE_IID");
   }
+}
+
+function validateIssueIids(issueIids: number[]): number[] {
+  if (!Array.isArray(issueIids) || issueIids.length === 0) {
+    throw new OflowError(
+      "At least one issue IID is required.",
+      "INVALID_ISSUE_IIDS",
+    );
+  }
+  const normalized = [...new Set(issueIids)];
+  if (normalized.some((issueIid) => !Number.isSafeInteger(issueIid) || issueIid < 1)) {
+    throw new OflowError(
+      "Issue IIDs must be positive integers.",
+      "INVALID_ISSUE_IIDS",
+    );
+  }
+  if (normalized.length > MAX_BULK_ISSUES) {
+    throw new OflowError(
+      "Bulk label updates are limited to " + String(MAX_BULK_ISSUES) + " issue IIDs.",
+      "TOO_MANY_ISSUES",
+    );
+  }
+  return normalized;
+}
+
+function validateBulkIssueLabelChanges(
+  changes: Pick<GitLabIssueUpdate, "add_labels" | "remove_labels">,
+): Pick<GitLabIssueUpdate, "add_labels" | "remove_labels"> {
+  const addedLabels = changes.add_labels === undefined
+    ? []
+    : validateIssueLabelList(changes.add_labels, "Added issue labels");
+  const removedLabels = changes.remove_labels === undefined
+    ? []
+    : validateIssueLabelList(changes.remove_labels, "Removed issue labels");
+  const overlappingLabels = addedLabels.filter((label) => removedLabels.includes(label));
+  if (overlappingLabels.length > 0) {
+    throw new OflowError(
+      "The same label cannot be added and removed in one bulk update: " +
+        overlappingLabels.join(", ") + ".",
+      "CONFLICTING_ISSUE_LABELS",
+    );
+  }
+  if (addedLabels.length === 0 && removedLabels.length === 0) {
+    throw new OflowError(
+      "Provide --add-labels and/or --remove-labels for a bulk update.",
+      "EMPTY_PLAN",
+    );
+  }
+  return {
+    add_labels: addedLabels.length > 0 ? addedLabels.join(", ") : undefined,
+    remove_labels: removedLabels.length > 0 ? removedLabels.join(", ") : undefined,
+  };
 }
 
 function resolvePlanPath(root: string, input: string): string {
@@ -1441,6 +1579,9 @@ function compactBoardList(
 }
 
 function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
+  if (result.kind === "issues.labels.update") {
+    return String(result.issues?.length ?? 0) + " issues updated";
+  }
   if (result.kind === "issue.note.create") {
     return "note #" + String(result.noteId ?? "unknown") + " created";
   }
@@ -1534,6 +1675,44 @@ function verifyIssue(
     reasons: failed.map(
       (item) => "GitLab did not report the requested " + item.field + " value.",
     ),
+  };
+}
+
+function verifyBulkIssueLabels(
+  issues: GitLabIssue[],
+  operation: BulkIssueLabelsUpdateOperation,
+): PlanVerification {
+  const checks: PlanVerification["checks"] = [];
+  const expectedIids = new Set(operation.issueIids);
+  const returnedAllTargets = issues.length === operation.issueIids.length &&
+    issues.every((issue) => expectedIids.has(issue.iid));
+  for (const issue of issues) {
+    const actualLabels = normalizeLabels((issue.labels ?? []).join(", "));
+    if (operation.add_labels !== undefined) {
+      checks.push(checkLabelsPresent(
+        "issue #" + String(issue.iid) + ".labels.add",
+        operation.add_labels,
+        actualLabels,
+      ));
+    }
+    if (operation.remove_labels !== undefined) {
+      checks.push(checkLabelsAbsent(
+        "issue #" + String(issue.iid) + ".labels.remove",
+        operation.remove_labels,
+        actualLabels,
+      ));
+    }
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: returnedAllTargets && checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: [
+      ...(returnedAllTargets ? [] : ["GitLab did not return every targeted issue."]),
+      ...failed.map(
+        (item) => "GitLab did not report the requested " + item.field + " value.",
+      ),
+    ],
   };
 }
 
@@ -1927,6 +2106,9 @@ function formatTarget(operation: PlanOperation): string {
   }
   if (operation.kind === "issue.update" || operation.kind === "issue.note.create") {
     return "issue #" + operation.issueIid;
+  }
+  if (operation.kind === "issues.labels.update") {
+    return "issues #" + operation.issueIids.join(", #");
   }
   if (operation.kind === "label.create") {
     return "label " + JSON.stringify(operation.name);

@@ -111,7 +111,7 @@ This is the immediate implementation focus.
 - [x] Add issue/work-item progress notes through the guarded plan path.
 - [x] Create/update labels through guarded plans; keep deletion disabled.
 - [x] Apply/remove labels from guarded issue planning updates.
-- [ ] Apply/remove labels from bulk planning workflows.
+- [x] Apply/remove labels from bulk planning workflows.
 - [x] Create/update project milestones through guarded plans; keep deletion disabled.
 - [x] Create/update boards and label-backed board lists through guarded plans;
   keep deletion disabled and use issue labels for board-card movement.

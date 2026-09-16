@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   applyPlan,
   approvePlan,
+  createBulkIssueLabelsPlan,
   createIssueCreatePlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
@@ -158,6 +159,89 @@ test("issue update plans require approval and verify the applied result", async 
     stored.operation.changes.title = "tampered";
     await writeFile(created.path, JSON.stringify(stored));
     await assert.rejects(() => approvePlan(root, created.path), { code: "INVALID_PLAN_STATE" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("bulk issue label plans update every target and verify the shared state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-bulk-label-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "bulk-label-plan-test-token";
+  const issues = new Map([
+    [17, { iid: 17, title: "Reserve a pod", labels: ["User Story", "Backlog"], state: "opened" }],
+    [18, { iid: 18, title: "Release a pod", labels: ["User Story", "In Progress"], state: "opened" }],
+  ]);
+  const updates = [];
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      const iid = Number(url.pathname.split("/").pop());
+      const issue = issues.get(iid);
+      if (issue === undefined) return response({ message: "not found" });
+      if (method === "PUT") {
+        const body = new URLSearchParams(String(init.body));
+        const added = (body.get("add_labels") ?? "").split(",").map((label) => label.trim()).filter(Boolean);
+        const removed = (body.get("remove_labels") ?? "").split(",").map((label) => label.trim()).filter(Boolean);
+        issue.labels = [...new Set([...issue.labels, ...added])].filter((label) => !removed.includes(label));
+        updates.push({ iid, addLabels: body.get("add_labels"), removeLabels: body.get("remove_labels") });
+      }
+      return response(issue);
+    };
+
+    const created = await createBulkIssueLabelsPlan(root, [17, 18], {
+      add_labels: "Ready",
+      remove_labels: "Backlog, In Progress",
+    });
+    assert.equal(created.plan.state, "draft");
+    assert.deepEqual(created.plan.operation.issueIids, [17, 18]);
+    assert.equal(created.plan.operation.add_labels, "Ready");
+    assert.equal(created.plan.operation.remove_labels, "Backlog, In Progress");
+    await approvePlan(root, created.path);
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.state, "applied");
+    assert.deepEqual(applied.plan.result.issues, [
+      { iid: 17, labels: ["User Story", "Ready"] },
+      { iid: 18, labels: ["User Story", "Ready"] },
+    ]);
+    assert.deepEqual(updates, [
+      { iid: 17, addLabels: "Ready", removeLabels: "Backlog, In Progress" },
+      { iid: 18, addLabels: "Ready", removeLabels: "Backlog, In Progress" },
+    ]);
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+    assert.equal(verified.plan.verification.checks.length, 4);
+
+    await assert.rejects(
+      () => createBulkIssueLabelsPlan(root, [17], {
+        add_labels: "Ready",
+        remove_labels: "Ready",
+      }),
+      { code: "CONFLICTING_ISSUE_LABELS" },
+    );
+    await assert.rejects(
+      () => createBulkIssueLabelsPlan(root, Array.from({ length: 51 }, (_, index) => index + 1), {
+        add_labels: "Ready",
+      }),
+      { code: "TOO_MANY_ISSUES" },
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

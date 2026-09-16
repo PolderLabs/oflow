@@ -41,6 +41,7 @@ import { formatInstallResult, installProject } from "./install.js";
 import {
   applyPlan,
   approvePlan,
+  createBulkIssueLabelsPlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
   createIssueCreatePlan,
@@ -74,6 +75,7 @@ interface CliOptions {
   glabEndpoint?: string;
   root: string;
   story?: string;
+  stories?: string;
   state?: string;
   agent?: string;
   host?: string;
@@ -233,6 +235,24 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "plan": {
+        if (options.planResource === "issues" && options.planOperation === "labels") {
+          if (options.stories === undefined) {
+            throw new OflowError(
+              "plan issues labels requires --stories <iid,...>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createBulkIssueLabelsPlan(
+            root,
+            parseIssueIids(options.stories),
+            {
+              add_labels: options.addLabels,
+              remove_labels: options.removeLabels,
+            },
+          );
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
         if (options.planResource === "issue" && options.planOperation === "create") {
           if (options.title === undefined) {
             throw new OflowError(
@@ -416,7 +436,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         }
         {
           throw new OflowError(
-            "Use oflow plan issue create/update/note, plan label create/update, plan milestone create/update, plan board create/update, or plan board-list create/update with the required fields.",
+            "Use oflow plan issue create/update/note, plan issues labels, plan label create/update, plan milestone create/update, plan board create/update, or plan board-list create/update with the required fields.",
             "UNSUPPORTED_PLAN",
           );
         }
@@ -610,6 +630,7 @@ function parseArgs(argv: string[]): CliOptions {
       options.epics = true;
     } else if (
       argument === "--story" ||
+      argument === "--stories" ||
       argument === "--state" ||
       argument === "--agent" ||
       argument === "--root" ||
@@ -649,6 +670,8 @@ function parseArgs(argv: string[]): CliOptions {
       index += 1;
       if (argument === "--story") {
         options.story = value;
+      } else if (argument === "--stories") {
+        options.stories = value;
       } else if (argument === "--state") {
         options.state = value;
       } else if (argument === "--agent") {
@@ -714,6 +737,12 @@ function parseArgs(argv: string[]): CliOptions {
       }
     } else if (argument.startsWith("--story=")) {
       options.story = argument.slice("--story=".length);
+    } else if (argument.startsWith("--stories=")) {
+      const value = argument.slice("--stories=".length);
+      if (!value) {
+        throw new OflowError("--stories requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.stories = value;
     } else if (argument.startsWith("--state=")) {
       options.state = argument.slice("--state=".length);
     } else if (argument.startsWith("--agent=")) {
@@ -884,6 +913,17 @@ function parsePositiveInteger(value: string, field: string): number {
     throw new OflowError(field + " must be a positive integer.", "INVALID_MILESTONE_IID");
   }
   return parsed;
+}
+
+function parseIssueIids(value: string): number[] {
+  const parts = value.split(",").map((item) => item.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    throw new OflowError(
+      "--stories must contain one or more comma-separated issue IIDs.",
+      "INVALID_ISSUE_IIDS",
+    );
+  }
+  return parts.map((part) => parsePositiveInteger(part, "issue IID"));
 }
 
 function parseNonNegativeInteger(value: string, field: string): number {
@@ -1144,6 +1184,7 @@ function helpText(): string {
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue create --title <title>   prepare an auditable issue create",
     "  plan issue update --story <iid>     prepare an auditable issue update",
+    "  plan issues labels --stories 1,2    prepare guarded bulk label changes",
     "  plan issue note --story <iid>       prepare an auditable issue note",
     "  plan label create --name --color    prepare an auditable label create",
     "  plan label update --label <name>    prepare an auditable label update",
@@ -1168,6 +1209,7 @@ function helpText(): string {
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
+    "  --stories 1,2 use with plan issues labels for bounded bulk changes",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",

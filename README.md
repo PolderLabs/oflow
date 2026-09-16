@@ -57,6 +57,7 @@ oflow mr --iid 8 --full       # include the MR description when needed
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
 oflow plan issue update --story 42 --add-labels "Ready" --remove-labels "In Progress"
+oflow plan issues labels --stories 17,18,23 --add-labels "Ready"
 oflow plan issue update --story 42 --epic 12
 oflow plan issue note --story 42 --body "Progress: API contract confirmed."
 oflow plan label update --label "Ready" --color "#36A269"
@@ -160,6 +161,13 @@ For issue labels, `--labels` replaces the complete label set. Prefer
 those operations preserve unrelated labels and are verified after apply. Do
 not mix replacement and additive/removal label flags in one plan.
 
+For the same bounded workflow-state change across several stories, use
+`oflow plan issues labels --stories 17,18,23 --add-labels "Ready"` (or
+`--remove-labels`). It validates every target while creating the local plan,
+updates at most 50 issues sequentially, preserves unrelated labels, and
+verifies every target after apply. Bulk operations still require the same
+`approve -> apply -> verify` sequence.
+
 GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
 and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
@@ -168,8 +176,8 @@ MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
 The current apply-capable operations are `plan issue create`, `plan issue update`
 (including guarded assignment and existing epic association), `plan issue note`,
 `plan label create/update`, `plan milestone create/update`, and guarded board/
-board-list administration; board-card movement, iterations, and merge-request
-writes remain roadmap work.
+board-list administration, plus bounded bulk issue-label updates; board-card
+movement, iterations, and merge-request writes remain roadmap work.
 Board-card movement is represented by guarded issue label updates rather than a
 separate unsafe card mutation. `oflow glab api` only permits an explicit GET
 through glab, so it cannot bypass the write gates.
