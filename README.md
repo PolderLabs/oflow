@@ -65,6 +65,8 @@ oflow sync --json              # compact project, Scrum, MR, and pipeline snapsh
 oflow sync --epics --json      # include a bounded group-epic snapshot (opt-in)
 oflow sync --label "Ready" --limit 20 --json
 oflow sync --stale-days 14 --json # flag returned work items with no recent update
+oflow sync --cached --json # reuse the matching local snapshot without GitLab access
+oflow sync --refresh --json # explicitly fetch GitLab and replace the local snapshot
 oflow assess --story 42 --json # story progress, acceptance, and local evidence
 oflow capabilities --json      # show implemented, planned, and optional paths
 oflow audit --json             # read local plan lifecycle history
@@ -125,7 +127,12 @@ creating/updating boards and label-backed board lists.
 iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
 oflow does not require an embedded model or spend tokens generating a duplicate
-summary.
+summary. A live sync also stores the credential-free result in the ignored
+`.oflow/cache/sync.json` file. Use `oflow sync --cached --json` for a repeated
+read without a token or network request; it only accepts a snapshot with the
+same project and query, and reports its source, age, and original generation
+time. Use `--refresh` when current GitLab state is required. Cached snapshots
+are evidence for orientation, not freshness proof before a remote write.
 
 Group epics are an explicit opt-in because they require a group-scoped read and
 an additional GraphQL request. `oflow epic` lists the current project's parent

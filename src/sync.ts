@@ -1,4 +1,11 @@
 import { getCurrentBranch, getGitLabRemote } from "./git.js";
+import {
+  readSyncCache,
+  SYNC_CACHE_RELATIVE_PATH,
+  SYNC_CACHE_VERSION,
+  writeSyncCache,
+  type SyncCacheEnvelope,
+} from "./cache.js";
 import { loadConfig } from "./config.js";
 import { parseAcceptanceCriteria } from "./criteria.js";
 import { GitLabClient } from "./gitlab.js";
@@ -26,10 +33,18 @@ export interface SyncOptions {
   issueLimit?: number;
   includeEpics?: boolean;
   staleDays?: number;
+  cache?: SyncCacheMode;
 }
+
+export type SyncCacheMode = "refresh" | "cached";
 
 export interface SyncResult {
   generatedAt: string;
+  cache: {
+    source: "remote" | "cache";
+    savedAt: string;
+    ageSeconds: number;
+  };
   project: {
     id: number;
     path: string;
@@ -177,6 +192,15 @@ interface LoadedBoards {
   boardLists: Array<{ boardId: number; pagination: GitLabPagination }>;
 }
 
+interface SyncCacheQuery {
+  state: IssueState;
+  storyIid: number | null;
+  issueFilters: GitLabIssueFilters;
+  issueLimit: number;
+  includeEpics: boolean;
+  staleDays: number | null;
+}
+
 export interface SyncIteration {
   iid: number;
   title: string | null;
@@ -247,6 +271,15 @@ export async function syncProject(
   const issueLimit = options.issueLimit ?? 50;
   const issueFilters = options.issueFilters ?? {};
   const staleDays = validateStaleDays(options.staleDays);
+  const cacheMode = validateCacheMode(options.cache);
+  const cacheQuery = createCacheQuery({
+    state,
+    storyIid: options.storyIid ?? null,
+    issueFilters,
+    issueLimit,
+    includeEpics: options.includeEpics === true,
+    staleDays,
+  });
   const warnings: string[] = [];
 
   if (
@@ -255,6 +288,17 @@ export async function syncProject(
   ) {
     warnings.push(
       "The current Git remote differs from .oflow/config.json; using the current remote.",
+    );
+  }
+
+  if (cacheMode === "cached") {
+    return await loadCachedSync(
+      root,
+      remote.host,
+      remote.projectPath,
+      branch,
+      cacheQuery,
+      warnings,
     );
   }
 
@@ -337,8 +381,14 @@ export async function syncProject(
       )
       : null;
 
+  const generatedAt = new Date().toISOString();
   const result: SyncResult = {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
+    cache: {
+      source: "remote",
+      savedAt: generatedAt,
+      ageSeconds: 0,
+    },
     project: compactProject(project),
     repository: { branch, groupPath },
     workItems: issuesPage.items.map(compactWorkItem),
@@ -386,6 +436,19 @@ export async function syncProject(
     planningHealth: inspectPlanningHealth(issuesPage.items, boardsPage.boards, staleDays),
     warnings,
   };
+  try {
+    await writeSyncCache(root, {
+      version: SYNC_CACHE_VERSION,
+      savedAt: result.cache.savedAt,
+      host: remote.host,
+      projectPath: remote.projectPath,
+      query: cacheQuery,
+      result,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.warnings.push("Could not save local sync cache: " + message);
+  }
   return result;
 }
 
@@ -394,6 +457,8 @@ export function formatSyncMarkdown(result: SyncResult): string {
     "# oflow sync",
     "",
     "Generated: " + result.generatedAt,
+    "Source: " + (result.cache.source === "cache" ? "local cache" : "GitLab REST") +
+      "; snapshot age " + formatAge(result.cache.ageSeconds),
     "Project: [" + result.project.path + "](" + result.project.webUrl + ")",
     "Branch: " + (result.repository.branch ?? "detached/unknown"),
     "Work-item query: " + result.query.state +
@@ -801,6 +866,147 @@ function validateStaleDays(value: number | undefined): number | null {
     );
   }
   return value;
+}
+
+function validateCacheMode(value: SyncCacheMode | undefined): SyncCacheMode {
+  if (value === undefined || value === "refresh") {
+    return "refresh";
+  }
+  if (value === "cached") {
+    return value;
+  }
+  throw new OflowError(
+    "Sync cache mode must be refresh or cached.",
+    "INVALID_SYNC_CACHE_MODE",
+  );
+}
+
+function createCacheQuery(query: SyncCacheQuery): SyncCacheQuery {
+  return {
+    ...query,
+    issueFilters: Object.fromEntries(
+      Object.entries(query.issueFilters).sort(([left], [right]) => left.localeCompare(right)),
+    ),
+  };
+}
+
+async function loadCachedSync(
+  root: string,
+  host: string,
+  projectPath: string,
+  branch: string | null,
+  query: SyncCacheQuery,
+  warnings: string[],
+): Promise<SyncResult> {
+  let envelope: SyncCacheEnvelope<SyncCacheQuery> | null;
+  try {
+    envelope = await readSyncCache<SyncCacheQuery>(root);
+  } catch (error: unknown) {
+    if (error instanceof OflowError && error.code === "INVALID_JSON") {
+      throw new OflowError(
+        "The local sync snapshot at " + SYNC_CACHE_RELATIVE_PATH + " is invalid. Run oflow sync --refresh to replace it.",
+        "SYNC_CACHE_INVALID",
+      );
+    }
+    throw error;
+  }
+  if (envelope === null) {
+    throw new OflowError(
+      "No local sync snapshot exists at " + SYNC_CACHE_RELATIVE_PATH + ". Run oflow sync --refresh first.",
+      "SYNC_CACHE_MISS",
+    );
+  }
+  if (!isSyncCacheEnvelope(envelope)) {
+    throw new OflowError(
+      "The local sync snapshot at " + SYNC_CACHE_RELATIVE_PATH + " is invalid. Run oflow sync --refresh to replace it.",
+      "SYNC_CACHE_INVALID",
+    );
+  }
+  if (envelope.host !== host || envelope.projectPath !== projectPath) {
+    throw new OflowError(
+      "The local sync snapshot targets a different GitLab project. Run oflow sync --refresh.",
+      "SYNC_CACHE_TARGET_MISMATCH",
+    );
+  }
+  if (JSON.stringify(envelope.query) !== JSON.stringify(query)) {
+    throw new OflowError(
+      "The local sync snapshot was created with different filters. Run oflow sync --refresh with the requested filters.",
+      "SYNC_CACHE_QUERY_MISMATCH",
+    );
+  }
+
+  const result = envelope.result;
+  const currentBranch = result.repository.branch;
+  if (currentBranch !== branch) {
+    warnings.push(
+      "Cached snapshot was created on branch " +
+        (currentBranch ?? "detached/unknown") +
+        "; current branch is " +
+        (branch ?? "detached/unknown") + ".",
+    );
+  }
+  return {
+    ...result,
+    cache: {
+      source: "cache",
+      savedAt: envelope.savedAt,
+      ageSeconds: cacheAgeSeconds(envelope.savedAt),
+    },
+    warnings: [...result.warnings, ...warnings],
+  };
+}
+
+function isSyncCacheEnvelope(
+  value: SyncCacheEnvelope<SyncCacheQuery>,
+): value is SyncCacheEnvelope<SyncCacheQuery> & { result: SyncResult } {
+  if (
+    value.version !== SYNC_CACHE_VERSION ||
+    typeof value.savedAt !== "string" ||
+    !Number.isFinite(Date.parse(value.savedAt)) ||
+    typeof value.host !== "string" ||
+    typeof value.projectPath !== "string" ||
+    !value.query ||
+    typeof value.query !== "object" ||
+    !value.result ||
+    typeof value.result !== "object"
+  ) {
+    return false;
+  }
+  const result = value.result as Partial<SyncResult>;
+  return Boolean(
+    typeof result.generatedAt === "string" &&
+      result.project &&
+      result.repository &&
+      Array.isArray(result.workItems) &&
+      Array.isArray(result.mergeRequests) &&
+      Array.isArray(result.pipelines) &&
+      result.planning &&
+      Array.isArray(result.warnings),
+  );
+}
+
+function cacheAgeSeconds(savedAt: string): number {
+  const timestamp = Date.parse(savedAt);
+  if (!Number.isFinite(timestamp)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+}
+
+function formatAge(ageSeconds: number): string {
+  if (ageSeconds < 60) {
+    return "less than 1 minute";
+  }
+  const minutes = Math.floor(ageSeconds / 60);
+  if (minutes < 60) {
+    return minutes + " minute" + (minutes === 1 ? "" : "s");
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return hours + " hour" + (hours === 1 ? "" : "s");
+  }
+  const days = Math.floor(hours / 24);
+  return days + " day" + (days === 1 ? "" : "s");
 }
 
 function compactMergeRequest(mergeRequest: GitLabMergeRequest): SyncMergeRequest {

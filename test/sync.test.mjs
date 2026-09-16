@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
@@ -59,6 +59,11 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     };
 
     const result = await syncProject(root);
+    assert.equal(result.cache.source, "remote");
+    assert.equal(result.cache.ageSeconds, 0);
+    const cacheText = await readFile(join(root, ".oflow", "cache", "sync.json"), "utf8");
+    assert.match(cacheText, /"version": 1/);
+    assert.ok(!cacheText.includes("sync-test-token"));
     assert.equal(result.project.path, "team/project");
     assert.equal(result.stats.workItems, 1);
     assert.equal(result.query.issueLimit, 50);
@@ -103,10 +108,38 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
         storyIids: [1],
       },
     );
+
+    const cachedResult = await syncProject(root, { cache: "cached", staleDays: 1 });
+    assert.equal(cachedResult.cache.source, "cache");
+    assert.equal(cachedResult.generatedAt, staleResult.generatedAt);
+    assert.equal(pipelineRequests, 3);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
     else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cached sync refuses to use a missing snapshot", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-sync-cache-miss-"));
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    await assert.rejects(
+      () => syncProject(root, { cache: "cached" }),
+      (error) => error?.code === "SYNC_CACHE_MISS",
+    );
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -89,6 +89,8 @@ interface CliOptions {
   checkApi: boolean;
   epics: boolean;
   group: boolean;
+  cached: boolean;
+  refresh: boolean;
   planResource?: string;
   planOperation?: string;
   planPath?: string;
@@ -227,6 +229,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "sync": {
+        if (options.cached && options.refresh) {
+          throw new OflowError(
+            "sync --cached and --refresh cannot be used together.",
+            "CONFLICTING_SYNC_CACHE_OPTIONS",
+          );
+        }
         const state = normalizeIssueState(options.state);
         const storyIid = options.story
           ? await resolveStoryIid(root, options.story)
@@ -242,6 +250,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           issueLimit: options.limit === undefined
             ? undefined
             : parseIssueLimit(options.limit, 100),
+          cache: options.cached ? "cached" : "refresh",
         });
         print(options.json, result, formatSyncMarkdown(result));
         return result.warnings.length === 0 ? 0 : 1;
@@ -644,6 +653,8 @@ function parseArgs(argv: string[]): CliOptions {
     checkApi: false,
     epics: false,
     group: false,
+    cached: false,
+    refresh: false,
     full: false,
   };
 
@@ -681,6 +692,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.epics = true;
     } else if (argument === "--group") {
       options.group = true;
+    } else if (argument === "--cached") {
+      options.cached = true;
+    } else if (argument === "--refresh") {
+      options.refresh = true;
     } else if (
       argument === "--story" ||
       argument === "--stories" ||
@@ -899,6 +914,18 @@ function parseArgs(argv: string[]): CliOptions {
     } else {
       throw new OflowError("Unknown option " + argument + ".", "UNKNOWN_OPTION");
     }
+  }
+  if ((options.cached || options.refresh) && options.command !== "sync") {
+    throw new OflowError(
+      "--cached and --refresh are only supported with sync.",
+      "INVALID_SYNC_CACHE_OPTION",
+    );
+  }
+  if (options.cached && options.refresh) {
+    throw new OflowError(
+      "sync --cached and --refresh cannot be used together.",
+      "CONFLICTING_SYNC_CACHE_OPTIONS",
+    );
   }
   return options;
 }
@@ -1307,6 +1334,8 @@ function helpText(): string {
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
     "  sync --stale-days <n>  add an advisory stale-work-item finding without extra API calls",
+    "  sync --cached  read the matching local snapshot without GitLab access",
+    "  sync --refresh  explicitly refresh the remote snapshot and local cache",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",
     "  iteration --group  read the parent-group sprint schedule (requires group access)",
   ].join("\n") + "\n";

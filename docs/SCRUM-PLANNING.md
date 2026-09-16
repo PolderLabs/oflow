@@ -71,6 +71,16 @@ Use `oflow sync --stale-days 14 --json` to add an advisory
 response, makes no extra API request, is bounded to 1..3650 days, and treats
 missing or invalid timestamps as unknown rather than stale.
 
+Live syncs also save the compact result to the ignored
+`.oflow/cache/sync.json` path without credentials. Use
+`oflow sync --cached --json` to read the exact same project/query snapshot
+without contacting GitLab; the JSON and Markdown identify the local source,
+age, and original generation time. A cache miss, invalid cache, project
+mismatch, or query mismatch fails instead of silently falling back to the
+network. Use `oflow sync --refresh --json` when a fresh remote snapshot is
+needed. Cached evidence is useful for orientation but must not be treated as a
+freshness check before a remote write.
+
 It emits human-readable Markdown and a compact `--json` result. Descriptions
 are excluded from the overall snapshot and fetched only for the selected story,
 so the result is suitable for low-token agent handoff. Local implementation and

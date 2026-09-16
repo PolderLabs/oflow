@@ -139,7 +139,7 @@ This is the immediate implementation focus.
   timeboxes when the API provides the relevant fields.
 - [x] Recommend the smallest next implementation or planning action.
 - [ ] Generate an approval-ready plan from those recommendations.
-- [ ] Add local context caching with explicit refresh and no credentials.
+- [x] Add local context caching with explicit cached/refresh modes and no credentials.
 - [x] Support concise Markdown and machine-readable reports suitable for Claude,
   Codex, CI jobs, and future agents.
 
