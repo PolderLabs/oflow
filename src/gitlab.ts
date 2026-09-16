@@ -28,6 +28,7 @@ import type {
   GitLabPipeline,
   GitLabProject,
   IssueState,
+  IterationState,
 } from "./types.js";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -590,7 +591,7 @@ export class GitLabClient {
 
   async listGroupIterationsPage(
     groupPath: string,
-    state: "opened" | "upcoming" | "current" | "closed" | "all" = "all",
+    state: IterationState = "all",
     limit = 100,
   ): Promise<GitLabListPage<GitLabIteration>> {
     const stateQuery = state === "all" ? "" : "&state=" + state;
@@ -608,7 +609,7 @@ export class GitLabClient {
 
   async listGroupIterations(
     groupPath: string,
-    state: "opened" | "upcoming" | "current" | "closed" | "all" = "all",
+    state: IterationState = "all",
     limit = 100,
   ): Promise<GitLabIteration[]> {
     return (await this.listGroupIterationsPage(groupPath, state, limit)).items;
@@ -616,7 +617,7 @@ export class GitLabClient {
 
   async listProjectIterationsPage(
     projectPath: string,
-    state: "opened" | "upcoming" | "current" | "closed" | "all" = "all",
+    state: IterationState = "all",
     limit = 100,
   ): Promise<GitLabListPage<GitLabIteration>> {
     const stateQuery = state === "all" ? "" : "&state=" + state;
@@ -634,7 +635,7 @@ export class GitLabClient {
 
   async listProjectIterations(
     projectPath: string,
-    state: "opened" | "upcoming" | "current" | "closed" | "all" = "all",
+    state: IterationState = "all",
     limit = 100,
   ): Promise<GitLabIteration[]> {
     return (await this.listProjectIterationsPage(projectPath, state, limit)).items;

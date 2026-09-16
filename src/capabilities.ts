@@ -71,6 +71,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Project: Read; Group: Read; Work Item: Read",
       ),
       capability(
+        "iterations.read",
+        "implemented",
+        "read",
+        "Project-visible or parent-group iterations/sprints",
+        "REST",
+        "Project: Read; Group: Read when using --group",
+      ),
+      capability(
         "group-epics.read",
         "implemented",
         "read",

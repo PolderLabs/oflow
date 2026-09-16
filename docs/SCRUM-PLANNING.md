@@ -137,6 +137,8 @@ oflow sync [--story <iid>] [--json]
 oflow sync --epics [--limit <n>] [--json]
 oflow epic [--limit <n>] [--json]
 oflow epic --iid <iid> [--json]
+oflow iteration [--state opened|upcoming|current|closed|all] [--limit <n>] [--json]
+oflow iteration --group [--state opened|upcoming|current|closed|all] [--limit <n>] [--json]
 oflow assess --story <iid> [--json]
 oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
@@ -145,7 +147,14 @@ oflow context --story <iid> [--json]
 oflow verify --story <iid> [--json]
 ```
 
-Sprint and issue-show subcommands remain planned. Group epic listing and
+`oflow iteration` defaults to the project-visible iteration endpoint, which is
+the smallest read for a focused sprint view. Add `--group` to resolve the
+current project's parent group and read its group iterations, including
+ancestor-group iterations when GitLab exposes them. A token without group
+access should use the default project view or `oflow sync`; the group form
+fails clearly rather than reporting a misleading empty sprint list.
+
+Sprint creation and issue-show subcommands remain planned. Group epic listing and
 hierarchy inspection use the version-aware Work Item GraphQL API. Board and
 board-list administration is implemented through guarded plans, while `sync`
 composes the currently supported overlapping inspection without breaking the

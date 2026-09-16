@@ -4,6 +4,8 @@ export type AgentMode = AgentName | "both" | "unknown";
 
 export type IssueState = "opened" | "closed" | "all";
 
+export type IterationState = "opened" | "upcoming" | "current" | "closed" | "all";
+
 export interface GitLabIssueFilters {
   label?: string;
   milestone?: string;

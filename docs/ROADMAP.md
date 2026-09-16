@@ -76,7 +76,8 @@ This is the immediate implementation focus.
   bounded, opt-in Work Item GraphQL read path; keep epic writes separate.
 - [x] Preserve parent/epic references already returned by project work-item
   reads without adding per-item API calls.
-- [x] List project-visible iterations/sprints.
+- [x] List project-visible iterations/sprints and expose an explicit parent-group
+  iteration read for focused sprint views.
 - [ ] Inspect iteration cadences where the GitLab version supports them.
 - [x] Add bounded server-side filters for state, label, milestone, assignee,
   search, and updated time; cap work-item results with `--limit`.

@@ -43,6 +43,8 @@ oflow work                    # list open GitLab issues/work items
 oflow work --label "Ready" --limit 20
 oflow epic --limit 20          # list group epics when group access is available
 oflow epic --iid 12            # inspect one epic's parent/child hierarchy
+oflow iteration --state current --json # focused project-visible sprint view
+oflow iteration --group --state current --json # parent-group sprint schedule
 oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
 oflow sync --epics --json      # include a bounded group-epic snapshot (opt-in)
 oflow sync --label "Ready" --limit 20 --json
@@ -115,6 +117,14 @@ without that flag, project work items still preserve any parent/epic reference
 GitLab returns and no group request is made. If the instance or token cannot
 read the parent group, oflow reports a warning instead of treating the group
 as empty.
+
+Use `oflow iteration --state current --json` for a focused, low-token view of
+the current project-visible sprint. GitLab iterations are group-owned, so use
+`oflow iteration --group --state current --json` when the token can read the
+parent group and its cadence-backed schedule. Both commands accept
+`--state opened|upcoming|current|closed|all` and `--limit 1..100`; output is
+compact and includes pagination metadata. The project view is the default
+least-privilege path and does not require a separate group lookup.
 
 Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`, `--search`,
 `--updated-after`, and `--updated-before` with `work` or `sync` to filter issues server-side.

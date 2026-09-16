@@ -130,8 +130,15 @@ instead of treating them as empty.
 Iterations are a deliberate boundary: GitLab documents project and group REST
 endpoints for listing iterations, while sprint creation is group/cadence-backed
 and not exposed as a simple project REST create/update operation. `oflow` reads
-them when available but does not pretend that a milestone or label mutation is
-an iteration mutation.
+them through `oflow iteration` and the compact `sync` snapshot when available.
+The default `oflow iteration` request uses the project-visible endpoint; add
+`--group` for the parent-group schedule when the token has group access. This
+keeps ordinary sprint reads least-privilege while making group access failures
+explicit. oflow does not pretend that a milestone or label mutation is an
+iteration mutation. GitLab's API documents that projects do not own
+iterations; they list iterations inherited from ancestor groups. See the
+[project iterations API](https://docs.gitlab.com/api/iterations/) and the
+[group iterations API](https://docs.gitlab.com/api/iterations/#list-all-group-iterations).
 
 Board administration follows the same boundary. GitLab's [project issue boards
 API](https://docs.gitlab.com/api/boards/) supports creating/updating boards,

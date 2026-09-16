@@ -21,6 +21,7 @@ import {
   listProjectGroupEpics,
   loadProjectGroupEpic,
 } from "./epics.js";
+import { formatIterationListMarkdown, listIterations } from "./iterations.js";
 import {
   chooseMergeRequest,
   compactMergeRequest,
@@ -66,6 +67,7 @@ import type {
   GitLabLabelUpdate,
   GitLabMilestoneUpdate,
   IssueState,
+  IterationState,
 } from "./types.js";
 
 interface CliOptions {
@@ -84,6 +86,7 @@ interface CliOptions {
   tokenStdin: boolean;
   checkApi: boolean;
   epics: boolean;
+  group: boolean;
   planResource?: string;
   planOperation?: string;
   planPath?: string;
@@ -206,6 +209,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           const result = await listProjectGroupEpics(root, limit);
           print(options.json, result, formatGroupEpicListMarkdown(result));
         }
+        return 0;
+      }
+      case "iteration": {
+        const state = normalizeIterationState(options.state);
+        const limit = parseIssueLimit(options.limit, 100);
+        const result = await listIterations(
+          root,
+          state,
+          limit,
+          options.group ? "group" : "project",
+        );
+        print(options.json, result, formatIterationListMarkdown(result));
         return 0;
       }
       case "sync": {
@@ -595,6 +610,7 @@ function parseArgs(argv: string[]): CliOptions {
     tokenStdin: false,
     checkApi: false,
     epics: false,
+    group: false,
     full: false,
   };
 
@@ -630,6 +646,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.checkApi = true;
     } else if (argument === "--epics") {
       options.epics = true;
+    } else if (argument === "--group") {
+      options.group = true;
     } else if (
       argument === "--story" ||
       argument === "--stories" ||
@@ -855,6 +873,18 @@ function normalizeIssueState(value: string | undefined): IssueState {
   throw new OflowError(
     "Unknown issue state \"" + value + "\". Use opened, closed, or all.",
     "INVALID_ISSUE_STATE",
+  );
+}
+
+function normalizeIterationState(value: string | undefined): IterationState {
+  const state = value?.trim().toLowerCase() || "all";
+  if (state === "opened" || state === "upcoming" || state === "current" ||
+    state === "closed" || state === "all") {
+    return state;
+  }
+  throw new OflowError(
+    "Unknown iteration state \"" + value + "\". Use opened, upcoming, current, closed, or all.",
+    "INVALID_ITERATION_STATE",
   );
 }
 
@@ -1180,6 +1210,7 @@ function helpText(): string {
     "  doctor [--check-api]",
     "  work [filters] [--json]             list current GitLab work items",
     "  epic [--iid <iid>] [--limit <n>]    list or inspect group epics",
+    "  iteration [--group] [--state <state>] list project or group sprints",
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
@@ -1215,6 +1246,7 @@ function helpText(): string {
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",
+    "  iteration --group  read the parent-group sprint schedule (requires group access)",
   ].join("\n") + "\n";
 }
 

@@ -51,6 +51,7 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /^oflow - GitLab-first workflow/);
     assert.match(result, /filters: --label, --milestone, --iteration, --epic, --assignee, --author/);
     assert.match(result, /epic \[--iid <iid>\] \[--limit <n>\]/);
+    assert.match(result, /iteration \[--group\] \[--state <state>\]/);
     assert.match(result, /sync --epics/);
     assert.match(result, /plan issues labels --stories 1,2/);
     assert.match(result, /mr --iid <iid> \[--full\] \[--json\]/);

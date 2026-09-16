@@ -66,7 +66,7 @@ export const OFLOW_README_MARKDOWN = [
   "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, group epics, MRs, and pipelines.",
   "",
     "Run oflow doctor --check-api to inspect setup and API access, oflow sync",
-    "--json for a compact snapshot, or oflow assess --story <iid> --json for",
+    "--json for a compact snapshot, oflow iteration --state current --json for a focused sprint view, or oflow assess --story <iid> --json for",
   "compact progress evidence for one story.",
 ].join("\n");
 
@@ -98,13 +98,13 @@ export function agentInstructionBlock(agent: AgentName): string {
     "This repository is managed by oflow. Read .oflow/WORKFLOW.md before changing code.",
     "Use oflow work to list current stories, then use oflow context --story <iid>",
     "to load the selected story and acceptance criteria. When asked to sync progress,",
-    "use oflow sync --json for project state (add --epics for group epics), oflow assess --story <iid> --json",
+    "use oflow sync --json for project state (add --epics for group epics), oflow iteration --state current --json for a focused sprint view, oflow assess --story <iid> --json",
     "for story progress, oflow mr --iid <iid> --json for compact MR status, and",
     "oflow capabilities --json. If API",
     "access is missing, use oflow auth login; never place a token in the repository.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
     "in the merge request, and run oflow verify --story <iid> before handoff. Use",
-    "oflow epic --iid <iid> for group hierarchy, and use oflow plan issues labels --stories <iid,...> or plan issue update/note, label/milestone/board/board-list create/update followed by",
+    "oflow epic --iid <iid> for group hierarchy, oflow iteration --group --state current --json when group sprint access is available, and use oflow plan issues labels --stories <iid,...> or plan issue update/note, label/milestone/board/board-list create/update followed by",
     "approve/apply/verify for supported writes; do not make other remote planning",
     "changes without an explicit supported plan.",
   ].join("\n");
