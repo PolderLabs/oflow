@@ -125,7 +125,10 @@ function auditDetails(
     details.fields = Object.keys(operation.changes);
   } else if (operation.kind === "issue.create") {
     details.fields = Object.keys(operation.issue);
-  } else if (operation.kind === "issue.iteration.update") {
+  } else if (
+    operation.kind === "issue.iteration.update" ||
+    operation.kind === "issues.iteration.update"
+  ) {
     details.fields = ["iteration"];
   }
   if ("issueIids" in operation) {
@@ -150,6 +153,7 @@ function formatAuditTarget(operation: PlanArtifact["operation"]): string {
       return "issue #" + String(operation.issueIid);
     case "issues.labels.update":
     case "issues.planning.update":
+    case "issues.iteration.update":
       return operation.issueIids.map((iid) => "#" + String(iid)).join(", ");
     case "issue.note.create":
       return "issue #" + String(operation.issueIid) + " note";

@@ -201,9 +201,9 @@ oflow verify --plan .oflow/state/plans/<plan-id>.json
 ```
 
 The currently implemented plan operations are issue/work-item create and update,
-single-story iteration assignment, issue note creation, project label
-create/update, project milestone create/update, board/board-list administration,
-and bounded bulk label and owner/timebox updates:
+single-story and bounded bulk iteration assignment, issue note creation, project
+label create/update, project milestone create/update, board/board-list
+administration, and bounded bulk label and owner/timebox updates:
 
 ```bash
 oflow plan issue create \
@@ -259,8 +259,11 @@ GraphQL global ID plus human-readable IID/title in the digest-protected plan,
 and verifies the resulting REST issue iteration after apply. This is a
 single-field plan so the approval is easy to review; it does not combine an
 iteration mutation with labels, ownership, milestone, or story-content edits.
-The bulk form remains staged until a bounded multi-issue GraphQL workflow is
-implemented.
+For several stories, use
+`oflow plan issues update --stories <iid,...> --iteration <title|iid|none>`.
+The bounded bulk form resolves one project-visible target, captures each
+issue's `updated_at`, applies sequentially, persists partial progress, and
+verifies every issue.
 
 Use `--epic <id>` on issue create/update to associate a work item with an
 existing epic, or `--epic none` on update to clear it. GitLab documents
@@ -296,11 +299,10 @@ corresponding assignment. This command is deliberately limited to those two
 planning fields, validates every target before the plan is written, caps a
 plan at 50 issue IIDs, applies sequentially, and verifies every target. It is
 not atomic: if an apply request fails, already-updated issues remain changed
-and the approved plan identifies the target set for follow-up. Iteration
-assignment is not included because it uses the separate single-story GraphQL
-plan described above; bulk iteration assignment is still staged because
-GitLab's REST issue update endpoint does not document `iteration_id` or
-`iteration_title` as update fields.
+and the approved plan identifies the target set for follow-up. For iteration
+assignment, use the separate GraphQL command described above; it does not
+approximate a sprint with a milestone or rely on undocumented REST issue update
+fields.
 
 Issue update plans also capture each target's `updated_at` during preflight.
 Apply re-reads the target immediately before a guarded write and refuses with
@@ -329,7 +331,7 @@ creation also disables retries for the non-idempotent POST. Board creation and
 board-list creation likewise disable retries; board updates and list reordering
 use idempotent PUT requests. Board-card movement is represented by guarded issue
 label updates, not an unverified board-card mutation. Board deletion, bulk
-iteration/cadence writes, and merge-request writes are not yet apply-capable. The supported
+cadence writes, and merge-request writes are not yet apply-capable. The supported
 board endpoint behavior is documented by GitLab's [project issue boards
 API](https://docs.gitlab.com/api/boards/).
 
@@ -352,7 +354,8 @@ issue-update plan. The command never invents planning values, only supports
 owner/timebox changes, records the assessment status and recommendations in
 the plan, and still requires `approve`, `apply`, and `verify`. Use `none` to
 explicitly clear an owner, milestone, or single-story iteration. Bulk iteration
-assignment and cadence writes remain staged.
+assignment uses the separate guarded GraphQL plan described above. Cadence
+writes remain staged.
 
 `oflow audit --json` is a local-only, bounded read of the plan lifecycle audit
 log. Successful `created`, `approved`, `applied`, and `verified` transitions,

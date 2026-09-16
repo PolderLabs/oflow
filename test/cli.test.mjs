@@ -57,6 +57,7 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /sync --epics/);
     assert.match(result, /plan issues labels --stories 1,2/);
     assert.match(result, /plan issues update --stories 1,2/);
+    assert.match(result, /plan issues update --stories 1,2 --iteration/);
     assert.match(result, /plan assess --story <iid>/);
     assert.match(result, /plan issue update --story <iid> --iteration <title\|iid\|none>/);
     assert.match(result, /audit \[--limit <n>\] \[--json\]/);
@@ -118,6 +119,65 @@ test("CLI routes single-story iteration assignment into a guarded plan", async (
     assert.equal(planFiles.length, 1);
     const plan = JSON.parse(readFileSync(join(root, ".oflow", "state", "plans", planFiles[0]), "utf8"));
     assert.equal(plan.operation.kind, "issue.iteration.update");
+    assert.equal(plan.operation.iterationIid, 13);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI routes bulk iteration assignment into a guarded plan", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-bulk-iteration-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "bulk-iteration-cli-test-token";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      const value = url.pathname.endsWith("/iterations")
+        ? [{ id: 53, iid: 13, title: "Sprint 2", state: "upcoming" }]
+        : {
+            iid: Number(url.pathname.split("/").pop()),
+            title: "Story",
+            state: "opened",
+            iteration: null,
+            updated_at: null,
+          };
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify(value),
+      };
+    };
+    const exitCode = await main([
+      "plan",
+      "issues",
+      "update",
+      "--root",
+      root,
+      "--stories",
+      "17,18",
+      "--iteration",
+      "Sprint 2",
+      "--json",
+    ]);
+    assert.equal(exitCode, 0);
+    const planFiles = readdirSync(join(root, ".oflow", "state", "plans"));
+    assert.equal(planFiles.length, 1);
+    const plan = JSON.parse(readFileSync(join(root, ".oflow", "state", "plans", planFiles[0]), "utf8"));
+    assert.equal(plan.operation.kind, "issues.iteration.update");
+    assert.deepEqual(plan.operation.issueIids, [17, 18]);
     assert.equal(plan.operation.iterationIid, 13);
   } finally {
     globalThis.fetch = originalFetch;

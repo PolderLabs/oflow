@@ -44,6 +44,7 @@ import { formatInstallResult, installProject } from "./install.js";
 import {
   applyPlan,
   approvePlan,
+  createBulkIssueIterationPlan,
   createBulkIssueLabelsPlan,
   createBulkIssuePlanningPlan,
   createLabelCreatePlan,
@@ -337,6 +338,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               "plan issues update requires --stories <iid,...>.",
               "MISSING_FLAG_VALUE",
             );
+          }
+          if (options.iteration !== undefined) {
+            assertBulkIterationPlanOptions(options);
+            const stored = await createBulkIssueIterationPlan(
+              root,
+              parseIssueIids(options.stories),
+              options.iteration,
+            );
+            print(options.json, stored, formatPlanMarkdown(stored));
+            return 0;
           }
           assertBulkPlanningOptions(options);
           const stored = await createBulkIssuePlanningPlan(
@@ -1363,6 +1374,7 @@ function helpText(): string {
     "  plan issue update --story <iid> --iteration <title|iid|none>",
     "  plan issues labels --stories 1,2    prepare guarded bulk label changes",
     "  plan issues update --stories 1,2    prepare guarded owner/timebox changes",
+    "  plan issues update --stories 1,2 --iteration <title|iid|none>",
     "  plan assess --story <iid>           prepare owner/timebox plan from assessment",
     "  plan issue note --story <iid>       prepare an auditable issue note",
     "  plan label create --name --color    prepare an auditable label create",
@@ -1436,6 +1448,49 @@ function assertBulkPlanningOptions(options: CliOptions): void {
     throw new OflowError(
       "plan issues update supports only --milestone and --assignee; use plan issue update for other fields.",
       "UNSUPPORTED_BULK_ISSUE_FIELD",
+    );
+  }
+}
+
+function assertBulkIterationPlanOptions(options: CliOptions): void {
+  const unsupported = [
+    ["--title", options.title],
+    ["--description", options.description],
+    ["--body", options.body],
+    ["--name", options.name],
+    ["--color", options.color],
+    ["--new-name", options.newName],
+    ["--label", options.label],
+    ["--start-date", options.startDate],
+    ["--due-date", options.dueDate],
+    ["--weight", options.weight],
+    ["--labels", options.labels],
+    ["--add-labels", options.addLabels],
+    ["--remove-labels", options.removeLabels],
+    ["--milestone", options.milestone],
+    ["--epic", options.epic],
+    ["--assignee", options.assignee],
+    ["--state", options.state],
+    ["--author", options.author],
+    ["--search", options.search],
+    ["--updated-after", options.updatedAfter],
+    ["--updated-before", options.updatedBefore],
+    ["--stale-days", options.staleDays],
+    ["--limit", options.limit],
+    ["--board", options.board],
+    ["--list", options.list],
+    ["--position", options.position],
+    ["--iid", options.iid],
+    ["--group", options.group ? "true" : undefined],
+    ["--epics", options.epics ? "true" : undefined],
+    ["--cached", options.cached ? "true" : undefined],
+    ["--refresh", options.refresh ? "true" : undefined],
+    ["--full", options.full ? "true" : undefined],
+  ].filter(([, value]) => value !== undefined);
+  if (unsupported.length > 0) {
+    throw new OflowError(
+      "Bulk iteration assignment supports only --stories and --iteration; use plan issues update for owner/timebox changes.",
+      "UNSUPPORTED_BULK_ITERATION_COMBINATION",
     );
   }
 }

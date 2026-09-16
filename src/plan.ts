@@ -73,6 +73,17 @@ export interface BulkIssuePlanningUpdateOperation {
   expectedUpdatedAt?: Record<string, string | null>;
 }
 
+export interface BulkIssueIterationUpdateOperation {
+  kind: "issues.iteration.update";
+  host: string;
+  projectPath: string;
+  issueIids: number[];
+  iterationId: string | null;
+  iterationIid: number | null;
+  iterationTitle: string | null;
+  expectedUpdatedAt?: Record<string, string | null>;
+}
+
 export interface IssueCreateOperation {
   kind: "issue.create";
   host: string;
@@ -163,6 +174,7 @@ export type PlanOperation =
   | IssueIterationUpdateOperation
   | BulkIssueLabelsUpdateOperation
   | BulkIssuePlanningUpdateOperation
+  | BulkIssueIterationUpdateOperation
   | IssueNoteCreateOperation
   | LabelCreateOperation
   | LabelUpdateOperation
@@ -208,6 +220,9 @@ export interface PlanArtifact {
       labels?: string[];
       milestone?: string | null;
       assigneeIds?: number[];
+      iterationId?: string | null;
+      iterationIid?: number | null;
+      iterationTitle?: string | null;
     }>;
   };
   verification?: PlanVerification;
@@ -453,6 +468,43 @@ export async function createBulkIssuePlanningPlan(
     projectPath: remote.projectPath,
     issueIids: normalizedIids,
     changes: operationChanges,
+    expectedUpdatedAt: expectedUpdatedAtFor(currentIssues),
+  });
+}
+
+export async function createBulkIssueIterationPlan(
+  root: string,
+  issueIids: number[],
+  iterationReference: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const normalizedIids = validateIssueIids(issueIids);
+  const reference = requiredText(iterationReference, "Iteration");
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const target = isIterationClearReference(reference)
+    ? { iterationId: null, iterationIid: null, iterationTitle: null }
+    : resolveIterationTarget(
+        await client.listProjectIterations(remote.projectPath, "all", 100),
+        reference,
+      );
+  const currentIssues = await Promise.all(
+    normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)),
+  );
+  return writePlan(root, {
+    kind: "issues.iteration.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIids: normalizedIids,
+    iterationId: target.iterationId,
+    iterationIid: target.iterationIid,
+    iterationTitle: target.iterationTitle,
     expectedUpdatedAt: expectedUpdatedAtFor(currentIssues),
   });
 }
@@ -963,6 +1015,32 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
       iterationIid: stored.plan.operation.iterationIid,
       iterationTitle: stored.plan.operation.iterationTitle,
     };
+  } else if (stored.plan.operation.kind === "issues.iteration.update") {
+    const results = existingBulkResults(stored.plan, "issues.iteration.update");
+    try {
+      for (const issueIid of pendingBulkIssueIids(stored.plan.operation.issueIids, results)) {
+        await assertIssueFresh(
+          client,
+          stored.plan.operation.projectPath,
+          issueIid,
+          stored.plan.operation.expectedUpdatedAt?.[String(issueIid)],
+        );
+        const result = await client.setIssueIteration(
+          stored.plan.operation.projectPath,
+          issueIid,
+          stored.plan.operation.iterationId,
+        );
+        results.push(compactBulkIssueIterationIssue(
+          { iid: result.iid },
+          stored.plan.operation,
+        ));
+      }
+    } catch (error: unknown) {
+      await persistBulkApplyFailure(root, stored, "issues.iteration.update", results, error);
+      throw error;
+    }
+    stored.plan.result = { kind: "issues.iteration.update", issues: results };
+    delete stored.plan.applyError;
   } else if (stored.plan.operation.kind === "issues.labels.update") {
     const results = existingBulkResults(stored.plan, "issues.labels.update");
     try {
@@ -1137,6 +1215,14 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
         ),
         stored.plan.operation,
       )
+    : stored.plan.operation.kind === "issues.iteration.update"
+      ? verifyBulkIssueIteration(
+          await Promise.all(
+            stored.plan.operation.issueIids.map((issueIid) =>
+              client.getIssue(stored.plan.operation.projectPath, issueIid)),
+          ),
+          stored.plan.operation,
+        )
     : stored.plan.operation.kind === "issues.labels.update"
       ? verifyBulkIssueLabels(
           await Promise.all(
@@ -1221,6 +1307,12 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       : plan.operation.kind === "issue.iteration.update"
         ? [
             "- issue_iid: " + plan.operation.issueIid,
+            "- iteration: " + (plan.operation.iterationTitle ?? "none") +
+              (plan.operation.iterationIid === null ? "" : " (#" + plan.operation.iterationIid + ")"),
+          ].join("\n")
+      : plan.operation.kind === "issues.iteration.update"
+        ? [
+            "- issue_iids: " + plan.operation.issueIids.join(", "),
             "- iteration: " + (plan.operation.iterationTitle ?? "none") +
               (plan.operation.iterationIid === null ? "" : " (#" + plan.operation.iterationIid + ")"),
           ].join("\n")
@@ -1313,6 +1405,8 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       ? "Changes:"
       : plan.operation.kind === "issue.iteration.update"
       ? "Iteration change:"
+      : plan.operation.kind === "issues.iteration.update"
+        ? "Bulk iteration changes:"
       : plan.operation.kind === "issues.labels.update"
         ? "Bulk label changes:"
       : plan.operation.kind === "issues.planning.update"
@@ -1431,6 +1525,21 @@ function isSupportedOperation(
       Object.keys(operation.changes).every((key) =>
         key === "milestone" || key === "milestone_id" || key === "assignee_ids"
       ) &&
+      validExpectedUpdatedAtMap(operation.expectedUpdatedAt);
+  }
+  if (operation.kind === "issues.iteration.update") {
+    return Array.isArray(operation.issueIids) &&
+      operation.issueIids.length > 0 &&
+      operation.issueIids.length <= MAX_BULK_ISSUES &&
+      new Set(operation.issueIids).size === operation.issueIids.length &&
+      operation.issueIids.every((issueIid) => Number.isSafeInteger(issueIid) && issueIid > 0) &&
+      (operation.iterationId === null ||
+        (typeof operation.iterationId === "string" &&
+          /^gid:\/\/gitlab\/Iteration\/\d+$/.test(operation.iterationId))) &&
+      (operation.iterationId === null
+        ? operation.iterationIid === null && operation.iterationTitle === null
+        : typeof operation.iterationIid === "number" && Number.isSafeInteger(operation.iterationIid) && operation.iterationIid > 0 &&
+          typeof operation.iterationTitle === "string" && operation.iterationTitle.trim().length > 0) &&
       validExpectedUpdatedAtMap(operation.expectedUpdatedAt);
   }
   if (operation.kind === "issue.note.create") {
@@ -1580,7 +1689,7 @@ type BulkResultIssues = NonNullable<NonNullable<PlanArtifact["result"]>["issues"
 
 function existingBulkResults(
   plan: PlanArtifact,
-  kind: "issues.labels.update" | "issues.planning.update",
+  kind: "issues.labels.update" | "issues.planning.update" | "issues.iteration.update",
 ): BulkResultIssues {
   if (plan.result === undefined) {
     return [];
@@ -1592,7 +1701,9 @@ function existingBulkResults(
     );
   }
   const results = plan.result.issues ?? [];
-  const targets = new Set(plan.operation.kind === kind ? plan.operation.issueIids : []);
+  const targets = new Set(
+    plan.operation.kind === kind ? plan.operation.issueIids : [],
+  );
   const seen = new Set<number>();
   for (const result of results) {
     if (
@@ -1614,7 +1725,7 @@ function existingBulkResults(
 async function persistBulkApplyFailure(
   root: string,
   stored: StoredPlan,
-  kind: "issues.labels.update" | "issues.planning.update",
+  kind: "issues.labels.update" | "issues.planning.update" | "issues.iteration.update",
   results: NonNullable<NonNullable<PlanArtifact["result"]>["issues"]>,
   error: unknown,
 ): Promise<void> {
@@ -1961,6 +2072,18 @@ function compactBulkIssuePlanningIssue(
   };
 }
 
+function compactBulkIssueIterationIssue(
+  issue: Pick<GitLabIssue, "iid">,
+  operation: BulkIssueIterationUpdateOperation,
+): NonNullable<NonNullable<PlanArtifact["result"]>["issues"]>[number] {
+  return {
+    iid: issue.iid,
+    iterationId: operation.iterationId,
+    iterationIid: operation.iterationIid,
+    iterationTitle: operation.iterationTitle,
+  };
+}
+
 function compactNote(
   note: GitLabNote,
   issueIid: number,
@@ -2025,7 +2148,11 @@ function compactBoardList(
 }
 
 function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
-  if (result.kind === "issues.labels.update" || result.kind === "issues.planning.update") {
+  if (
+    result.kind === "issues.labels.update" ||
+    result.kind === "issues.planning.update" ||
+    result.kind === "issues.iteration.update"
+  ) {
     return String(result.issues?.length ?? 0) + " issues updated";
   }
   if (result.kind === "issue.note.create") {
@@ -2208,6 +2335,42 @@ function verifyBulkIssuePlanning(
     issues.every((issue) => expectedIids.has(issue.iid));
   for (const issue of issues) {
     const verification = verifyIssue(issue, operation.changes);
+    checks.push(...verification.checks.map((item) => ({
+      ...item,
+      field: "issue #" + String(issue.iid) + "." + item.field,
+    })));
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: returnedAllTargets && checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: [
+      ...(returnedAllTargets ? [] : ["GitLab did not return every targeted issue."]),
+      ...failed.map(
+        (item) => "GitLab did not report the requested " + item.field + " value.",
+      ),
+    ],
+  };
+}
+
+function verifyBulkIssueIteration(
+  issues: GitLabIssue[],
+  operation: BulkIssueIterationUpdateOperation,
+): PlanVerification {
+  const checks: PlanVerification["checks"] = [];
+  const expectedIids = new Set(operation.issueIids);
+  const returnedAllTargets = issues.length === operation.issueIids.length &&
+    issues.every((issue) => expectedIids.has(issue.iid));
+  for (const issue of issues) {
+    const verification = verifyIssueIteration(issue, {
+      kind: "issue.iteration.update",
+      host: operation.host,
+      projectPath: operation.projectPath,
+      issueIid: issue.iid,
+      iterationId: operation.iterationId,
+      iterationIid: operation.iterationIid,
+      iterationTitle: operation.iterationTitle,
+    });
     checks.push(...verification.checks.map((item) => ({
       ...item,
       field: "issue #" + String(issue.iid) + "." + item.field,
@@ -2676,6 +2839,9 @@ function formatTarget(operation: PlanOperation): string {
     return "issues #" + operation.issueIids.join(", #");
   }
   if (operation.kind === "issues.planning.update") {
+    return "issues #" + operation.issueIids.join(", #");
+  }
+  if (operation.kind === "issues.iteration.update") {
     return "issues #" + operation.issueIids.join(", #");
   }
   if (operation.kind === "label.create") {

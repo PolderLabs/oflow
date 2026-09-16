@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   applyPlan,
   approvePlan,
+  createBulkIssueIterationPlan,
   createBulkIssueLabelsPlan,
   createBulkIssuePlanningPlan,
   createIssueCreatePlan,
@@ -546,6 +547,131 @@ test("bulk planning plans assign owners and milestone timeboxes safely", async (
       () => createBulkIssuePlanningPlan(root, [17], { due_date: "2027-01-20" }),
       { code: "UNSUPPORTED_BULK_ISSUE_FIELD" },
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("bulk iteration plans assign every target through the guarded GraphQL mutation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-bulk-iteration-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "bulk-iteration-plan-test-token";
+  const iteration = {
+    id: 53,
+    iid: 13,
+    title: "Sprint 2",
+    state: "upcoming",
+  };
+  const issues = new Map([
+    [17, { iid: 17, title: "Reserve a pod", iteration: null, state: "opened" }],
+    [18, { iid: 18, title: "Release a pod", iteration: null, state: "opened" }],
+  ]);
+  const mutations = [];
+  let failSecond = true;
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/iterations")) {
+        return response([iteration]);
+      }
+      if (url.pathname === "/api/graphql") {
+        const body = JSON.parse(String(init?.body ?? ""));
+        const issueIid = Number(body.variables.input.iid);
+        const issue = issues.get(issueIid);
+        assert.ok(issue, "unexpected mutation target " + issueIid);
+        if (issueIid === 18 && failSecond) {
+          return response({
+            data: {
+              issueSetIteration: {
+                errors: ["temporary failure"],
+                issue: { iid: String(issueIid) },
+              },
+            },
+          });
+        }
+        assert.ok(
+          body.variables.input.iterationId === "gid://gitlab/Iteration/53" ||
+          body.variables.input.iterationId === null,
+        );
+        issue.iteration = body.variables.input.iterationId === null
+          ? null
+          : { id: 53, iid: 13, title: "Sprint 2" };
+        mutations.push(issueIid);
+        return response({
+          data: {
+            issueSetIteration: {
+              errors: [],
+              issue: { iid: String(issueIid) },
+            },
+          },
+        });
+      }
+      const iid = Number(url.pathname.split("/").pop());
+      const issue = issues.get(iid);
+      assert.ok(issue, "unexpected issue request " + url.pathname);
+      return response(issue);
+    };
+
+    const created = await createBulkIssueIterationPlan(root, [17, 18], "sprint 2");
+    assert.equal(created.plan.state, "draft");
+    assert.deepEqual(created.plan.operation, {
+      kind: "issues.iteration.update",
+      host: "gitlab.example.test",
+      projectPath: "team/project",
+      issueIids: [17, 18],
+      iterationId: "gid://gitlab/Iteration/53",
+      iterationIid: 13,
+      iterationTitle: "Sprint 2",
+      expectedUpdatedAt: { "17": null, "18": null },
+    });
+    assert.equal(mutations.length, 0);
+    assert.match(formatPlanMarkdown(created), /Bulk iteration changes:/);
+
+    await approvePlan(root, created.path);
+    await assert.rejects(() => applyPlan(root, created.path), {
+      code: "GITLAB_ITERATION_UPDATE_FAILED",
+    });
+    const partial = JSON.parse(await readFile(created.path, "utf8"));
+    assert.deepEqual(partial.result.issues, [
+      { iid: 17, iterationId: "gid://gitlab/Iteration/53", iterationIid: 13, iterationTitle: "Sprint 2" },
+    ]);
+    assert.equal(partial.applyError.completed, 1);
+
+    failSecond = false;
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.state, "applied");
+    assert.deepEqual(applied.plan.result.issues, [
+      { iid: 17, iterationId: "gid://gitlab/Iteration/53", iterationIid: 13, iterationTitle: "Sprint 2" },
+      { iid: 18, iterationId: "gid://gitlab/Iteration/53", iterationIid: 13, iterationTitle: "Sprint 2" },
+    ]);
+    assert.deepEqual(mutations, [17, 18]);
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+    assert.equal(verified.plan.verification.checks.length, 6);
+
+    const cleared = await createBulkIssueIterationPlan(root, [17, 18], "none");
+    assert.equal(cleared.plan.operation.iterationId, null);
+    assert.equal(cleared.plan.operation.iterationIid, null);
+    await approvePlan(root, cleared.path);
+    await applyPlan(root, cleared.path);
+    assert.equal((await verifyPlan(root, cleared.path)).plan.state, "verified");
+    assert.deepEqual(mutations, [17, 18, 17, 18]);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

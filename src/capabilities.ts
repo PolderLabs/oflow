@@ -119,6 +119,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Project: Update (Mutation: IssueSetIteration); Project: Read for target iteration lookup",
       ),
       capability(
+        "work-items.bulk-iteration.update",
+        "implemented",
+        "apply",
+        "Work Item iteration assignment (up to 50 issues)",
+        "GraphQL",
+        "Project: Update (Mutation: IssueSetIteration); Project: Read for target iteration lookup",
+      ),
+      capability(
         "work-items.bulk-labels.update",
         "implemented",
         "apply",

@@ -20,8 +20,8 @@ The product boundary remains:
 - REST, `glab`, and MCP are provider execution mechanisms, not separate
   workflow rules.
 - The current usable milestone is compact Scrum/project reads plus guarded issue,
-  note, label, milestone, board, and single-story iteration administration;
-  bulk iteration, cadence, and delivery writes remain explicitly staged.
+  note, label, milestone, board, and single-story/bounded bulk iteration
+  administration; cadence and delivery writes remain explicitly staged.
 
 ## Integration strategy
 
@@ -117,7 +117,9 @@ This is the immediate implementation focus.
 - [x] Apply shared owner and milestone/timebox changes through bounded bulk
   planning workflows.
 - [x] Assign or clear one issue's project-visible iteration through a guarded
-  GraphQL `IssueSetIteration` mutation; keep bulk assignment staged.
+  GraphQL `IssueSetIteration` mutation.
+- [x] Assign or clear up to 50 issues' project-visible iteration through a
+  sequential, stale-guarded GraphQL plan with partial-progress recovery.
 - [x] Guard issue writes against stale remote `updated_at` preconditions.
 - [x] Create/update project milestones through guarded plans; keep deletion disabled.
 - [x] Create/update boards and label-backed board lists through guarded plans;

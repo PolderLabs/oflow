@@ -185,7 +185,9 @@ the project-visible iteration and uses the documented GraphQL
 `issueSetIteration` mutation inside the same guarded plan/apply/verify flow.
 The operation requires a project-visible iteration, `Project: Update` with
 the `IssueSetIteration` mutation permission, and a GitLab version exposing that
-GraphQL mutation. Bulk assignment and cadence/group writes remain staged. See
+GraphQL mutation. The bulk form uses the same mutation sequentially for at
+most 50 issue IIDs, with per-issue stale preconditions, partial-progress
+recovery, and post-apply verification. Cadence/group writes remain staged. See
 the [Issues API](https://docs.gitlab.com/api/issues/),
 [Iterations API](https://docs.gitlab.com/api/iterations/),
 [GraphQL API](https://docs.gitlab.com/api/graphql/), and

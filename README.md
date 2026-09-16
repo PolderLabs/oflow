@@ -128,9 +128,9 @@ The current release uses the GitLab REST API for deterministic, compact
 planning snapshots and guarded Scrum writes: updating issues/work items (including
 assignment by username and existing epic association),
 adding issue notes, creating/updating project labels and milestones, and
-creating/updating boards and label-backed board lists. Single-story iteration
-assignment uses GitLab's guarded GraphQL `IssueSetIteration` mutation; bulk
-iteration and cadence writes are not yet enabled.
+creating/updating boards and label-backed board lists. Single-story and bounded
+bulk iteration assignment use GitLab's guarded GraphQL `IssueSetIteration`
+mutation; cadence writes are not yet enabled.
 `oflow sync --json` gathers bounded project, work-item, label, milestone, board,
 iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
@@ -168,8 +168,9 @@ Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`,
 `--iteration` accepts a title, `none`, or `any` for read-only work/sync filters.
 For a single story, `plan issue update --story <iid> --iteration <title|iid|none>`
 resolves a project-visible iteration and creates a guarded GraphQL assignment
-plan. It must be the only issue change in that plan; bulk iteration assignment
-and cadence/group writes remain staged. Use
+plan. It must be the only issue change in that plan. For several stories, use
+`plan issues update --stories <iid,...> --iteration <title|iid|none>`; cadence/
+group writes remain staged. Use
 `--limit 1..100` to cap the returned work items; the default is 100 for
 `work` and 50 for `sync`. `--assignee none` finds unassigned items and
 `--assignee any` finds assigned items. `--epic <id|none|any>` narrows results
@@ -252,8 +253,12 @@ sequentially, and verifies the requested owner/timebox on every issue. It does
 not change titles, descriptions, labels, epics, due dates, weights, or issue
 state; use a single-issue plan for those fields. GitLab's current REST issue
 update API does not expose iteration assignment as a supported update field,
-so this command uses milestones for NestPod's Sprint 1–4 timeboxes; iteration
-assignment remains a separate roadmap item.
+so this command uses milestones for NestPod's Sprint 1–4 timeboxes. For a
+project-visible sprint assignment across several stories, use
+`oflow plan issues update --stories 17,18,23 --iteration "Sprint 2"` (or
+`--iteration none` to clear it). This separate GraphQL-backed bulk plan is
+capped at 50 issues, applied sequentially, and verified per issue; it cannot be
+combined with owner, milestone, label, or content changes.
 
 Bulk applies persist completed targets and an `applyError` in the approved plan
 if a later target fails. Retrying after review skips targets that already
@@ -275,9 +280,9 @@ The current apply-capable operations are `plan issue create`, `plan issue update
 (including guarded assignment, existing epic association, and single-story
 iteration assignment), `plan issue note`,
 `plan label create/update`, `plan milestone create/update`, and guarded board/
-board-list administration, plus bounded bulk issue-label and owner/timebox
-updates; board-card movement, bulk iteration assignment, cadence writes, and
-merge-request writes remain roadmap work.
+board-list administration, plus bounded bulk issue-label, owner/timebox, and
+iteration updates; board-card movement, cadence writes, and merge-request
+writes remain roadmap work.
 Board-card movement is represented by guarded issue label updates rather than a
 separate unsafe card mutation. `oflow glab api` only permits an explicit GET
 through glab, so it cannot bypass the write gates.
