@@ -188,6 +188,11 @@ export interface PlanArtifact {
     }>;
   };
   verification?: PlanVerification;
+  applyError?: {
+    code: string;
+    message: string;
+    completed: number;
+  };
 }
 
 export interface StoredPlan {
@@ -880,42 +885,54 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
     stored.plan.result = compactIssue(result);
   } else if (stored.plan.operation.kind === "issues.labels.update") {
-    const results = [] as Array<{ iid: number; labels: string[] }>;
-    for (const issueIid of stored.plan.operation.issueIids) {
-      await assertIssueFresh(
-        client,
-        stored.plan.operation.projectPath,
-        issueIid,
-        stored.plan.operation.expectedUpdatedAt?.[String(issueIid)],
-      );
-      const result = await client.updateIssue(
-        stored.plan.operation.projectPath,
-        issueIid,
-        {
-          add_labels: stored.plan.operation.add_labels,
-          remove_labels: stored.plan.operation.remove_labels,
-        },
-      );
-      results.push({ iid: result.iid, labels: result.labels ?? [] });
+    const results = existingBulkResults(stored.plan, "issues.labels.update");
+    try {
+      for (const issueIid of pendingBulkIssueIids(stored.plan.operation.issueIids, results)) {
+        await assertIssueFresh(
+          client,
+          stored.plan.operation.projectPath,
+          issueIid,
+          stored.plan.operation.expectedUpdatedAt?.[String(issueIid)],
+        );
+        const result = await client.updateIssue(
+          stored.plan.operation.projectPath,
+          issueIid,
+          {
+            add_labels: stored.plan.operation.add_labels,
+            remove_labels: stored.plan.operation.remove_labels,
+          },
+        );
+        results.push({ iid: result.iid, labels: result.labels ?? [] });
+      }
+    } catch (error: unknown) {
+      await persistBulkApplyFailure(root, stored, "issues.labels.update", results, error);
+      throw error;
     }
     stored.plan.result = { kind: "issues.labels.update", issues: results };
+    delete stored.plan.applyError;
   } else if (stored.plan.operation.kind === "issues.planning.update") {
-    const results: NonNullable<PlanArtifact["result"]>["issues"] = [];
-    for (const issueIid of stored.plan.operation.issueIids) {
-      await assertIssueFresh(
-        client,
-        stored.plan.operation.projectPath,
-        issueIid,
-        stored.plan.operation.expectedUpdatedAt?.[String(issueIid)],
-      );
-      const result = await client.updateIssue(
-        stored.plan.operation.projectPath,
-        issueIid,
-        stored.plan.operation.changes,
-      );
-      results.push(compactBulkIssuePlanningIssue(result, stored.plan.operation.changes));
+    const results = existingBulkResults(stored.plan, "issues.planning.update");
+    try {
+      for (const issueIid of pendingBulkIssueIids(stored.plan.operation.issueIids, results)) {
+        await assertIssueFresh(
+          client,
+          stored.plan.operation.projectPath,
+          issueIid,
+          stored.plan.operation.expectedUpdatedAt?.[String(issueIid)],
+        );
+        const result = await client.updateIssue(
+          stored.plan.operation.projectPath,
+          issueIid,
+          stored.plan.operation.changes,
+        );
+        results.push(compactBulkIssuePlanningIssue(result, stored.plan.operation.changes));
+      }
+    } catch (error: unknown) {
+      await persistBulkApplyFailure(root, stored, "issues.planning.update", results, error);
+      throw error;
     }
     stored.plan.result = { kind: "issues.planning.update", issues: results };
+    delete stored.plan.applyError;
   } else if (stored.plan.operation.kind === "issue.note.create") {
     const result = await client.createIssueNote(
       stored.plan.operation.projectPath,
@@ -1217,6 +1234,15 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
   if (plan.result) {
     lines.push("", "Applied result: " + formatResult(plan.result));
   }
+  if (plan.applyError) {
+    lines.push(
+      "",
+      "APPLY INCOMPLETE: " + plan.applyError.code + " — " + plan.applyError.message,
+      "Completed targets: " + String(plan.applyError.completed),
+      "",
+      "Retry the approved bulk plan only after reviewing the partial result.",
+    );
+  }
   if (plan.verification) {
     lines.push(
       "",
@@ -1416,6 +1442,77 @@ async function assertIssueFresh(
       "PLAN_TARGET_CHANGED",
     );
   }
+}
+
+function pendingBulkIssueIids(
+  issueIids: number[],
+  results: Array<{ iid: number }>,
+): number[] {
+  const completed = new Set(results.map((result) => result.iid));
+  return issueIids.filter((issueIid) => !completed.has(issueIid));
+}
+
+type BulkResultIssues = NonNullable<NonNullable<PlanArtifact["result"]>["issues"]>;
+
+function existingBulkResults(
+  plan: PlanArtifact,
+  kind: "issues.labels.update" | "issues.planning.update",
+): BulkResultIssues {
+  if (plan.result === undefined) {
+    return [];
+  }
+  if (plan.result.kind !== kind) {
+    throw new OflowError(
+      "Bulk plan contains a result for a different operation; refusing to retry.",
+      "INVALID_PLAN",
+    );
+  }
+  const results = plan.result.issues ?? [];
+  const targets = new Set(plan.operation.kind === kind ? plan.operation.issueIids : []);
+  const seen = new Set<number>();
+  for (const result of results) {
+    if (
+      !Number.isSafeInteger(result.iid) ||
+      result.iid < 1 ||
+      !targets.has(result.iid) ||
+      seen.has(result.iid)
+    ) {
+      throw new OflowError(
+        "Bulk plan contains invalid or duplicate partial results; refusing to retry.",
+        "INVALID_PLAN",
+      );
+    }
+    seen.add(result.iid);
+  }
+  return [...results];
+}
+
+async function persistBulkApplyFailure(
+  root: string,
+  stored: StoredPlan,
+  kind: "issues.labels.update" | "issues.planning.update",
+  results: NonNullable<NonNullable<PlanArtifact["result"]>["issues"]>,
+  error: unknown,
+): Promise<void> {
+  const failure = normalizePlanError(error);
+  stored.plan.result = { kind, issues: results };
+  stored.plan.applyError = {
+    ...failure,
+    completed: results.length,
+  };
+  stored.plan.updatedAt = new Date().toISOString();
+  await writeJson(stored.path, stored.plan);
+  await recordPlanEvent(root, stored.plan, "apply-failed", failure);
+}
+
+function normalizePlanError(error: unknown): { code: string; message: string } {
+  if (error instanceof OflowError) {
+    return { code: error.code, message: error.message };
+  }
+  return {
+    code: "APPLY_FAILED",
+    message: error instanceof Error ? error.message : String(error),
+  };
 }
 
 function validExpectedUpdatedAt(value: unknown): boolean {

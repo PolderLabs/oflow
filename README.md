@@ -186,11 +186,11 @@ planning follow-up when an owner or milestone/iteration is missing, while
 leaving the final status judgment to the agent.
 
 `oflow audit --json` reads the local `.oflow/state/audit.jsonl` lifecycle log.
-It records successful plan creation, approval, apply, and verification events
-without storing tokens, issue descriptions, note bodies, or other full
-payloads. The file is ignored by Git and the command never contacts GitLab, so
-it is a low-cost way to review what an agent or user changed through oflow. Use
-`--limit 1..100` to keep the output bounded.
+It records successful plan creation, approval, apply, and verification events,
+plus incomplete bulk applies, without storing tokens, issue descriptions, note
+bodies, or other full payloads. The file is ignored by Git and the command
+never contacts GitLab, so it is a low-cost way to review what an agent or user
+changed through oflow. Use `--limit 1..100` to keep the output bounded.
 
 Use `--epic <id>` to assign an issue to an existing epic, or `--epic none` on
 an update to clear the association. This uses GitLab's `epic_id` issue field;
@@ -223,6 +223,11 @@ state; use a single-issue plan for those fields. GitLab's current REST issue
 update API does not expose iteration assignment as a supported update field,
 so this command uses milestones for NestPod's Sprint 1–4 timeboxes; iteration
 assignment remains a separate roadmap item.
+
+Bulk applies persist completed targets and an `applyError` in the approved plan
+if a later target fails. Retrying after review skips targets that already
+returned successfully, while stale targets still fail the `updated_at`
+precondition.
 
 Issue update plans capture the target issue's `updated_at` value when the plan
 is created. Apply re-reads each guarded issue immediately before writing and

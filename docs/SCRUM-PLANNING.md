@@ -284,6 +284,12 @@ before that item is written; earlier successful items remain changed and are
 reported by the approved plan. Older plan artifacts without this precondition
 remain readable for compatibility.
 
+Bulk applies persist completed targets and an `applyError` in the approved plan
+if a later target fails. Retrying after review skips targets that already
+returned successfully, while stale targets still fail the `updated_at`
+precondition. The audit log records this as `apply-failed` without copying the
+request payload.
+
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before
 writing, and re-read GitLab during verification. Issue creation is a
@@ -311,8 +317,9 @@ changed. The agent performs the final reasoning and may then create a guarded
 plan.
 
 `oflow audit --json` is a local-only, bounded read of the plan lifecycle audit
-log. Successful `created`, `approved`, `applied`, and `verified` transitions
-are appended to `.oflow/state/audit.jsonl`. Entries contain the operation kind,
+log. Successful `created`, `approved`, `applied`, and `verified` transitions,
+and incomplete bulk applies as `apply-failed`, are appended to
+`.oflow/state/audit.jsonl`. Entries contain the operation kind,
 target, changed field names, counts, and verification outcome, but not tokens,
 issue descriptions, note bodies, or full request payloads. The command makes
 no GitLab request and is useful for reviewing agent activity without spending

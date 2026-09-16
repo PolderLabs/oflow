@@ -268,6 +268,82 @@ test("bulk issue label plans update every target and verify the shared state", a
   }
 });
 
+test("bulk apply records partial progress and resumes remaining targets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-bulk-partial-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "bulk-partial-plan-test-token";
+  const issues = new Map([
+    [17, { iid: 17, title: "Reserve a pod", labels: ["User Story"], state: "opened", updated_at: undefined }],
+    [18, { iid: 18, title: "Release a pod", labels: ["User Story"], state: "opened", updated_at: undefined }],
+  ]);
+  let failSecond = true;
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const iid = Number(url.pathname.split("/").pop());
+      const issue = issues.get(iid);
+      assert.ok(issue, "unexpected issue request " + url.pathname);
+      if ((init?.method ?? "GET") === "PUT" && iid === 18 && failSecond) {
+        return {
+          ok: false,
+          status: 400,
+          headers: new Headers(),
+          text: async () => JSON.stringify({ message: "temporary failure" }),
+        };
+      }
+      if ((init?.method ?? "GET") === "PUT") {
+        const body = new URLSearchParams(String(init.body));
+        const added = (body.get("add_labels") ?? "").split(",").filter(Boolean);
+        issue.labels = [...new Set([...issue.labels, ...added])];
+        if (iid === 17) issue.updated_at = "2027-01-01T00:00:00Z";
+      }
+      return response(issue);
+    };
+
+    const created = await createBulkIssueLabelsPlan(root, [17, 18], { add_labels: "Ready" });
+    await approvePlan(root, created.path);
+    await assert.rejects(() => applyPlan(root, created.path), { code: "GITLAB_API_ERROR" });
+    const partial = JSON.parse(await readFile(created.path, "utf8"));
+    assert.equal(partial.state, "approved");
+    assert.deepEqual(partial.result.issues, [{ iid: 17, labels: ["User Story", "Ready"] }]);
+    assert.deepEqual(partial.applyError, {
+      code: "GITLAB_API_ERROR",
+      message: "GitLab API 400 for /projects/team%2Fproject/issues/18: {\"message\":\"temporary failure\"}",
+      completed: 1,
+    });
+
+    failSecond = false;
+    const resumed = await applyPlan(root, created.path);
+    assert.equal(resumed.plan.state, "applied");
+    assert.equal(resumed.plan.applyError, undefined);
+    assert.deepEqual(resumed.plan.result.issues, [
+      { iid: 17, labels: ["User Story", "Ready"] },
+      { iid: 18, labels: ["User Story", "Ready"] },
+    ]);
+    const audit = await readAudit(root);
+    assert.equal(audit.events[0].action, "applied");
+    assert.equal(audit.events[1].action, "apply-failed");
+    assert.equal(audit.events[1].details.resultCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("bulk planning plans assign owners and milestone timeboxes safely", async () => {
   const root = await mkdtemp(join(tmpdir(), "oflow-bulk-planning-plan-"));
   const originalFetch = globalThis.fetch;
