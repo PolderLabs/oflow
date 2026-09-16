@@ -7,6 +7,7 @@ export type IssueState = "opened" | "closed" | "all";
 export interface GitLabIssueFilters {
   label?: string;
   milestone?: string;
+  iteration?: string;
   assignee?: string;
   search?: string;
   updatedAfter?: string;

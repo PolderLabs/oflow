@@ -102,8 +102,10 @@ specific story is selected. The agent performs the reasoning over that data;
 oflow does not require an embedded model or spend tokens generating a duplicate
 summary.
 
-Use `--label`, `--milestone`, `--assignee`, `--search`, and
-`--updated-after` with `work` or `sync` to filter issues server-side. Use
+Use `--label`, `--milestone`, `--iteration`, `--assignee`, `--search`, and
+`--updated-after` with `work` or `sync` to filter issues server-side.
+`--iteration` accepts a title, `none`, or `any`; it is a read-only filter
+because iteration assignment remains version-sensitive. Use
 `--limit 1..100` to cap the returned work items; the default is 100 for
 `work` and 50 for `sync`. `--assignee none` finds unassigned items and
 `--assignee any` finds assigned items. These filters reduce both API response

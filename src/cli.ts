@@ -85,6 +85,7 @@ interface CliOptions {
   color?: string;
   newName?: string;
   label?: string;
+  iteration?: string;
   startDate?: string;
   dueDate?: string;
   weight?: string;
@@ -589,6 +590,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--color" ||
       argument === "--new-name" ||
       argument === "--label" ||
+      argument === "--iteration" ||
       argument === "--start-date" ||
       argument === "--due-date" ||
       argument === "--weight" ||
@@ -632,6 +634,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.newName = value;
       } else if (argument === "--label") {
         options.label = value;
+      } else if (argument === "--iteration") {
+        options.iteration = value;
       } else if (argument === "--start-date") {
         options.startDate = value;
       } else if (argument === "--due-date") {
@@ -693,6 +697,12 @@ function parseArgs(argv: string[]): CliOptions {
       options.newName = argument.slice("--new-name=".length);
     } else if (argument.startsWith("--label=")) {
       options.label = argument.slice("--label=".length);
+    } else if (argument.startsWith("--iteration=")) {
+      const value = argument.slice("--iteration=".length);
+      if (!value) {
+        throw new OflowError("--iteration requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.iteration = value;
     } else if (argument.startsWith("--start-date=")) {
       options.startDate = argument.slice("--start-date=".length);
     } else if (argument.startsWith("--due-date=")) {
@@ -885,6 +895,9 @@ function collectIssueFilters(options: CliOptions): GitLabIssueFilters {
   if (options.milestone !== undefined) {
     filters.milestone = requiredFilter(options.milestone, "--milestone");
   }
+  if (options.iteration !== undefined) {
+    filters.iteration = requiredFilter(options.iteration, "--iteration");
+  }
   if (options.assignee !== undefined) {
     filters.assignee = requiredFilter(options.assignee, "--assignee");
   }
@@ -1073,7 +1086,7 @@ function helpText(): string {
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
-    "  filters: --label, --milestone, --assignee, --search, --updated-after, --limit 1..100",
+    "  filters: --label, --milestone, --iteration, --assignee, --search, --updated-after, --limit 1..100",
   ].join("\n") + "\n";
 }
 

@@ -38,9 +38,11 @@ normalizes the currently supported subset:
    unassigned work items, and work items with neither a milestone nor an
    iteration, when the GitLab response includes those fields.
 
-Use `--label`, `--milestone`, `--assignee`, `--search`, or
+Use `--label`, `--milestone`, `--iteration`, `--assignee`, `--search`, or
 `--updated-after` with `work` or `sync` to apply the corresponding GitLab
-server-side issue filter. Use `--limit 1..100` to cap returned work items
+server-side issue filter. `--iteration` accepts a title, `none`, or `any`;
+iteration assignment is deliberately not exposed because its write API is
+version-sensitive. Use `--limit 1..100` to cap returned work items
 (`50` by default for `sync`, `100` for `work`). `--assignee none` and
 `--assignee any` target unassigned and assigned work respectively. This is
 the preferred way to keep agent handoffs small on larger projects.

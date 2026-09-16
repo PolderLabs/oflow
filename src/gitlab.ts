@@ -116,6 +116,15 @@ export class GitLabClient {
     if (filters.milestone !== undefined) {
       query.set("milestone", filters.milestone);
     }
+    if (filters.iteration !== undefined) {
+      const iteration = filters.iteration.trim();
+      const normalized = iteration.toLowerCase();
+      if (normalized === "none" || normalized === "any") {
+        query.set("iteration_id", normalized === "none" ? "None" : "Any");
+      } else {
+        query.set("iteration_title", iteration);
+      }
+    }
     if (filters.search !== undefined) {
       query.set("search", filters.search);
     }
