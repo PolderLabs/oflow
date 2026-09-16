@@ -38,6 +38,13 @@ normalizes the currently supported subset:
    unassigned work items, and work items with neither a milestone nor an
    iteration, when the GitLab response includes those fields.
 
+Use `--label`, `--milestone`, `--assignee`, `--search`, or
+`--updated-after` with `work` or `sync` to apply the corresponding GitLab
+server-side issue filter. Use `--limit 1..100` to cap returned work items
+(`50` by default for `sync`, `100` for `work`). `--assignee none` and
+`--assignee any` target unassigned and assigned work respectively. This is
+the preferred way to keep agent handoffs small on larger projects.
+
 It emits human-readable Markdown and a compact `--json` result. Descriptions
 are excluded from the overall snapshot and fetched only for the selected story,
 so the result is suitable for low-token agent handoff. Local implementation and

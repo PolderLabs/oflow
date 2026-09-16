@@ -40,7 +40,9 @@ oflow auth clear              # remove the stored token for this host
 oflow doctor                  # check local setup and GitLab access prerequisites
 oflow doctor --check-api      # also make a read-only GitLab API request
 oflow work                    # list open GitLab issues/work items
+oflow work --label "Ready" --limit 20
 oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
+oflow sync --label "Ready" --limit 20 --json
 oflow assess --story 42 --json # story progress, acceptance, and local evidence
 oflow capabilities --json      # show implemented, planned, and optional paths
 oflow glab api <endpoint>      # optional read-only glab API fallback
@@ -97,6 +99,13 @@ iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
 oflow does not require an embedded model or spend tokens generating a duplicate
 summary.
+
+Use `--label`, `--milestone`, `--assignee`, `--search`, and
+`--updated-after` with `work` or `sync` to filter issues server-side. Use
+`--limit 1..100` to cap the returned work items; the default is 100 for
+`work` and 50 for `sync`. `--assignee none` finds unassigned items and
+`--assignee any` finds assigned items. These filters reduce both API response
+size and the context an agent must read.
 
 Use `--epic <id>` to assign an issue to an existing epic, or `--epic none` on
 an update to clear the association. This uses GitLab's `epic_id` issue field;

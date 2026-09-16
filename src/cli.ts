@@ -49,6 +49,7 @@ import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.
 import { formatSyncMarkdown, syncProject } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
 import type {
+  GitLabIssueFilters,
   GitLabIssueUpdate,
   GitLabBoardUpdate,
   GitLabLabelUpdate,
@@ -87,6 +88,9 @@ interface CliOptions {
   milestone?: string;
   epic?: string;
   assignee?: string;
+  search?: string;
+  updatedAfter?: string;
+  limit?: string;
   board?: string;
   list?: string;
   position?: string;
@@ -144,7 +148,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       }
       case "work": {
         const state = normalizeIssueState(options.state);
-        const issues = await listWorkItems(root, state);
+        const issues = await listWorkItems(
+          root,
+          state,
+          collectIssueFilters(options),
+          parseIssueLimit(options.limit, 100),
+        );
         print(
           options.json,
           { state, issues },
@@ -157,7 +166,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const storyIid = options.story
           ? await resolveStoryIid(root, options.story)
           : await resolveOptionalStoryIid(root);
-        const result = await syncProject(root, { state, storyIid });
+        const result = await syncProject(root, {
+          state,
+          storyIid,
+          issueFilters: collectIssueFilters(options),
+          issueLimit: options.limit === undefined
+            ? undefined
+            : parseIssueLimit(options.limit, 100),
+        });
         print(options.json, result, formatSyncMarkdown(result));
         return result.warnings.length === 0 ? 0 : 1;
       }
@@ -553,6 +569,9 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--milestone" ||
       argument === "--epic" ||
       argument === "--assignee" ||
+      argument === "--search" ||
+      argument === "--updated-after" ||
+      argument === "--limit" ||
       argument === "--board" ||
       argument === "--list" ||
       argument === "--position" ||
@@ -599,6 +618,12 @@ function parseArgs(argv: string[]): CliOptions {
         options.epic = value;
       } else if (argument === "--assignee") {
         options.assignee = value;
+      } else if (argument === "--search") {
+        options.search = value;
+      } else if (argument === "--updated-after") {
+        options.updatedAfter = value;
+      } else if (argument === "--limit") {
+        options.limit = value;
       } else if (argument === "--board") {
         options.board = value;
       } else if (argument === "--list") {
@@ -652,6 +677,12 @@ function parseArgs(argv: string[]): CliOptions {
       options.epic = argument.slice("--epic=".length);
     } else if (argument.startsWith("--assignee=")) {
       options.assignee = argument.slice("--assignee=".length);
+    } else if (argument.startsWith("--search=")) {
+      options.search = argument.slice("--search=".length);
+    } else if (argument.startsWith("--updated-after=")) {
+      options.updatedAfter = argument.slice("--updated-after=".length);
+    } else if (argument.startsWith("--limit=")) {
+      options.limit = argument.slice("--limit=".length);
     } else if (argument.startsWith("--board=")) {
       options.board = argument.slice("--board=".length);
     } else if (argument.startsWith("--list=")) {
@@ -774,6 +805,54 @@ function parseEpicId(value: string, allowClear: boolean): number {
     );
   }
   return parsed;
+}
+
+function parseIssueLimit(value: string | undefined, defaultLimit: number): number {
+  if (value === undefined) {
+    return defaultLimit;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new OflowError(
+      "Issue limit must be an integer between 1 and 100.",
+      "INVALID_ISSUE_LIMIT",
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 100) {
+    throw new OflowError(
+      "Issue limit must be an integer between 1 and 100.",
+      "INVALID_ISSUE_LIMIT",
+    );
+  }
+  return parsed;
+}
+
+function collectIssueFilters(options: CliOptions): GitLabIssueFilters {
+  const filters: GitLabIssueFilters = {};
+  if (options.label !== undefined) {
+    filters.label = requiredFilter(options.label, "--label");
+  }
+  if (options.milestone !== undefined) {
+    filters.milestone = requiredFilter(options.milestone, "--milestone");
+  }
+  if (options.assignee !== undefined) {
+    filters.assignee = requiredFilter(options.assignee, "--assignee");
+  }
+  if (options.search !== undefined) {
+    filters.search = requiredFilter(options.search, "--search");
+  }
+  if (options.updatedAfter !== undefined) {
+    filters.updatedAfter = requiredFilter(options.updatedAfter, "--updated-after");
+  }
+  return filters;
+}
+
+function requiredFilter(value: string, flag: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new OflowError(flag + " cannot be empty.", "INVALID_ISSUE_FILTER");
+  }
+  return normalized;
 }
 
 function parsePosition(value: string): number {
@@ -913,8 +992,8 @@ function helpText(): string {
     "  auth clear [--host <host>]          remove a stored token",
     "  install [--agent auto|claude|codex|both] [--dry-run]",
     "  doctor [--check-api]",
-    "  work [--state opened|closed|all]    list current GitLab work items",
-    "  sync [--story <iid>] [--json]       compact project and Scrum snapshot",
+    "  work [filters] [--json]             list current GitLab work items",
+    "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
@@ -943,6 +1022,7 @@ function helpText(): string {
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
+    "  filters: --label, --milestone, --assignee, --search, --updated-after, --limit 1..100",
   ].join("\n") + "\n";
 }
 

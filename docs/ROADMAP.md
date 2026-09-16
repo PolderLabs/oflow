@@ -77,8 +77,9 @@ This is the immediate implementation focus.
   reads without adding per-item API calls.
 - [x] List project-visible iterations/sprints.
 - [ ] Inspect iteration cadences where the GitLab version supports them.
-- [ ] Add filters for state, label, milestone, iteration, assignee, author, and
-  updated time.
+- [x] Add bounded server-side filters for state, label, milestone, assignee,
+  search, and updated time; cap work-item results with `--limit`.
+- [ ] Add iteration and author filters.
 - [ ] Add pagination, response validation, retries, and useful unsupported
   endpoint errors for every new collection.
 - [x] Produce a compact JSON evidence model for project, Scrum, merge-request,

@@ -7,6 +7,7 @@ import type {
   GitLabBoard,
   GitLabBoardList,
   GitLabIssue,
+  GitLabIssueFilters,
   GitLabIteration,
   GitLabLabel,
   GitLabMergeRequest,
@@ -19,6 +20,8 @@ import type {
 export interface SyncOptions {
   state?: IssueState;
   storyIid?: number;
+  issueFilters?: GitLabIssueFilters;
+  issueLimit?: number;
 }
 
 export interface SyncResult {
@@ -201,7 +204,12 @@ export async function syncProject(
   const [issues, mergeRequests, pipelines, labels, milestones, boards, iterations] =
     await Promise.all([
       optionalFetch(
-        () => client.listIssues(remote.projectPath, state, 50),
+        () => client.listIssues(
+          remote.projectPath,
+          state,
+          options.issueLimit ?? 50,
+          options.issueFilters,
+        ),
         "Could not read work items",
         warnings,
       ),

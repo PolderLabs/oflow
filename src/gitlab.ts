@@ -3,6 +3,7 @@ import { getGitLabToken, redactGitLabToken } from "./auth.js";
 import type {
   GitLabIssue,
   GitLabIssueCreate,
+  GitLabIssueFilters,
   GitLabIssueUpdate,
   GitLabUser,
   GitLabBoard,
@@ -91,13 +92,43 @@ export class GitLabClient {
     projectPath: string,
     state: IssueState = "opened",
     limit = 100,
+    filters: GitLabIssueFilters = {},
   ): Promise<GitLabIssue[]> {
+    const query = new URLSearchParams({
+      state,
+      per_page: String(limit),
+      order_by: "updated_at",
+      sort: "desc",
+      scope: "all",
+    });
+    if (filters.label !== undefined) {
+      query.set("labels", filters.label);
+    }
+    if (filters.milestone !== undefined) {
+      query.set("milestone", filters.milestone);
+    }
+    if (filters.search !== undefined) {
+      query.set("search", filters.search);
+    }
+    if (filters.updatedAfter !== undefined) {
+      query.set("updated_after", filters.updatedAfter);
+    }
+    if (filters.assignee !== undefined) {
+      const assignee = filters.assignee.trim();
+      if (["none", "null", "unassigned"].includes(assignee.toLowerCase())) {
+        query.set("assignee_id", "None");
+      } else if (assignee.toLowerCase() === "any") {
+        query.set("assignee_id", "Any");
+      } else {
+        for (const username of assignee.split(",").map((item) => item.trim()).filter(Boolean)) {
+          query.append("assignee_username[]", username);
+        }
+      }
+    }
     const result = await this.request<unknown>(
       "/projects/" +
         encodeURIComponent(projectPath) +
-        "/issues?state=" +
-        encodeURIComponent(state) +
-        "&per_page=" + String(limit) + "&order_by=updated_at&sort=desc",
+        "/issues?" + query.toString(),
     );
     if (!Array.isArray(result)) {
       throw new OflowError(

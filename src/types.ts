@@ -4,6 +4,14 @@ export type AgentMode = AgentName | "both" | "unknown";
 
 export type IssueState = "opened" | "closed" | "all";
 
+export interface GitLabIssueFilters {
+  label?: string;
+  milestone?: string;
+  assignee?: string;
+  search?: string;
+  updatedAfter?: string;
+}
+
 export type FileAction = "created" | "updated" | "unchanged" | "skipped";
 
 export interface AgentDetection {

@@ -42,6 +42,41 @@ test("lists project work items by state", async () => {
   }
 });
 
+test("applies server-side work-item filters without downloading descriptions", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  globalThis.fetch = async (input) => {
+    requestUrl = String(input);
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify([]),
+    };
+  };
+  try {
+    await new GitLabClient("gitlab.example.test", "test-token")
+      .listIssues("team/project", "opened", 7, {
+        label: "User Story",
+        milestone: "Sprint 1",
+        assignee: "zakar,alice",
+        search: "pod",
+        updatedAfter: "2026-01-01T00:00:00Z",
+      });
+    const query = new URL(requestUrl).searchParams;
+    assert.equal(query.get("state"), "opened");
+    assert.equal(query.get("per_page"), "7");
+    assert.equal(query.get("scope"), "all");
+    assert.equal(query.get("labels"), "User Story");
+    assert.equal(query.get("milestone"), "Sprint 1");
+    assert.deepEqual(query.getAll("assignee_username[]"), ["zakar", "alice"]);
+    assert.equal(query.get("search"), "pod");
+    assert.equal(query.get("updated_after"), "2026-01-01T00:00:00Z");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("updates an issue with a form-encoded write request", async () => {
   const originalFetch = globalThis.fetch;
   let requestMethod = "";

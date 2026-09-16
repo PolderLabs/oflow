@@ -5,6 +5,7 @@ import { GitLabClient } from "./gitlab.js";
 import { OflowError } from "./errors.js";
 import type {
   GitLabIssue,
+  GitLabIssueFilters,
   GitLabMergeRequest,
   GitLabNote,
   GitLabPipeline,
@@ -15,6 +16,8 @@ import type {
 export async function listWorkItems(
   root: string,
   state: IssueState = "opened",
+  filters: GitLabIssueFilters = {},
+  limit = 100,
 ): Promise<GitLabIssue[]> {
   const config = await loadConfig(root);
   if (!config) {
@@ -25,7 +28,7 @@ export async function listWorkItems(
   }
 
   const remote = await getGitLabRemote(root);
-  return new GitLabClient(remote.host).listIssues(remote.projectPath, state);
+  return new GitLabClient(remote.host).listIssues(remote.projectPath, state, limit, filters);
 }
 
 export function formatWorkItemsMarkdown(

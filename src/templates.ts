@@ -37,6 +37,8 @@ export const WORKFLOW_MARKDOWN = [
   "## Safety",
   "",
   "Read-only context, sync, and verification commands may run automatically.",
+  "Use work/sync filters (--label, --milestone, --assignee, --search,",
+  "--updated-after, --limit) when a smaller server-side snapshot is enough.",
   "oflow does not configure or invoke MCP servers. Use plan issue update (including",
   "--assignee username or --epic <id|none>), plan issue create/note, or",
   "plan label/milestone/board/board-list create/update, then approve, apply, and verify for supported writes. Do not",
@@ -54,11 +56,12 @@ export const OFLOW_README_MARKDOWN = [
   "- GitLab credentials live outside the repository; use oflow auth login.",
   "- oflow reads GitLab through its typed REST API; glab and MCP remain optional integrations.",
   "- oflow glab api is an explicit GET-only fallback for unwrapped endpoints.",
+  "- Use work/sync filters and --limit to keep agent context small on larger projects.",
   "- state/ and cache/ are local and ignored; they may contain active context.",
   "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, MRs, and pipelines.",
   "",
-  "Run oflow doctor --check-api to inspect setup and API access, oflow sync",
-  "--json for a compact snapshot, or oflow assess --story <iid> --json for",
+    "Run oflow doctor --check-api to inspect setup and API access, oflow sync",
+    "--json for a compact snapshot, or oflow assess --story <iid> --json for",
   "compact progress evidence for one story.",
 ].join("\n");
 
