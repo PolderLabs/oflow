@@ -154,6 +154,7 @@ oflow plan issue create \
 oflow plan issue update --story <iid> \
   --title "Updated title" \
   --labels "Ready,backend" \
+  --epic 12 \
   --assignee zakar \
   --due-date 2027-01-20 \
   --weight 3 \
@@ -180,6 +181,13 @@ still requires the normal `plan -> approve -> apply -> verify` sequence. GitLab
 documents `assignee_ids` on issue updates and username lookup through the Users
 API ([Issues API](https://docs.gitlab.com/api/issues/),
 [Users API](https://docs.gitlab.com/api/users/)).
+
+Use `--epic <id>` on issue create/update to associate a work item with an
+existing epic, or `--epic none` on update to clear it. GitLab documents
+`epic_id` for both project issue creation and updates; it is a Premium and
+Ultimate feature. oflow verifies the returned epic/parent ID after apply.
+Creating or editing group epics themselves remains a separate, version-aware
+roadmap item because GitLab's older Epics REST collection is deprecated.
 
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before

@@ -92,6 +92,7 @@ export interface GitLabIssueUpdate {
   description?: string;
   labels?: string;
   milestone?: string;
+  epic_id?: number;
   due_date?: string;
   weight?: number;
   assignee_ids?: number[];
@@ -103,6 +104,7 @@ export interface GitLabIssueCreate {
   description?: string;
   labels?: string;
   milestone?: string;
+  epic_id?: number;
   due_date?: string;
   weight?: number;
   assignee_ids?: number[];

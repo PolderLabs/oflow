@@ -39,6 +39,7 @@ test("issue update plans require approval and verify the applied result", async 
     assignees: [],
     due_date: null,
     weight: null,
+    epic: null,
     web_url: "https://gitlab.example.test/team/project/-/issues/42",
   };
   try {
@@ -64,6 +65,9 @@ test("issue update plans require approval and verify the applied result", async 
           state: body.get("state_event") === "close" ? "closed" : issue.state,
           due_date: body.get("due_date") ?? issue.due_date,
           weight: body.has("weight") ? Number(body.get("weight")) : issue.weight,
+          epic: body.has("epic_id") && Number(body.get("epic_id")) > 0
+            ? { id: Number(body.get("epic_id")), iid: 9, title: "Product epic" }
+            : null,
           assignees: body.getAll("assignee_ids[]").filter(Boolean).map((id) => ({ id: Number(id), username: Number(id) === 6 ? "alice" : "zakar" })),
         };
       }
@@ -91,10 +95,12 @@ test("issue update plans require approval and verify the applied result", async 
       labels: "User Story,Ready",
       due_date: "2027-01-20",
       weight: 3,
+      epic_id: 12,
       state_event: "close",
     }, "zakar,alice");
     assert.equal(created.plan.state, "draft");
     assert.deepEqual(created.plan.operation.changes.assignee_ids, [5, 6]);
+    assert.equal(created.plan.operation.changes.epic_id, 12);
     const approved = await approvePlan(root, created.path);
     assert.equal(approved.plan.state, "approved");
     const applied = await applyPlan(root, created.path);
@@ -102,6 +108,11 @@ test("issue update plans require approval and verify the applied result", async 
     const verified = await verifyPlan(root, created.path);
     assert.equal(verified.plan.state, "verified");
     assert.equal(verified.plan.verification.passed, true);
+
+    const cleared = await createIssueUpdatePlan(root, 42, { epic_id: 0 });
+    await approvePlan(root, cleared.path);
+    await applyPlan(root, cleared.path);
+    assert.equal((await verifyPlan(root, cleared.path)).plan.state, "verified");
 
     const stored = JSON.parse(await readFile(created.path, "utf8"));
     stored.operation.changes.title = "tampered";
@@ -150,6 +161,9 @@ test("issue create plans stay guarded and verify the created work item", async (
           description: body.get("description"),
           labels: (body.get("labels") ?? "").split(",").filter(Boolean),
           milestone: { name: body.get("milestone") },
+          epic: body.has("epic_id")
+            ? { id: Number(body.get("epic_id")), iid: 9, title: "Product epic" }
+            : null,
           due_date: body.get("due_date"),
           weight: Number(body.get("weight")),
           assignees: body.getAll("assignee_ids[]").map((id) => ({ id: Number(id), username: "zakar" })),
@@ -169,12 +183,14 @@ test("issue create plans stay guarded and verify the created work item", async (
       description: "Acceptance criteria:\n- [ ] AC-1: Reservation persists",
       labels: "User Story,Ready",
       milestone: "Sprint 5",
+      epic_id: 12,
       due_date: "2027-01-20",
       weight: 3,
     }, "zakar");
     assert.equal(created.plan.state, "draft");
     assert.equal(created.plan.operation.kind, "issue.create");
     assert.deepEqual(created.plan.operation.issue.assignee_ids, [5]);
+    assert.equal(created.plan.operation.issue.epic_id, 12);
     await approvePlan(root, created.path);
     const applied = await applyPlan(root, created.path);
     assert.equal(applied.plan.result.iid, 77);

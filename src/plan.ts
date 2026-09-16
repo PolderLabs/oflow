@@ -259,7 +259,7 @@ export async function createIssueUpdatePlan(
   );
   if (Object.keys(operationChanges).length === 0) {
     throw new OflowError(
-      "No issue changes were provided. Use --title, --description, --labels, --milestone, --due-date, --weight, --assignee, or --state.",
+      "No issue changes were provided. Use --title, --description, --labels, --milestone, --epic, --due-date, --weight, --assignee, or --state.",
       "EMPTY_PLAN",
     );
   }
@@ -1229,6 +1229,15 @@ function validateIssueChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
       "INVALID_ISSUE_WEIGHT",
     );
   }
+  if (
+    changes.epic_id !== undefined &&
+    (!Number.isSafeInteger(changes.epic_id) || changes.epic_id < 0)
+  ) {
+    throw new OflowError(
+      "Issue epic ID must be a non-negative integer; use 0 to clear the epic.",
+      "INVALID_EPIC_ID",
+    );
+  }
   if (changes.assignee_ids !== undefined) {
     changes.assignee_ids = validateAssigneeIds(changes.assignee_ids);
   }
@@ -1249,11 +1258,21 @@ function validateIssueCreate(issue: GitLabIssueCreate): GitLabIssueCreate {
       "INVALID_ISSUE_WEIGHT",
     );
   }
+  if (
+    issue.epic_id !== undefined &&
+    (!Number.isSafeInteger(issue.epic_id) || issue.epic_id < 0)
+  ) {
+    throw new OflowError(
+      "Issue epic ID must be a non-negative integer.",
+      "INVALID_EPIC_ID",
+    );
+  }
   const result: GitLabIssueCreate = {
     title,
     description: issue.description,
     labels: issue.labels,
     milestone: issue.milestone,
+    epic_id: issue.epic_id,
     due_date: issue.due_date,
     weight: issue.weight,
     assignee_ids: validateAssigneeIds(issue.assignee_ids),
@@ -1429,6 +1448,10 @@ function verifyIssue(
   }
   if (changes.milestone !== undefined) {
     checks.push(check("milestone", changes.milestone, namedValue(issue.milestone)));
+  }
+  if (changes.epic_id !== undefined) {
+    const expected = changes.epic_id === 0 ? "" : String(changes.epic_id);
+    checks.push(check("epic_id", expected, issueParentId(issue)));
   }
   if (changes.due_date !== undefined) {
     checks.push(check("due_date", changes.due_date, issue.due_date ?? ""));
@@ -1846,4 +1869,13 @@ function namedValue(value: unknown): string | null {
   const record = value as Record<string, unknown>;
   const name = record.name ?? record.title;
   return typeof name === "string" ? name : null;
+}
+
+function issueParentId(issue: GitLabIssue): string {
+  const parent = issue.epic ?? issue.parent;
+  if (!parent || typeof parent !== "object") {
+    return "";
+  }
+  const id = (parent as Record<string, unknown>).id;
+  return typeof id === "number" || typeof id === "string" ? String(id) : "";
 }

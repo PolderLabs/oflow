@@ -84,7 +84,7 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "apply",
         "Work Item",
         "REST",
-        "Work Item: Update; User: Read when resolving usernames",
+        "Work Item: Update (including epic association); User: Read when resolving usernames",
       ),
       capability(
         "notes.write",

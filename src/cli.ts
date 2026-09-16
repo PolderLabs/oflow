@@ -85,6 +85,7 @@ interface CliOptions {
   weight?: string;
   labels?: string;
   milestone?: string;
+  epic?: string;
   assignee?: string;
   board?: string;
   list?: string;
@@ -184,6 +185,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             description: options.description,
             labels: options.labels,
             milestone: options.milestone,
+            epic_id: options.epic === undefined
+              ? undefined
+              : parseEpicId(options.epic, false),
             due_date: options.dueDate,
             weight: options.weight === undefined
               ? undefined
@@ -211,6 +215,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             description: options.description,
             labels: options.labels,
             milestone: options.milestone,
+            epic_id: options.epic === undefined
+              ? undefined
+              : parseEpicId(options.epic, true),
             due_date: options.dueDate,
             weight: options.weight === undefined
               ? undefined
@@ -544,6 +551,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--weight" ||
       argument === "--labels" ||
       argument === "--milestone" ||
+      argument === "--epic" ||
       argument === "--assignee" ||
       argument === "--board" ||
       argument === "--list" ||
@@ -587,6 +595,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.labels = value;
       } else if (argument === "--milestone") {
         options.milestone = value;
+      } else if (argument === "--epic") {
+        options.epic = value;
       } else if (argument === "--assignee") {
         options.assignee = value;
       } else if (argument === "--board") {
@@ -638,6 +648,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.labels = argument.slice("--labels=".length);
     } else if (argument.startsWith("--milestone=")) {
       options.milestone = argument.slice("--milestone=".length);
+    } else if (argument.startsWith("--epic=")) {
+      options.epic = argument.slice("--epic=".length);
     } else if (argument.startsWith("--assignee=")) {
       options.assignee = argument.slice("--assignee=".length);
     } else if (argument.startsWith("--board=")) {
@@ -739,6 +751,27 @@ function parseNonNegativeInteger(value: string, field: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new OflowError(field + " must be a non-negative integer.", "INVALID_ISSUE_WEIGHT");
+  }
+  return parsed;
+}
+
+function parseEpicId(value: string, allowClear: boolean): number {
+  const normalized = value.trim().toLowerCase();
+  if (allowClear && ["none", "null", "unassigned"].includes(normalized)) {
+    return 0;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new OflowError(
+      "Epic ID must be a positive integer" + (allowClear ? " or none." : "."),
+      "INVALID_EPIC_ID",
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new OflowError(
+      "Epic ID must be a positive integer" + (allowClear ? " or none." : "."),
+      "INVALID_EPIC_ID",
+    );
   }
   return parsed;
 }
@@ -909,6 +942,7 @@ function helpText(): string {
     "  --dry-run      preview install changes",
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
+    "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
   ].join("\n") + "\n";
 }
 

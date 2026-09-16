@@ -100,13 +100,15 @@ This is the immediate implementation focus.
 - [x] Update issue/work-item fields through the guarded plan path.
 - [x] Create work items through guarded plans; creation is non-retryable.
 - [x] Close/reopen and assign work items through guarded issue updates.
+- [x] Assign/remove work items from an existing epic through guarded issue
+  updates; keep group-level epic CRUD separate.
 - [x] Add issue/work-item progress notes through the guarded plan path.
 - [x] Create/update labels through guarded plans; keep deletion disabled.
 - [ ] Apply/remove labels from bulk planning workflows.
 - [x] Create/update project milestones through guarded plans; keep deletion disabled.
 - [x] Create/update boards and label-backed board lists through guarded plans;
   keep deletion disabled and use issue labels for board-card movement.
-- [ ] Create/update epics and relationships at group scope.
+- [ ] Create/update epics and broader relationships at group scope.
 - [ ] Create/update iterations/cadences only after validating the target
   GitLab version and permission model.
 - [ ] Make safe retries idempotent and refuse ambiguous duplicate operations.

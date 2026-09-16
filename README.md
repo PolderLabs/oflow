@@ -49,6 +49,7 @@ oflow context --story 42     # print story, epic, MRs, pipelines, and notes
 oflow mr --story 42           # print an acceptance-aware MR description
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
+oflow plan issue update --story 42 --epic 12
 oflow plan issue note --story 42 --body "Progress: API contract confirmed."
 oflow plan label update --label "Ready" --color "#36A269"
 oflow plan milestone update --milestone 1 --state closed
@@ -88,7 +89,7 @@ need them.
 
 The current release uses the GitLab REST API for deterministic, compact
 planning snapshots and guarded Scrum writes: updating issues/work items (including
-assignment by username),
+assignment by username and existing epic association),
 adding issue notes, creating/updating project labels and milestones, and
 creating/updating boards and label-backed board lists.
 `oflow sync --json` gathers bounded project, work-item, label, milestone, board,
@@ -97,13 +98,19 @@ specific story is selected. The agent performs the reasoning over that data;
 oflow does not require an embedded model or spend tokens generating a duplicate
 summary.
 
+Use `--epic <id>` to assign an issue to an existing epic, or `--epic none` on
+an update to clear the association. This uses GitLab's `epic_id` issue field;
+it is available on Premium and Ultimate, and the association is verified after
+apply. Group-level epic creation and broader Work Item hierarchy operations
+remain roadmap work.
+
 GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
 and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
 REST adapter as the predictable core and does not silently invoke or configure
 MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
 The current apply-capable operations are `plan issue create`, `plan issue update`
-(including guarded assignment), `plan issue note`,
+(including guarded assignment and existing epic association), `plan issue note`,
 `plan label create/update`, `plan milestone create/update`, and guarded board/
 board-list administration; board-card movement, iterations, and merge-request
 writes remain roadmap work.

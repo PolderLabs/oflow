@@ -38,7 +38,7 @@ export const WORKFLOW_MARKDOWN = [
   "",
   "Read-only context, sync, and verification commands may run automatically.",
   "oflow does not configure or invoke MCP servers. Use plan issue update (including",
-  "--assignee username), plan issue create/note, or",
+  "--assignee username or --epic <id|none>), plan issue create/note, or",
   "plan label/milestone/board/board-list create/update, then approve, apply, and verify for supported writes. Do not",
   "use planned commands until oflow capabilities reports them as supported.",
 ].join("\n");

@@ -30,7 +30,8 @@ agent -> oflow intent/sync/plan/approve/apply/verify
 ```
 
 The current release implements the REST path for compact read commands, the
-guarded issue-update/note/label/milestone/board/board-list plans, and an
+guarded issue-update/note/label/milestone/board/board-list plans, including
+existing epic association through issue `epic_id`, and an
 explicit read-only `oflow glab api` fallback. Board lists are currently
 label-backed; board-card movement uses guarded issue label updates. This
 document does not claim that `oflow` silently invokes `glab` or MCP; both
