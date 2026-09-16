@@ -64,7 +64,8 @@ oflow epic --iid 12            # inspect one epic's parent/child hierarchy
 oflow iteration --state current --json # focused project-visible sprint view
 oflow iteration --group --state current --json # parent-group sprint schedule
 oflow cadence --json                  # parent-group cadence schedule
-oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
+oflow sync --summary --json    # token-light project state and planning health
+oflow sync --json              # full bounded project, Scrum, MR, and pipeline snapshot
 oflow sync --epics --json      # include a bounded group-epic snapshot (opt-in)
 oflow sync --label "Ready" --limit 20 --json
 oflow sync --stale-days 14 --json # flag returned work items with no recent update

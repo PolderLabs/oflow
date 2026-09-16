@@ -99,7 +99,7 @@ The first implementation keeps deterministic collection in `oflow` and lets
 the agent perform the reasoning. In other words:
 
 ```text
-oflow sync --json  ->  structured evidence  ->  agent analysis and advice
+oflow sync --summary --json  ->  structured evidence  ->  agent analysis and advice
 ```
 
 `oflow` must not require an embedded model credential to provide useful sync

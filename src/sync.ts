@@ -657,7 +657,7 @@ export function formatSyncMarkdown(result: SyncResult): string {
   }
   lines.push(
     "",
-    "Use `oflow sync --json` for the compact agent handoff or `oflow context --story <iid>` for full story evidence.",
+    "Use `oflow sync --summary --json` for the token-light agent handoff or `oflow context --story <iid>` for full story evidence.",
     "",
   );
   return lines.join("\n");

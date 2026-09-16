@@ -92,7 +92,7 @@ export function formatIterationListMarkdown(result: IterationListResult): string
   }
   lines.push(
     "",
-    "Use `oflow sync --json` for the combined work-item and planning snapshot.",
+    "Use `oflow sync --summary --json` for the token-light combined snapshot; use `oflow sync --json` when full bounded collections are needed.",
     "",
   );
   return lines.join("\n");
