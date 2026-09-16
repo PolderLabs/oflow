@@ -22,6 +22,33 @@ test("parses stable acceptance criterion ids", () => {
   ]);
 });
 
+test("parses GitLab bold acceptance headings and excludes the next section", () => {
+  const criteria = parseAcceptanceCriteria([
+    "**User story**",
+    "As a visitor, I want a reservation.",
+    "**Acceptance criteria**",
+    "* [ ] The reservation can be created.",
+    "- [x] AC-2: The confirmation is displayed.",
+    "**Definition of Done**",
+    "* [ ] This is not an acceptance criterion.",
+  ].join("\n"));
+
+  assert.deepEqual(criteria, [
+    { id: "AC-1", text: "The reservation can be created.", checked: false },
+    { id: "AC-2", text: "The confirmation is displayed.", checked: true },
+  ]);
+});
+
+test("normalizes escaped newlines from imported GitLab descriptions", () => {
+  const criteria = parseAcceptanceCriteria(
+    "**Acceptance criteria**\\n- [ ] The imported story remains readable.\\n**Notes**\\n- [ ] Not a criterion.",
+  );
+
+  assert.deepEqual(criteria, [
+    { id: "AC-1", text: "The imported story remains readable.", checked: false },
+  ]);
+});
+
 test("requires checked MR evidence and a successful pipeline", () => {
   const criteria = parseAcceptanceCriteria([
     "Acceptance criteria",
@@ -41,4 +68,3 @@ test("requires checked MR evidence and a successful pipeline", () => {
   assert.equal(evaluateCriteria(criteria, description, "success").passed, true);
   assert.equal(evaluateCriteria(criteria, description, "running").passed, false);
 });
-

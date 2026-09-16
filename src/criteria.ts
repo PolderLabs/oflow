@@ -8,11 +8,9 @@ export const criterionPattern =
   /^\s*[-*]\s*\[([ xX])\]\s*(?:(?:([A-Za-z]+-\d+))\s*[:.)\-–—]\s*)?(.+?)\s*$/i;
 
 export function acceptanceLines(description: string | null | undefined): string[] {
-  const lines = (description ?? "").split(/\r?\n/);
+  const lines = normalizeDescription(description).split(/\r?\n/);
   const headingIndex = lines.findIndex(
-    (line) =>
-      /^\s*#{1,6}\s*acceptance criteria\s*:?[ \t]*$/i.test(line) ||
-      /^\s*acceptance criteria\s*:?[ \t]*$/i.test(line),
+    (line) => isAcceptanceHeading(line),
   );
   if (headingIndex < 0) {
     return [];
@@ -20,7 +18,7 @@ export function acceptanceLines(description: string | null | undefined): string[
 
   const result: string[] = [];
   for (let index = headingIndex + 1; index < lines.length; index += 1) {
-    if (/^\s*#{1,6}\s+/.test(lines[index])) {
+    if (isSectionHeading(lines[index])) {
       break;
     }
     result.push(lines[index]);
@@ -160,4 +158,20 @@ export function evaluateCriteria(
 function isPlaceholderEvidence(value: string): boolean {
   return /^(?:tbd|todo|none|n\/?a|pending|not available|-)$/i.test(value) ||
     /^(?:tbd|todo)\b/i.test(value);
+}
+
+function normalizeDescription(description: string | null | undefined): string {
+  return (description ?? "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r");
+}
+
+function isAcceptanceHeading(line: string): boolean {
+  return /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?acceptance criteria\s*:?(?:\*\*|__)?\s*$/i.test(line);
+}
+
+function isSectionHeading(line: string): boolean {
+  return /^\s*#{1,6}\s+/.test(line) ||
+    /^\s*(?:\*\*|__)[^\r\n]+(?:\*\*|__)\s*:?[ \t]*$/.test(line);
 }
