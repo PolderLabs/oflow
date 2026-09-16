@@ -58,6 +58,9 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     const result = await syncProject(root);
     assert.equal(result.project.path, "team/project");
     assert.equal(result.stats.workItems, 1);
+    assert.equal(result.query.issueLimit, 50);
+    assert.deepEqual(result.query.issueFilters, {});
+    assert.equal(result.workItemsMayBeTruncated, false);
     assert.deepEqual(result.workItems[0].parent, {
       iid: 9,
       title: "Reservations",
@@ -73,6 +76,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.doesNotMatch(formatSyncMarkdown(result), /description/);
 
     const storyResult = await syncProject(root, { storyIid: 1 });
+    assert.equal(storyResult.workItemsMayBeTruncated, false);
     assert.equal(storyResult.story.parent.title, "Reservations");
     assert.equal(storyResult.story.notes[0].body, "Blocked on hardware access");
     assert.equal(storyResult.story.recentNotes, 1);

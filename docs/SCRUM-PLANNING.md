@@ -44,6 +44,8 @@ server-side issue filter. Use `--limit 1..100` to cap returned work items
 (`50` by default for `sync`, `100` for `work`). `--assignee none` and
 `--assignee any` target unassigned and assigned work respectively. This is
 the preferred way to keep agent handoffs small on larger projects.
+The JSON snapshot reports the effective query and `workItemsMayBeTruncated` so
+agents can tell when a follow-up sync with a larger limit is needed.
 
 It emits human-readable Markdown and a compact `--json` result. Descriptions
 are excluded from the overall snapshot and fetched only for the selected story,

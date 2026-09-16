@@ -37,6 +37,12 @@ export interface SyncResult {
     groupPath: string | null;
   };
   workItems: SyncWorkItem[];
+  workItemsMayBeTruncated: boolean;
+  query: {
+    state: IssueState;
+    issueLimit: number;
+    issueFilters: GitLabIssueFilters;
+  };
   mergeRequests: SyncMergeRequest[];
   pipelines: SyncPipeline[];
   planning: {
@@ -188,6 +194,8 @@ export async function syncProject(
   const branch = await getCurrentBranch(root);
   const groupPath = parentGroupPath(remote.projectPath);
   const state = options.state ?? "opened";
+  const issueLimit = options.issueLimit ?? 50;
+  const issueFilters = options.issueFilters ?? {};
   const warnings: string[] = [];
 
   if (
@@ -207,8 +215,8 @@ export async function syncProject(
         () => client.listIssues(
           remote.projectPath,
           state,
-          options.issueLimit ?? 50,
-          options.issueFilters,
+          issueLimit,
+          issueFilters,
         ),
         "Could not read work items",
         warnings,
@@ -260,6 +268,13 @@ export async function syncProject(
     project: compactProject(project),
     repository: { branch, groupPath },
     workItems: issues.map(compactWorkItem),
+    workItemsMayBeTruncated: issues.length === issueLimit &&
+      !warnings.some((warning) => warning.startsWith("Could not read work items")),
+    query: {
+      state,
+      issueLimit,
+      issueFilters,
+    },
     mergeRequests: mergeRequests.map(compactMergeRequest),
     pipelines: pipelines.map(compactPipeline),
     planning: {
@@ -291,10 +306,14 @@ export function formatSyncMarkdown(result: SyncResult): string {
     "Generated: " + result.generatedAt,
     "Project: [" + result.project.path + "](" + result.project.webUrl + ")",
     "Branch: " + (result.repository.branch ?? "detached/unknown"),
+    "Work-item query: " + result.query.state +
+      "; limit " + String(result.query.issueLimit) +
+      (formatIssueFilters(result.query.issueFilters) || ""),
     "",
     "## Snapshot",
     "",
-    "- Work items: " + String(result.stats.workItems),
+    "- Work items: " + String(result.stats.workItems) +
+      (result.workItemsMayBeTruncated ? " (more may exist)" : ""),
     "- Open merge requests: " + String(result.stats.mergeRequests),
     "- Pipelines: " + String(result.stats.pipelines),
     "- Labels: " + String(result.stats.labels),
@@ -672,6 +691,13 @@ function compactParent(value: unknown): SyncParent | null {
     iid,
     webUrl: typeof record.web_url === "string" ? record.web_url : null,
   };
+}
+
+function formatIssueFilters(filters: GitLabIssueFilters): string {
+  const entries = Object.entries(filters)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => key + "=" + JSON.stringify(value));
+  return entries.length > 0 ? "; filters: " + entries.join(", ") : "";
 }
 
 function linkOrText(value: string, url: string | null): string {
