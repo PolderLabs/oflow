@@ -133,6 +133,9 @@ non-destructive operations through guarded plans, but keeps board deletion and
 direct card movement out of the default capability surface. A card's workflow
 state is represented by the issue labels that back the board lists, so agents
 can use the existing issue update plan and verify the resulting issue state.
+For focused board movement, use GitLab's `add_labels`/`remove_labels` issue
+update fields so unrelated labels are preserved; use full `labels` replacement
+only when the complete set is intentional. See the [Issues API](https://docs.gitlab.com/api/issues/).
 
 GitLab's fine-grained REST permission mapping also gives us an explicit way to
 document each capability. For the current Scrum scope, start with the

@@ -53,6 +53,7 @@ oflow mr --iid 8 --json       # read one compact merge-request status
 oflow mr --iid 8 --full       # include the MR description when needed
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
+oflow plan issue update --story 42 --add-labels "Ready" --remove-labels "In Progress"
 oflow plan issue update --story 42 --epic 12
 oflow plan issue note --story 42 --body "Progress: API contract confirmed."
 oflow plan label update --label "Ready" --color "#36A269"
@@ -132,6 +133,11 @@ remain roadmap work.
 
 Use `--milestone none` on an issue update to clear its sprint/timebox
 assignment; named milestones continue to use `--milestone "Sprint 1"`.
+
+For issue labels, `--labels` replaces the complete label set. Prefer
+`--add-labels` and `--remove-labels` when changing one workflow label, because
+those operations preserve unrelated labels and are verified after apply. Do
+not mix replacement and additive/removal label flags in one plan.
 
 GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
 and read-only endpoint fallbacks—not a replacement for GitLab permissions. The

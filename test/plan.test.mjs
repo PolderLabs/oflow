@@ -58,10 +58,18 @@ test("issue update plans require approval and verify the applied result", async 
       const url = new URL(String(input));
       if ((init?.method ?? "GET") === "PUT") {
         const body = new URLSearchParams(String(init.body));
+        const replacement = body.get("labels");
+        const additions = (body.get("add_labels") ?? "").split(",").filter(Boolean);
+        const removals = (body.get("remove_labels") ?? "").split(",").filter(Boolean);
+        let labels = replacement === null ? [...issue.labels] : replacement.split(",").filter(Boolean);
+        for (const label of additions) {
+          if (!labels.includes(label)) labels.push(label);
+        }
+        labels = labels.filter((label) => !removals.includes(label));
         issue = {
           ...issue,
           title: body.get("title") ?? issue.title,
-          labels: (body.get("labels") ?? issue.labels.join(",")).split(","),
+          labels,
           state: body.get("state_event") === "close" ? "closed" : issue.state,
           due_date: body.get("due_date") ?? issue.due_date,
           weight: body.has("weight") ? Number(body.get("weight")) : issue.weight,
@@ -119,6 +127,32 @@ test("issue update plans require approval and verify the applied result", async 
     await approvePlan(root, cleared.path);
     await applyPlan(root, cleared.path);
     assert.equal((await verifyPlan(root, cleared.path)).plan.state, "verified");
+
+    const labelDelta = await createIssueUpdatePlan(root, 42, {
+      add_labels: "Keep",
+      remove_labels: "Ready",
+    });
+    await approvePlan(root, labelDelta.path);
+    await applyPlan(root, labelDelta.path);
+    const verifiedLabelDelta = await verifyPlan(root, labelDelta.path);
+    assert.equal(verifiedLabelDelta.plan.state, "verified");
+    assert.equal(verifiedLabelDelta.plan.verification.passed, true);
+    assert.deepEqual(issue.labels.sort(), ["Keep", "User Story"]);
+
+    await assert.rejects(
+      () => createIssueUpdatePlan(root, 42, {
+        labels: "Only",
+        add_labels: "Keep",
+      }),
+      { code: "DUPLICATE_ISSUE_LABELS" },
+    );
+    await assert.rejects(
+      () => createIssueUpdatePlan(root, 42, {
+        add_labels: "Keep",
+        remove_labels: "Keep",
+      }),
+      { code: "CONFLICTING_ISSUE_LABELS" },
+    );
 
     const stored = JSON.parse(await readFile(created.path, "utf8"));
     stored.operation.changes.title = "tampered";

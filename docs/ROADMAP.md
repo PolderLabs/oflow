@@ -107,6 +107,7 @@ This is the immediate implementation focus.
   updates; keep group-level epic CRUD separate.
 - [x] Add issue/work-item progress notes through the guarded plan path.
 - [x] Create/update labels through guarded plans; keep deletion disabled.
+- [x] Apply/remove labels from guarded issue planning updates.
 - [ ] Apply/remove labels from bulk planning workflows.
 - [x] Create/update project milestones through guarded plans; keep deletion disabled.
 - [x] Create/update boards and label-backed board lists through guarded plans;

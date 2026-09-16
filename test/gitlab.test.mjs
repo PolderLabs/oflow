@@ -121,6 +121,8 @@ test("updates an issue with a form-encoded write request", async () => {
       .updateIssue("team/project", 42, {
         title: "Updated story",
         labels: "User Story,Ready",
+        add_labels: "backend",
+        remove_labels: "stale",
         state_event: "close",
       });
     assert.equal(issue.title, "Updated story");
@@ -129,6 +131,8 @@ test("updates an issue with a form-encoded write request", async () => {
     const body = new URLSearchParams(requestBody);
     assert.equal(body.get("title"), "Updated story");
     assert.equal(body.get("labels"), "User Story,Ready");
+    assert.equal(body.get("add_labels"), "backend");
+    assert.equal(body.get("remove_labels"), "stale");
     assert.equal(body.get("state_event"), "close");
   } finally {
     globalThis.fetch = originalFetch;

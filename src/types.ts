@@ -105,6 +105,8 @@ export interface GitLabIssueUpdate {
   title?: string;
   description?: string;
   labels?: string;
+  add_labels?: string;
+  remove_labels?: string;
   milestone?: string;
   milestone_id?: number;
   epic_id?: number;

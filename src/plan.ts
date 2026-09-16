@@ -259,7 +259,7 @@ export async function createIssueUpdatePlan(
   );
   if (Object.keys(operationChanges).length === 0) {
     throw new OflowError(
-      "No issue changes were provided. Use --title, --description, --labels, --milestone, --epic, --due-date, --weight, --assignee, or --state.",
+      "No issue changes were provided. Use --title, --description, --labels, --add-labels, --remove-labels, --milestone, --epic, --due-date, --weight, --assignee, or --state.",
       "EMPTY_PLAN",
     );
   }
@@ -1217,6 +1217,29 @@ function cleanChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
 }
 
 function validateIssueChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
+  if (
+    changes.labels !== undefined &&
+    (changes.add_labels !== undefined || changes.remove_labels !== undefined)
+  ) {
+    throw new OflowError(
+      "Use either labels replacement or add_labels/remove_labels, not both.",
+      "DUPLICATE_ISSUE_LABELS",
+    );
+  }
+  const addedLabels = changes.add_labels === undefined
+    ? []
+    : validateIssueLabelList(changes.add_labels, "Added issue labels");
+  const removedLabels = changes.remove_labels === undefined
+    ? []
+    : validateIssueLabelList(changes.remove_labels, "Removed issue labels");
+  const overlappingLabels = addedLabels.filter((label) => removedLabels.includes(label));
+  if (overlappingLabels.length > 0) {
+    throw new OflowError(
+      "The same label cannot be added and removed in one issue update: " +
+        overlappingLabels.join(", ") + ".",
+      "CONFLICTING_ISSUE_LABELS",
+    );
+  }
   if (changes.due_date !== undefined) {
     validateDate(changes.due_date, "Issue due date");
   }
@@ -1461,6 +1484,13 @@ function verifyIssue(
     const actual = normalizeLabels((issue.labels ?? []).join(", ")).join(", ");
     checks.push(check("labels", expected, actual));
   }
+  const actualLabels = normalizeLabels((issue.labels ?? []).join(", "));
+  if (changes.add_labels !== undefined) {
+    checks.push(checkLabelsPresent("labels.add", changes.add_labels, actualLabels));
+  }
+  if (changes.remove_labels !== undefined) {
+    checks.push(checkLabelsAbsent("labels.remove", changes.remove_labels, actualLabels));
+  }
   if (changes.milestone !== undefined) {
     checks.push(check("milestone", changes.milestone, namedValue(issue.milestone)));
   }
@@ -1671,6 +1701,47 @@ function normalizeLabels(value: string): string[] {
     .map((label) => label.trim())
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right));
+}
+
+function validateIssueLabelList(value: string, field: string): string[] {
+  const labels = normalizeLabels(value);
+  if (labels.length === 0) {
+    throw new OflowError(
+      field + " must contain at least one comma-separated label.",
+      "INVALID_ISSUE_LABELS",
+    );
+  }
+  return labels;
+}
+
+function checkLabelsPresent(
+  field: string,
+  expectedValue: string,
+  actualLabels: string[],
+): PlanVerification["checks"][number] {
+  const expectedLabels = normalizeLabels(expectedValue);
+  const missing = expectedLabels.filter((label) => !actualLabels.includes(label));
+  return {
+    field,
+    expected: "present: " + expectedLabels.join(", "),
+    actual: actualLabels.length > 0 ? actualLabels.join(", ") : "none",
+    passed: missing.length === 0,
+  };
+}
+
+function checkLabelsAbsent(
+  field: string,
+  expectedValue: string,
+  actualLabels: string[],
+): PlanVerification["checks"][number] {
+  const expectedLabels = normalizeLabels(expectedValue);
+  const present = expectedLabels.filter((label) => actualLabels.includes(label));
+  return {
+    field,
+    expected: "absent: " + expectedLabels.join(", "),
+    actual: actualLabels.length > 0 ? actualLabels.join(", ") : "none",
+    passed: present.length === 0,
+  };
 }
 
 function cleanLabelChanges(changes: GitLabLabelUpdate): GitLabLabelUpdate {

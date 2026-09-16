@@ -178,6 +178,8 @@ oflow plan issue update --story <iid> \
   --due-date 2027-01-20 \
   --weight 3 \
   --state closed
+oflow plan issue update --story <iid> \
+  --add-labels "Ready" --remove-labels "In Progress"
 oflow plan issue note --story <iid> \
   --body "Progress: API contract confirmed."
 oflow plan label create --name "Ready" --color "#428BCA" \
@@ -212,6 +214,12 @@ Use `--milestone none` on an issue update to remove its sprint/timebox
 assignment. Named milestone titles continue to use `--milestone "Sprint 1"`;
 oflow maps the clear operation to GitLab's `milestone_id=0` field and verifies
 that the issue no longer reports a milestone.
+
+`--labels` replaces the full issue label set. For board movement or a focused
+workflow-state change, prefer `--add-labels` and `--remove-labels`; GitLab
+preserves other labels and oflow verifies that additions are present and
+removals are absent. Replacement cannot be mixed with additive/removal flags,
+and one label cannot be added and removed in the same plan.
 
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before

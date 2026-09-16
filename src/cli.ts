@@ -90,6 +90,8 @@ interface CliOptions {
   dueDate?: string;
   weight?: string;
   labels?: string;
+  addLabels?: string;
+  removeLabels?: string;
   milestone?: string;
   epic?: string;
   assignee?: string;
@@ -248,6 +250,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             title: options.title,
             description: options.description,
             labels: options.labels,
+            add_labels: options.addLabels,
+            remove_labels: options.removeLabels,
             ...normalizeIssueMilestone(options.milestone),
             epic_id: options.epic === undefined
               ? undefined
@@ -595,6 +599,8 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--due-date" ||
       argument === "--weight" ||
       argument === "--labels" ||
+      argument === "--add-labels" ||
+      argument === "--remove-labels" ||
       argument === "--milestone" ||
       argument === "--epic" ||
       argument === "--assignee" ||
@@ -644,6 +650,10 @@ function parseArgs(argv: string[]): CliOptions {
         options.weight = value;
       } else if (argument === "--labels") {
         options.labels = value;
+      } else if (argument === "--add-labels") {
+        options.addLabels = value;
+      } else if (argument === "--remove-labels") {
+        options.removeLabels = value;
       } else if (argument === "--milestone") {
         options.milestone = value;
       } else if (argument === "--epic") {
@@ -711,6 +721,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.weight = argument.slice("--weight=".length);
     } else if (argument.startsWith("--labels=")) {
       options.labels = argument.slice("--labels=".length);
+    } else if (argument.startsWith("--add-labels=")) {
+      options.addLabels = argument.slice("--add-labels=".length);
+    } else if (argument.startsWith("--remove-labels=")) {
+      options.removeLabels = argument.slice("--remove-labels=".length);
     } else if (argument.startsWith("--milestone=")) {
       options.milestone = argument.slice("--milestone=".length);
     } else if (argument.startsWith("--epic=")) {
@@ -1086,6 +1100,7 @@ function helpText(): string {
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
+    "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --assignee, --search, --updated-after, --limit 1..100",
   ].join("\n") + "\n";
 }

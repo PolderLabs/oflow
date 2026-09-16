@@ -40,6 +40,7 @@ export const WORKFLOW_MARKDOWN = [
   "Use work/sync filters (--label, --milestone, --assignee, --search,",
   "--updated-after, --limit) when a smaller server-side snapshot is enough.",
   "oflow does not configure or invoke MCP servers. Use plan issue update (including",
+  "--labels for replacement or --add-labels/--remove-labels to preserve unrelated labels,",
   "--assignee username or --epic <id|none>), plan issue create/note, or",
   "plan label/milestone/board/board-list create/update, then approve, apply, and verify for supported writes. Do not",
   "use planned commands until oflow capabilities reports them as supported.",
