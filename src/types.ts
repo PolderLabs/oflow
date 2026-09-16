@@ -1,0 +1,155 @@
+export type AgentName = "claude" | "codex";
+
+export type AgentMode = AgentName | "both" | "unknown";
+
+export type FileAction = "created" | "updated" | "unchanged" | "skipped";
+
+export interface AgentDetection {
+  mode: AgentMode;
+  claude: boolean;
+  codex: boolean;
+  signals: Record<AgentName, string[]>;
+}
+
+export interface GitLabRemote {
+  host: string;
+  projectPath: string;
+  remoteUrl: string;
+}
+
+export interface OflowConfig {
+  managedBy: "oflow";
+  version: 1;
+  project: {
+    host: string;
+    path: string;
+  };
+  agent: {
+    mode: AgentMode;
+    claude: boolean;
+    codex: boolean;
+  };
+  workflow: {
+    storyType: "issue";
+    acceptanceCriteriaRequired: true;
+    requireEvidenceInMergeRequest: true;
+    requireSuccessfulPipeline: true;
+  };
+}
+
+export interface AcceptanceCriterion {
+  id: string;
+  text: string;
+  checked: boolean;
+}
+
+export interface CriterionCheck extends AcceptanceCriterion {
+  verified: boolean;
+  evidence: string[];
+  reason: string;
+}
+
+export interface VerificationResult {
+  passed: boolean;
+  pipelineStatus: string | null;
+  checks: CriterionCheck[];
+  reasons: string[];
+}
+
+export interface GitLabProject {
+  id: number;
+  path_with_namespace: string;
+  web_url: string;
+  default_branch?: string | null;
+  description?: string | null;
+  [key: string]: unknown;
+}
+
+export interface GitLabIssue {
+  iid: number;
+  title: string;
+  description?: string | null;
+  state?: string;
+  web_url?: string;
+  labels?: string[];
+  assignees?: Array<Record<string, unknown>>;
+  author?: Record<string, unknown> | null;
+  milestone?: Record<string, unknown> | null;
+  epic?: Record<string, unknown> | null;
+  parent?: Record<string, unknown> | null;
+  references?: Record<string, unknown> | null;
+  updated_at?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+export interface GitLabNote {
+  id: number;
+  body: string;
+  author?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface GitLabMergeRequest {
+  iid: number;
+  title: string;
+  description?: string | null;
+  state?: string;
+  web_url?: string;
+  source_branch?: string;
+  target_branch?: string;
+  draft?: boolean;
+  merge_status?: string;
+  detailed_merge_status?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface GitLabPipeline {
+  id: number;
+  status?: string;
+  ref?: string;
+  web_url?: string;
+  sha?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface StoryContext {
+  generatedAt: string;
+  branch: string | null;
+  project: GitLabProject;
+  story: GitLabIssue;
+  epic: Record<string, unknown> | null;
+  criteria: AcceptanceCriterion[];
+  mergeRequests: GitLabMergeRequest[];
+  pipelines: GitLabPipeline[];
+  recentNotes: GitLabNote[];
+  warnings: string[];
+}
+
+export interface InstallFileChange {
+  path: string;
+  action: FileAction;
+  detail: string;
+}
+
+export interface InstallResult {
+  root: string;
+  remote: GitLabRemote;
+  detection: AgentDetection;
+  files: InstallFileChange[];
+  warnings: string[];
+}
+
+export interface DoctorReport {
+  root: string;
+  remote: GitLabRemote | null;
+  configFound: boolean;
+  agent: AgentDetection;
+  tokenConfigured: boolean;
+  requiredFiles: Array<{ path: string; present: boolean }>;
+  warnings: string[];
+}
