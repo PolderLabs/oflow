@@ -70,7 +70,8 @@ export interface SyncPlanningHealth {
     code:
       | "missing-acceptance-criteria"
       | "unassigned-work-item"
-      | "untimeboxed-work-item";
+      | "untimeboxed-work-item"
+      | "conflicting-board-labels";
     message: string;
     storyIids: number[];
   }>;
@@ -310,7 +311,7 @@ export async function syncProject(
       boards: boards.length,
       iterations: iterations.length,
     },
-    planningHealth: inspectPlanningHealth(issues),
+    planningHealth: inspectPlanningHealth(issues, boards),
     warnings,
   };
   return result;
@@ -599,7 +600,7 @@ function usernames(value: unknown): string[] {
     .filter((username): username is string => username !== null);
 }
 
-function inspectPlanningHealth(issues: GitLabIssue[]): SyncPlanningHealth {
+function inspectPlanningHealth(issues: GitLabIssue[], boards: SyncBoard[]): SyncPlanningHealth {
   const findings: SyncPlanningHealth["findings"] = [];
   const describedIssues = issues.filter((issue) => typeof issue.description === "string");
   const missingCriteria = describedIssues.filter(
@@ -638,6 +639,28 @@ function inspectPlanningHealth(issues: GitLabIssue[]): SyncPlanningHealth {
       message: `${untimeboxed.length} open work item${untimeboxed.length === 1 ? " has" : "s have"} no milestone or iteration`,
       storyIids: untimeboxed.slice(0, 10).map((issue) => issue.iid),
     });
+  }
+
+  for (const board of boards) {
+    const boardLabels = [...new Set(
+      board.lists
+        .map((list) => list.label)
+        .filter((label): label is string => label !== null && label.trim().length > 0),
+    )];
+    if (boardLabels.length < 2) {
+      continue;
+    }
+    const conflicts = issues.filter((issue) => {
+      const workflowLabels = (issue.labels ?? []).filter((label) => boardLabels.includes(label));
+      return new Set(workflowLabels).size > 1;
+    });
+    if (conflicts.length > 0) {
+      findings.push({
+        code: "conflicting-board-labels",
+        message: `${conflicts.length} work item${conflicts.length === 1 ? " has" : "s have"} multiple workflow labels on board ${board.name}`,
+        storyIids: conflicts.slice(0, 10).map((issue) => issue.iid),
+      });
+    }
   }
 
   return { findings };

@@ -35,8 +35,9 @@ normalizes the currently supported subset:
 5. When `--story <iid>` is supplied, that story's acceptance criteria, notes
    count, merge requests, and pipelines.
 6. Conservative planning-health findings for missing acceptance criteria,
-   unassigned work items, and work items with neither a milestone nor an
-   iteration, when the GitLab response includes those fields.
+   unassigned work items, work items with neither a milestone nor an iteration,
+   and multiple board-state labels, when the GitLab response includes those
+   fields.
 
 Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`,
 `--search`, or

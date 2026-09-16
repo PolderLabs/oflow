@@ -35,7 +35,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
       if (path.endsWith("/pipelines")) pipelineRequests += 1;
       const responses = new Map([
         ["/api/v4/projects/team%2Fproject", { id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project", default_branch: "main" }],
-        ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story"], description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", assignees: [], milestone: null, iteration: null, task_completion_status: { count: 3, completed_count: 1 }, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
+        ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story", "Ready", "Doing"], description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", assignees: [], milestone: null, iteration: null, task_completion_status: { count: 3, completed_count: 1 }, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
         ["/api/v4/projects/team%2Fproject/issues/1", { iid: 1, title: "Choose a pod", description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", state: "opened", labels: ["User Story"], task_completion_status: { count: 3, completed_count: 1 }, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }],
         ["/api/v4/projects/team%2Fproject/issues/1/notes", [{ id: 4, body: "Blocked on hardware access", author: { username: "zakar" }, created_at: "2026-01-01T00:00:00Z" }]],
         ["/api/v4/projects/team%2Fproject/issues/1/related_merge_requests", [{ iid: 3, title: "Reservation UI", state: "opened", draft: false, source_branch: "story/1", target_branch: "main" }]],
@@ -44,7 +44,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
         ["/api/v4/projects/team%2Fproject/labels", [{ name: "User Story", color: "#fff", open_issues_count: 1 }]],
         ["/api/v4/projects/team%2Fproject/milestones", [{ id: 10, iid: 2, title: "Sprint 1", state: "active", due_date: "2026-01-15" }]],
         ["/api/v4/projects/team%2Fproject/boards", [{ id: 11, name: "Product Backlog" }]],
-        ["/api/v4/projects/team%2Fproject/boards/11/lists", [{ id: 12, label: { name: "Ready" }, position: 0 }]],
+        ["/api/v4/projects/team%2Fproject/boards/11/lists", [{ id: 12, label: { name: "Ready" }, position: 0 }, { id: 13, label: { name: "Doing" }, position: 1 }]],
         ["/api/v4/projects/team%2Fproject/iterations", []],
       ]);
       const response = responses.get(path);
@@ -72,7 +72,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.equal(result.planning.boards[0].lists[0].label, "Ready");
     assert.deepEqual(
       result.planningHealth.findings.map((finding) => finding.code),
-      ["unassigned-work-item", "untimeboxed-work-item"],
+      ["unassigned-work-item", "untimeboxed-work-item", "conflicting-board-labels"],
     );
     assert.equal(result.warnings.length, 0);
     assert.match(formatSyncMarkdown(result), /Open merge requests: 1/);
