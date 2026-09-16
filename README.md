@@ -41,7 +41,10 @@ oflow doctor                  # check local setup and GitLab access prerequisite
 oflow doctor --check-api      # also make a read-only GitLab API request
 oflow work                    # list open GitLab issues/work items
 oflow work --label "Ready" --limit 20
+oflow epic --limit 20          # list group epics when group access is available
+oflow epic --iid 12            # inspect one epic's parent/child hierarchy
 oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
+oflow sync --epics --json      # include a bounded group-epic snapshot (opt-in)
 oflow sync --label "Ready" --limit 20 --json
 oflow assess --story 42 --json # story progress, acceptance, and local evidence
 oflow capabilities --json      # show implemented, planned, and optional paths
@@ -102,6 +105,15 @@ iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
 oflow does not require an embedded model or spend tokens generating a duplicate
 summary.
+
+Group epics are an explicit opt-in because they require a group-scoped read and
+an additional GraphQL request. `oflow epic` lists the current project's parent
+group epics, and `oflow epic --iid <iid>` reads that epic's parent and child
+hierarchy. `oflow sync --epics` adds the bounded list to the normal snapshot;
+without that flag, project work items still preserve any parent/epic reference
+GitLab returns and no group request is made. If the instance or token cannot
+read the parent group, oflow reports a warning instead of treating the group
+as empty.
 
 Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`, `--search`,
 `--updated-after`, and `--updated-before` with `work` or `sync` to filter issues server-side.

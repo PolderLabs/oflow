@@ -76,6 +76,7 @@ export interface GitLabProject {
   web_url: string;
   default_branch?: string | null;
   description?: string | null;
+  namespace?: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 
@@ -235,6 +236,27 @@ export interface GitLabIteration {
   due_date?: string | null;
   web_url?: string;
   [key: string]: unknown;
+}
+
+export interface GitLabWorkItemReference {
+  id: string | null;
+  iid: number | null;
+  title: string;
+  web_url: string | null;
+  type: string | null;
+}
+
+export interface GitLabGroupEpic {
+  id: string;
+  iid: number;
+  title: string;
+  state: string | null;
+  web_url: string | null;
+}
+
+export interface GitLabGroupEpicDetail extends GitLabGroupEpic {
+  parent: GitLabWorkItemReference | null;
+  children: GitLabWorkItemReference[];
 }
 
 export interface GitLabNote {

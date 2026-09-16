@@ -32,6 +32,8 @@ normalizes the currently supported subset:
 3. Open merge requests and current-branch pipelines, bounded to 20 and 10.
 4. Project labels, active milestones, boards/lists, and project-visible
    iterations.
+   Group epics are available with the explicit `--epics` opt-in or the
+   `oflow epic` command; the default snapshot does not pay for a group query.
 5. When `--story <iid>` is supplied, that story's acceptance criteria, notes
    count, merge requests, and pipelines.
 6. Conservative planning-health findings for missing acceptance criteria,
@@ -129,6 +131,9 @@ assumed to exist just because the API supports them.
 ```bash
 oflow capabilities --json
 oflow sync [--story <iid>] [--json]
+oflow sync --epics [--limit <n>] [--json]
+oflow epic [--limit <n>] [--json]
+oflow epic --iid <iid> [--json]
 oflow assess --story <iid> [--json]
 oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
@@ -137,10 +142,11 @@ oflow context --story <iid> [--json]
 oflow verify --story <iid> [--json]
 ```
 
-Sprint, epic, and issue-show subcommands remain planned. Board and board-list
-administration is implemented through guarded plans, while `sync` composes the
-currently supported overlapping inspection without breaking the local workflow
-contract.
+Sprint and issue-show subcommands remain planned. Group epic listing and
+hierarchy inspection use the version-aware Work Item GraphQL API. Board and
+board-list administration is implemented through guarded plans, while `sync`
+composes the currently supported overlapping inspection without breaking the
+local workflow contract.
 
 ### Explicit mutations
 
@@ -252,10 +258,12 @@ changed. The agent performs the final reasoning and may then create a guarded
 plan.
 
 Project sync preserves parent/epic references when GitLab includes them on the
-work-item response, without issuing a second request per story. It does not
-enumerate group epics yet: GitLab's older Epics REST collection is deprecated
-in favor of the Work Items API, so that future adapter must be version-aware.
-Project sync can read group-backed iterations. Iteration creation and editing
+work-item response, without issuing a second request per story. `oflow epic`
+and `oflow sync --epics` enumerate group epics through the Work Item GraphQL
+API, which is the future-facing replacement for GitLab's deprecated Epics REST
+collection. These reads are bounded and explicit because group access may not
+be available for every project token. Project sync can read group-backed
+iterations. Iteration creation and editing
 remain planned because GitLab documents the project/group REST endpoints as
 listing APIs; sprint creation is tied to group iteration cadences and is not a
 simple project REST mutation. Do not simulate it by changing labels or
@@ -334,6 +342,12 @@ to the NestPod project and, when required, its parent group:
 - `Group`: `Read`
 - `Work Item`: `Read`, `Create`, `Update`
 - `Label`: `Read`, `Create`, `Update`
+
+Group epic reads additionally need access to the parent group and its Work Item
+resources. If `oflow sync --epics` reports that the group is unavailable, the
+project token can still support all project-scoped reads; add the parent-group
+`Group: Read` and `Work Item: Read` permissions only when epic hierarchy data is
+needed.
 
 Do not grant `Delete` until deletion is deliberately implemented and tested.
 Merge requests, pipelines, releases, repository writes, security, CI/CD

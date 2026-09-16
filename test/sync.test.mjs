@@ -92,3 +92,96 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("sync reads group epics only when explicitly requested", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-sync-epics-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "sync-epics-test-token";
+  const requests = [];
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ path: url.pathname, method: init?.method ?? "GET" });
+      if (url.pathname === "/api/graphql") {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify({
+            data: {
+              group: {
+                workItems: {
+                  nodes: [{
+                    id: "gid://gitlab/WorkItem/9",
+                    iid: "4",
+                    title: "Reservations",
+                    state: "OPENED",
+                    webUrl: "https://gitlab.example.test/groups/team/-/epics/4",
+                  }],
+                  pageInfo: { hasNextPage: false },
+                },
+              },
+            },
+          }),
+        };
+      }
+      const responses = new Map([
+        ["/api/v4/projects/team%2Fproject", {
+          id: 7,
+          path_with_namespace: "team/project",
+          web_url: "https://gitlab.example.test/team/project",
+          namespace: { full_path: "team" },
+        }],
+        ["/api/v4/projects/team%2Fproject/issues", []],
+        ["/api/v4/projects/team%2Fproject/merge_requests", []],
+        ["/api/v4/projects/team%2Fproject/pipelines", []],
+        ["/api/v4/projects/team%2Fproject/labels", []],
+        ["/api/v4/projects/team%2Fproject/milestones", []],
+        ["/api/v4/projects/team%2Fproject/boards", []],
+        ["/api/v4/projects/team%2Fproject/iterations", []],
+      ]);
+      const response = responses.get(url.pathname);
+      assert.ok(response, "unexpected request " + url.pathname);
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify(response),
+      };
+    };
+
+    const normal = await syncProject(root);
+    assert.equal(normal.query.includeEpics, false);
+    assert.deepEqual(normal.planning.epics, []);
+    assert.equal(requests.some((request) => request.path === "/api/graphql"), false);
+
+    const withEpics = await syncProject(root, { includeEpics: true });
+    assert.equal(withEpics.query.includeEpics, true);
+    assert.deepEqual(withEpics.planning.epics, [{
+      iid: 4,
+      title: "Reservations",
+      state: "OPENED",
+      webUrl: "https://gitlab.example.test/groups/team/-/epics/4",
+    }]);
+    assert.equal(withEpics.planning.epicsMayBeTruncated, false);
+    assert.equal(withEpics.stats.epics, 1);
+    assert.equal(requests.filter((request) => request.path === "/api/graphql").length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});

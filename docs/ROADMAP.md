@@ -72,7 +72,8 @@ This is the immediate implementation focus.
 - [x] List and inspect project boards and board lists.
 - [x] List and inspect project labels.
 - [x] List and inspect project milestones.
-- [ ] List and inspect group epics and parent/child relationships.
+- [x] List and inspect group epics and parent/child relationships through the
+  bounded, opt-in Work Item GraphQL read path; keep epic writes separate.
 - [x] Preserve parent/epic references already returned by project work-item
   reads without adding per-item API calls.
 - [x] List project-visible iterations/sprints.
@@ -80,10 +81,10 @@ This is the immediate implementation focus.
 - [x] Add bounded server-side filters for state, label, milestone, assignee,
   search, and updated time; cap work-item results with `--limit`.
 - [x] Add iteration and author filters.
-- [x] Add server-side epic association filters; group epic listing remains
-  version-aware roadmap work.
-- [ ] Add pagination, response validation, retries, and useful unsupported
-  endpoint errors for every new collection.
+- [x] Add server-side epic association filters; group epic listing is available
+  through the explicit GraphQL read path.
+- [ ] Add pagination metadata, response validation, retries, and useful
+  unsupported endpoint errors for every new collection.
 - [x] Produce a compact JSON evidence model for project, Scrum, merge-request,
   and pipeline handoff.
 - [x] Read one project merge request with compact review state and opt-in

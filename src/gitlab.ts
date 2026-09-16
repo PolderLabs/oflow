@@ -13,6 +13,9 @@ import type {
   GitLabBoardListCreate,
   GitLabBoardListUpdate,
   GitLabIteration,
+  GitLabGroupEpic,
+  GitLabGroupEpicDetail,
+  GitLabWorkItemReference,
   GitLabLabel,
   GitLabLabelCreate,
   GitLabLabelUpdate,
@@ -49,6 +52,7 @@ export { getGitLabToken } from "./auth.js";
 
 export class GitLabClient {
   private readonly baseUrl: string;
+  private readonly graphqlUrl: string;
   private readonly token: string;
 
   constructor(host: string, token = getGitLabToken(host)) {
@@ -58,7 +62,9 @@ export class GitLabClient {
         "MISSING_GITLAB_TOKEN",
       );
     }
-    this.baseUrl = "https://" + host.replace(/^https?:\/\//, "").replace(/\/$/, "") + "/api/v4";
+    const normalizedHost = host.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    this.baseUrl = "https://" + normalizedHost + "/api/v4";
+    this.graphqlUrl = "https://" + normalizedHost + "/api/graphql";
     this.token = token;
   }
 
@@ -95,6 +101,105 @@ export class GitLabClient {
         "/merge_requests/" +
         String(iid),
     );
+  }
+
+  async listGroupEpics(
+    groupPath: string,
+    limit = 50,
+  ): Promise<{ epics: GitLabGroupEpic[]; mayBeTruncated: boolean }> {
+    const data = await this.requestGraphQL(
+      `query GroupEpics($fullPath: ID!, $first: Int!) {
+        group(fullPath: $fullPath) {
+          workItems(types: [EPIC], first: $first) {
+            nodes { id iid title state webUrl }
+            pageInfo { hasNextPage }
+          }
+        }
+      }`,
+      { fullPath: groupPath, first: limit },
+    );
+    if (!isRecord(data) || data.group === null) {
+      throw new OflowError(
+        "GitLab GraphQL could not access group " + groupPath + ". Check Group: Read and Work Item: Read access, and confirm the instance supports group work items.",
+        "GITLAB_GROUP_UNAVAILABLE",
+      );
+    }
+    if (!isRecord(data.group) || !isRecord(data.group.workItems)) {
+      throw new OflowError(
+        "GitLab GraphQL returned no group work-item collection for " + groupPath + ".",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    const collection = data.group.workItems;
+    if (!Array.isArray(collection.nodes) || !isRecord(collection.pageInfo) ||
+      typeof collection.pageInfo.hasNextPage !== "boolean") {
+      throw new OflowError(
+        "GitLab GraphQL returned an invalid group epic list response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return {
+      epics: collection.nodes.map(parseGroupEpic),
+      mayBeTruncated: collection.pageInfo.hasNextPage,
+    };
+  }
+
+  async getGroupEpic(
+    groupPath: string,
+    iid: number,
+  ): Promise<GitLabGroupEpicDetail> {
+    const data = await this.requestGraphQL(
+      `query GroupEpic($fullPath: ID!, $iid: String!) {
+        namespace(fullPath: $fullPath) {
+          workItem(iid: $iid) {
+            id iid title state webUrl
+            widgets {
+              ... on WorkItemWidgetHierarchy {
+                __typename
+                parent { id iid title webUrl workItemType { name } }
+                children { nodes { id iid title webUrl workItemType { name } } }
+              }
+            }
+          }
+        }
+      }`,
+      { fullPath: groupPath, iid: String(iid) },
+    );
+    if (!isRecord(data) || data.namespace === null) {
+      throw new OflowError(
+        "GitLab GraphQL could not access group " + groupPath + ". Check Group: Read and Work Item: Read access, and confirm the instance supports group work items.",
+        "GITLAB_GROUP_UNAVAILABLE",
+      );
+    }
+    if (!isRecord(data.namespace) || data.namespace.workItem === null) {
+      throw new OflowError(
+        "GitLab GraphQL could not find epic #" + String(iid) + " in group " + groupPath + ".",
+        "GITLAB_EPIC_NOT_FOUND",
+      );
+    }
+    const item = data.namespace.workItem;
+    if (!isRecord(item)) {
+      throw new OflowError(
+        "GitLab GraphQL returned an invalid group epic response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    const epic = parseGroupEpic(item);
+    const hierarchy = Array.isArray(item.widgets)
+      ? item.widgets.find((widget) => isRecord(widget) && widget.__typename === "WorkItemWidgetHierarchy")
+      : undefined;
+    if (!isRecord(hierarchy)) {
+      return { ...epic, parent: null, children: [] };
+    }
+    return {
+      ...epic,
+      parent: hierarchy.parent === null || hierarchy.parent === undefined
+        ? null
+        : parseWorkItemReference(hierarchy.parent),
+      children: !isRecord(hierarchy.children) || !Array.isArray(hierarchy.children.nodes)
+        ? []
+        : hierarchy.children.nodes.map(parseWorkItemReference),
+    };
   }
 
   async listIssues(
@@ -559,6 +664,80 @@ export class GitLabClient {
     return result as T[];
   }
 
+  private async requestGraphQL(
+    query: string,
+    variables: Record<string, string | number>,
+  ): Promise<unknown> {
+    let lastError: GitLabApiError | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+      try {
+        const response = await fetch(this.graphqlUrl, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            ...(process.env.GITLAB_TOKEN_TYPE?.toLowerCase() === "bearer"
+              ? { Authorization: "Bearer " + this.token }
+              : { "PRIVATE-TOKEN": this.token }),
+          },
+          body: JSON.stringify({ query, variables }),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        const bodyText = await response.text();
+        let body: unknown = bodyText;
+        try {
+          body = bodyText ? JSON.parse(bodyText) : null;
+        } catch {
+          // Keep the plain response text for useful error messages.
+        }
+
+        if (response.ok && isRecord(body) && body.data !== undefined) {
+          if (Array.isArray(body.errors) && body.errors.length > 0) {
+            throw new GitLabApiError(
+              "GitLab GraphQL returned errors: " + safeApiBody(body.errors, this.token),
+              response.status,
+            );
+          }
+          return body.data;
+        }
+
+        const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
+        lastError = new GitLabApiError(
+          "GitLab GraphQL " +
+            response.status +
+            ": " +
+            safeApiBody(body, this.token),
+          response.status,
+          retryAfter,
+        );
+        if (
+          attempt >= MAX_RETRIES ||
+          (response.status !== 429 && response.status < 500)
+        ) {
+          throw lastError;
+        }
+        await delay(retryAfter === null ? Math.min(1000 * 2 ** attempt, 5000) : Math.min(retryAfter * 1000, 5000));
+      } catch (error: unknown) {
+        if (error instanceof GitLabApiError) {
+          throw error;
+        }
+        const message = redactGitLabToken(
+          error instanceof Error ? error.message : String(error),
+          this.token,
+        );
+        lastError = new GitLabApiError(
+          "GitLab GraphQL request failed: " + message,
+          0,
+        );
+        if (attempt >= MAX_RETRIES) {
+          throw lastError;
+        }
+        await delay(Math.min(1000 * 2 ** attempt, 5000));
+      }
+    }
+    throw lastError ?? new GitLabApiError("GitLab GraphQL request failed", 0);
+  }
+
   private async request<T>(
     path: string,
     options: {
@@ -685,6 +864,56 @@ function safeApiBody(body: unknown, token: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parseGroupEpic(value: unknown): GitLabGroupEpic {
+  if (!isRecord(value) || typeof value.id !== "string" ||
+    typeof value.iid !== "string" || !/^\d+$/.test(value.iid) ||
+    typeof value.title !== "string") {
+    throw new OflowError(
+      "GitLab GraphQL returned an invalid group epic node.",
+      "INVALID_GITLAB_RESPONSE",
+    );
+  }
+  const iid = Number(value.iid);
+  if (!Number.isSafeInteger(iid) || iid < 1) {
+    throw new OflowError(
+      "GitLab GraphQL returned an invalid group epic IID.",
+      "INVALID_GITLAB_RESPONSE",
+    );
+  }
+  return {
+    id: value.id,
+    iid,
+    title: value.title,
+    state: typeof value.state === "string" ? value.state : null,
+    web_url: typeof value.webUrl === "string" ? value.webUrl : null,
+  };
+}
+
+function parseWorkItemReference(value: unknown): GitLabWorkItemReference {
+  if (!isRecord(value) || typeof value.title !== "string") {
+    throw new OflowError(
+      "GitLab GraphQL returned an invalid epic hierarchy reference.",
+      "INVALID_GITLAB_RESPONSE",
+    );
+  }
+  let iid: number | null = null;
+  if (typeof value.iid === "string" && /^\d+$/.test(value.iid)) {
+    const parsed = Number(value.iid);
+    iid = Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  } else if (typeof value.iid === "number" && Number.isSafeInteger(value.iid) && value.iid > 0) {
+    iid = value.iid;
+  }
+  return {
+    id: typeof value.id === "string" ? value.id : null,
+    iid,
+    title: value.title,
+    web_url: typeof value.webUrl === "string" ? value.webUrl : null,
+    type: isRecord(value.workItemType) && typeof value.workItemType.name === "string"
+      ? value.workItemType.name
+      : null,
+  };
 }
 
 async function delay(milliseconds: number): Promise<void> {

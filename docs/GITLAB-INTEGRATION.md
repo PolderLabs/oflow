@@ -29,13 +29,15 @@ agent -> oflow intent/sync/plan/approve/apply/verify
                     +-- MCP adapter (optional agent/runtime path)
 ```
 
-The current release implements the REST path for compact read commands, the
-guarded issue-update/note/label/milestone/board/board-list plans, including
-existing epic association through issue `epic_id`, and an
-explicit read-only `oflow glab api` fallback. Board lists are currently
-label-backed; board-card movement uses guarded issue label updates. This
-document does not claim that `oflow` silently invokes `glab` or MCP; both
-remain optional integrations.
+The current release implements the REST path for compact project-scoped read
+commands, the guarded issue-update/note/label/milestone/board/board-list plans,
+including existing epic association through issue `epic_id`, and an explicit
+read-only `oflow glab api` fallback. Group epic listing and hierarchy reads use
+an explicit, bounded Work Item GraphQL path; they are not included in the
+default sync because they require parent-group access and an extra request.
+Board lists are currently label-backed; board-card movement uses guarded issue
+label updates. This document does not claim that `oflow` silently invokes
+`glab` or MCP; both remain optional integrations.
 
 ## What the four options actually provide
 
@@ -118,7 +120,10 @@ the same requests and is valuable for gaps, but using shell output as the core
 contract would make behavior depend on an external binary and its command
 version. The high-level `glab work-items` command is currently documented as
 experimental, which is another reason not to make it the foundation of the
-Scrum read model.
+Scrum read model. Group epics are the deliberate exception: GitLab's older
+Epics REST collection is deprecated, so the opt-in `epic` read uses the
+future-facing Work Item GraphQL API and reports unsupported/inaccessible groups
+instead of treating them as empty.
 
 Iterations are a deliberate boundary: GitLab documents project and group REST
 endpoints for listing iterations, while sprint creation is group/cadence-backed
@@ -199,7 +204,7 @@ Every capability must expose:
 ## Implementation sequence
 
 1. Keep current direct REST reads as the baseline and finish the Scrum read
-   model (group epics, iterations, and cadences remain).
+   model (iteration cadences remain; group epic reads are now opt-in GraphQL).
 2. Add backend-neutral capability metadata and optional `glab` availability
    detection without exposing credentials.
 3. [x] Add a small, opt-in `glab api` bridge for endpoints not yet wrapped by

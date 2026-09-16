@@ -6,6 +6,7 @@ import { OflowError } from "./errors.js";
 import type {
   GitLabBoard,
   GitLabBoardList,
+  GitLabGroupEpic,
   GitLabIssue,
   GitLabIssueFilters,
   GitLabIteration,
@@ -22,6 +23,7 @@ export interface SyncOptions {
   storyIid?: number;
   issueFilters?: GitLabIssueFilters;
   issueLimit?: number;
+  includeEpics?: boolean;
 }
 
 export interface SyncResult {
@@ -42,6 +44,7 @@ export interface SyncResult {
     state: IssueState;
     issueLimit: number;
     issueFilters: GitLabIssueFilters;
+    includeEpics: boolean;
   };
   mergeRequests: SyncMergeRequest[];
   pipelines: SyncPipeline[];
@@ -50,6 +53,8 @@ export interface SyncResult {
     milestones: SyncMilestone[];
     boards: SyncBoard[];
     iterations: SyncIteration[];
+    epics: SyncEpic[];
+    epicsMayBeTruncated: boolean;
   };
   story: SyncStory | null;
   stats: {
@@ -60,6 +65,7 @@ export interface SyncResult {
     milestones: number;
     boards: number;
     iterations: number;
+    epics: number;
   };
   planningHealth: SyncPlanningHealth;
   warnings: string[];
@@ -159,6 +165,13 @@ export interface SyncIteration {
   webUrl: string | null;
 }
 
+export interface SyncEpic {
+  iid: number;
+  title: string;
+  state: string | null;
+  webUrl: string | null;
+}
+
 export interface SyncStory {
   iid: number;
   title: string;
@@ -209,7 +222,6 @@ export async function syncProject(
 
   const remote = await getGitLabRemote(root);
   const branch = await getCurrentBranch(root);
-  const groupPath = parentGroupPath(remote.projectPath);
   const state = options.state ?? "opened";
   const issueLimit = options.issueLimit ?? 50;
   const issueFilters = options.issueFilters ?? {};
@@ -226,7 +238,9 @@ export async function syncProject(
 
   const client = new GitLabClient(remote.host);
   const project = await client.getProject(remote.projectPath);
-  const [issues, mergeRequests, pipelines, labels, milestones, boards, iterations] =
+  const groupPath = projectNamespacePath(project) ?? parentGroupPath(remote.projectPath);
+  const emptyEpicPage = { epics: [] as GitLabGroupEpic[], mayBeTruncated: false };
+  const [issues, mergeRequests, pipelines, labels, milestones, boards, iterations, groupEpics] =
     await Promise.all([
       optionalFetch(
         () => client.listIssues(
@@ -268,6 +282,14 @@ export async function syncProject(
         "Could not read project iterations",
         warnings,
       ),
+      options.includeEpics === true && groupPath
+        ? optionalFetch(
+          () => client.listGroupEpics(groupPath, 50),
+          "Could not read group epics",
+          warnings,
+          emptyEpicPage,
+        )
+        : Promise.resolve(emptyEpicPage),
     ]);
 
   const story = options.storyIid
@@ -292,6 +314,7 @@ export async function syncProject(
       state,
       issueLimit,
       issueFilters,
+      includeEpics: options.includeEpics === true,
     },
     mergeRequests: mergeRequests.map(compactMergeRequest),
     pipelines: pipelines.map(compactPipeline),
@@ -300,6 +323,8 @@ export async function syncProject(
       milestones: milestones.map(compactMilestone),
       boards,
       iterations: iterations.map(compactIteration),
+      epics: groupEpics.epics.map(compactEpic),
+      epicsMayBeTruncated: groupEpics.mayBeTruncated,
     },
     story,
     stats: {
@@ -310,6 +335,7 @@ export async function syncProject(
       milestones: milestones.length,
       boards: boards.length,
       iterations: iterations.length,
+      epics: groupEpics.epics.length,
     },
     planningHealth: inspectPlanningHealth(issues, boards),
     warnings,
@@ -338,6 +364,10 @@ export function formatSyncMarkdown(result: SyncResult): string {
     "- Active milestones: " + String(result.stats.milestones),
     "- Boards: " + String(result.stats.boards),
     "- Project-visible iterations: " + String(result.stats.iterations),
+    ...(result.query.includeEpics
+      ? ["- Group epics: " + String(result.stats.epics) +
+        (result.planning.epicsMayBeTruncated ? " (more may exist)" : "")]
+      : []),
     "",
     "## Current work items",
     "",
@@ -411,6 +441,16 @@ export function formatSyncMarkdown(result: SyncResult): string {
             .join(", ")
         : "none"),
   );
+  if (result.query.includeEpics) {
+    lines.push(
+      "Epics: " +
+        (result.planning.epics.length > 0
+          ? result.planning.epics
+            .map((epic) => "&" + String(epic.iid) + " " + epic.title)
+            .join(", ")
+          : "none"),
+    );
+  }
 
   if (result.planningHealth.findings.length > 0) {
     lines.push(
@@ -722,6 +762,15 @@ function compactIteration(iteration: GitLabIteration): SyncIteration {
   };
 }
 
+function compactEpic(epic: GitLabGroupEpic): SyncEpic {
+  return {
+    iid: epic.iid,
+    title: oneLine(epic.title),
+    state: epic.state,
+    webUrl: epic.web_url,
+  };
+}
+
 function compactNote(note: {
   id: number;
   body: string;
@@ -754,6 +803,11 @@ async function optionalFetch<T>(
 function parentGroupPath(projectPath: string): string | null {
   const separator = projectPath.lastIndexOf("/");
   return separator > 0 ? projectPath.slice(0, separator) : null;
+}
+
+function projectNamespacePath(project: GitLabProject): string | null {
+  const fullPath = project.namespace?.full_path;
+  return typeof fullPath === "string" && fullPath.trim() ? fullPath : null;
 }
 
 function namedValue(value: unknown): string | null {

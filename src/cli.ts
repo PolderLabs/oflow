@@ -16,6 +16,12 @@ import {
 import { assessStory, formatAssessmentMarkdown } from "./assess.js";
 import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
 import {
+  formatGroupEpicListMarkdown,
+  formatGroupEpicMarkdown,
+  listProjectGroupEpics,
+  loadProjectGroupEpic,
+} from "./epics.js";
+import {
   chooseMergeRequest,
   compactMergeRequest,
   compactWorkItems,
@@ -75,6 +81,7 @@ interface CliOptions {
   dryRun: boolean;
   tokenStdin: boolean;
   checkApi: boolean;
+  epics: boolean;
   planResource?: string;
   planOperation?: string;
   planPath?: string;
@@ -183,6 +190,20 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         );
         return 0;
       }
+      case "epic": {
+        const limit = parseIssueLimit(options.limit, 50);
+        if (options.iid !== undefined) {
+          const result = await loadProjectGroupEpic(
+            root,
+            parsePositiveInteger(options.iid, "epic IID"),
+          );
+          print(options.json, result, formatGroupEpicMarkdown(result));
+        } else {
+          const result = await listProjectGroupEpics(root, limit);
+          print(options.json, result, formatGroupEpicListMarkdown(result));
+        }
+        return 0;
+      }
       case "sync": {
         const state = normalizeIssueState(options.state);
         const storyIid = options.story
@@ -192,6 +213,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           state,
           storyIid,
           issueFilters: collectIssueFilters(options),
+          includeEpics: options.epics,
           issueLimit: options.limit === undefined
             ? undefined
             : parseIssueLimit(options.limit, 100),
@@ -550,6 +572,7 @@ function parseArgs(argv: string[]): CliOptions {
     dryRun: false,
     tokenStdin: false,
     checkApi: false,
+    epics: false,
     full: false,
   };
 
@@ -583,6 +606,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.tokenStdin = true;
     } else if (argument === "--check-api") {
       options.checkApi = true;
+    } else if (argument === "--epics") {
+      options.epics = true;
     } else if (
       argument === "--story" ||
       argument === "--state" ||
@@ -1112,6 +1137,7 @@ function helpText(): string {
     "  install [--agent auto|claude|codex|both] [--dry-run]",
     "  doctor [--check-api]",
     "  work [filters] [--json]             list current GitLab work items",
+    "  epic [--iid <iid>] [--limit <n>]    list or inspect group epics",
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
@@ -1144,6 +1170,7 @@ function helpText(): string {
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
+    "  sync --epics  opt in to bounded group-epic reads (GraphQL)",
   ].join("\n") + "\n";
 }
 

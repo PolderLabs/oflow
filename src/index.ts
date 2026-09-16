@@ -7,6 +7,7 @@ export * from "./config.js";
 export * from "./context.js";
 export * from "./criteria.js";
 export * from "./doctor.js";
+export * from "./epics.js";
 export * from "./errors.js";
 export * from "./fs.js";
 export * from "./git.js";

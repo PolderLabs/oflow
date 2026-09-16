@@ -71,6 +71,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Project: Read; Group: Read; Work Item: Read",
       ),
       capability(
+        "group-epics.read",
+        "implemented",
+        "read",
+        "Group epics and parent/child hierarchy",
+        "GraphQL",
+        "Group: Read; Work Item: Read",
+      ),
+      capability(
         "work-items.create",
         "implemented",
         "apply",

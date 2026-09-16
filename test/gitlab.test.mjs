@@ -64,6 +64,139 @@ test("reads one merge request by project-local IID", async () => {
   }
 });
 
+test("lists group epics through the bounded Work Item GraphQL query", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  let requestMethod = "";
+  let requestBody = "";
+  globalThis.fetch = async (input, init) => {
+    requestUrl = String(input);
+    requestMethod = init?.method ?? "";
+    requestBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({
+        data: {
+          group: {
+            workItems: {
+              nodes: [
+                {
+                  id: "gid://gitlab/WorkItem/123",
+                iid: "7",
+                title: "Reservations",
+                state: "OPENED",
+                webUrl: "https://gitlab.example.test/groups/team/-/epics/7",
+                },
+              ],
+              pageInfo: { hasNextPage: true, endCursor: "cursor-7" },
+            },
+          },
+        },
+      }),
+    };
+  };
+  try {
+    const result = await new GitLabClient("gitlab.example.test", "test-token")
+      .listGroupEpics("team", 10);
+    assert.equal(requestUrl, "https://gitlab.example.test/api/graphql");
+    assert.equal(requestMethod, "POST");
+    const body = JSON.parse(requestBody);
+    assert.match(body.query, /workItems\(types: \[EPIC\], first: \$first\)/);
+    assert.deepEqual(body.variables, { fullPath: "team", first: 10 });
+    assert.deepEqual(result.epics, [{
+      id: "gid://gitlab/WorkItem/123",
+      iid: 7,
+      title: "Reservations",
+      state: "OPENED",
+      web_url: "https://gitlab.example.test/groups/team/-/epics/7",
+    }]);
+    assert.equal(result.mayBeTruncated, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("reads a group epic hierarchy and rejects GraphQL errors", async () => {
+  const originalFetch = globalThis.fetch;
+  let responseBody = JSON.stringify({
+    data: {
+      namespace: {
+        workItem: {
+          id: "gid://gitlab/WorkItem/123",
+          iid: "7",
+          title: "Reservations",
+          state: "OPENED",
+          webUrl: "https://gitlab.example.test/groups/team/-/epics/7",
+          widgets: [
+            {
+              __typename: "WorkItemWidgetHierarchy",
+              parent: {
+                id: "gid://gitlab/WorkItem/100",
+                iid: "3",
+                title: "Product",
+                webUrl: "https://gitlab.example.test/groups/team/-/epics/3",
+                workItemType: { name: "Epic" },
+              },
+              children: {
+                nodes: [{
+                  id: "gid://gitlab/WorkItem/124",
+                  iid: "8",
+                  title: "Booking flow",
+                  webUrl: "https://gitlab.example.test/groups/team/-/epics/8",
+                  workItemType: { name: "Epic" },
+                }],
+              },
+            },
+          ],
+        },
+      },
+    },
+  });
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: new Headers(),
+    text: async () => responseBody,
+  });
+  try {
+    const epic = await new GitLabClient("gitlab.example.test", "test-token")
+      .getGroupEpic("team", 7);
+    assert.deepEqual(epic, {
+      id: "gid://gitlab/WorkItem/123",
+      iid: 7,
+      title: "Reservations",
+      state: "OPENED",
+      web_url: "https://gitlab.example.test/groups/team/-/epics/7",
+      parent: {
+        id: "gid://gitlab/WorkItem/100",
+        iid: 3,
+            title: "Product",
+            web_url: "https://gitlab.example.test/groups/team/-/epics/3",
+            type: "Epic",
+          },
+      children: [{
+        id: "gid://gitlab/WorkItem/124",
+        iid: 8,
+          title: "Booking flow",
+          web_url: "https://gitlab.example.test/groups/team/-/epics/8",
+          type: "Epic",
+        }],
+    });
+
+    responseBody = JSON.stringify({
+      errors: [{ message: "Group work items are unavailable" }],
+    });
+    await assert.rejects(
+      () => new GitLabClient("gitlab.example.test", "test-token").listGroupEpics("team", 10),
+      { code: "GITLAB_API_ERROR" },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("applies server-side work-item filters without downloading descriptions", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
