@@ -198,6 +198,11 @@ Ultimate feature. oflow verifies the returned epic/parent ID after apply.
 Creating or editing group epics themselves remains a separate, version-aware
 roadmap item because GitLab's older Epics REST collection is deprecated.
 
+Use `--milestone none` on an issue update to remove its sprint/timebox
+assignment. Named milestone titles continue to use `--milestone "Sprint 1"`;
+oflow maps the clear operation to GitLab's `milestone_id=0` field and verifies
+that the issue no longer reports a milestone.
+
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before
 writing, and re-read GitLab during verification. Issue creation is a

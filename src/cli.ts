@@ -230,7 +230,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             title: options.title,
             description: options.description,
             labels: options.labels,
-            milestone: options.milestone,
+            ...normalizeIssueMilestone(options.milestone),
             epic_id: options.epic === undefined
               ? undefined
               : parseEpicId(options.epic, true),
@@ -744,6 +744,18 @@ function normalizeIssueUpdateState(
     "Unknown issue update state \"" + value + "\". Use opened or closed.",
     "INVALID_ISSUE_UPDATE_STATE",
   );
+}
+
+function normalizeIssueMilestone(
+  value: string | undefined,
+): Pick<GitLabIssueUpdate, "milestone" | "milestone_id"> {
+  if (value === undefined) {
+    return {};
+  }
+  if (["none", "null", "unassigned"].includes(value.trim().toLowerCase())) {
+    return { milestone_id: 0 };
+  }
+  return { milestone: value };
 }
 
 function normalizeMilestoneUpdateState(

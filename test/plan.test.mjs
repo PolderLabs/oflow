@@ -65,6 +65,9 @@ test("issue update plans require approval and verify the applied result", async 
           state: body.get("state_event") === "close" ? "closed" : issue.state,
           due_date: body.get("due_date") ?? issue.due_date,
           weight: body.has("weight") ? Number(body.get("weight")) : issue.weight,
+          milestone: body.has("milestone_id") && Number(body.get("milestone_id")) === 0
+            ? null
+            : issue.milestone,
           epic: body.has("epic_id") && Number(body.get("epic_id")) > 0
             ? { id: Number(body.get("epic_id")), iid: 9, title: "Product epic" }
             : null,
@@ -109,7 +112,10 @@ test("issue update plans require approval and verify the applied result", async 
     assert.equal(verified.plan.state, "verified");
     assert.equal(verified.plan.verification.passed, true);
 
-    const cleared = await createIssueUpdatePlan(root, 42, { epic_id: 0 });
+    const cleared = await createIssueUpdatePlan(root, 42, {
+      epic_id: 0,
+      milestone_id: 0,
+    });
     await approvePlan(root, cleared.path);
     await applyPlan(root, cleared.path);
     assert.equal((await verifyPlan(root, cleared.path)).plan.state, "verified");

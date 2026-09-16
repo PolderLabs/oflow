@@ -100,6 +100,7 @@ export interface GitLabIssueUpdate {
   description?: string;
   labels?: string;
   milestone?: string;
+  milestone_id?: number;
   epic_id?: number;
   due_date?: string;
   weight?: number;

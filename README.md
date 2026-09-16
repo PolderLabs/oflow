@@ -113,6 +113,9 @@ it is available on Premium and Ultimate, and the association is verified after
 apply. Group-level epic creation and broader Work Item hierarchy operations
 remain roadmap work.
 
+Use `--milestone none` on an issue update to clear its sprint/timebox
+assignment; named milestones continue to use `--milestone "Sprint 1"`.
+
 GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
 and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed

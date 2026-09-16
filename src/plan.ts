@@ -1238,6 +1238,21 @@ function validateIssueChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
       "INVALID_EPIC_ID",
     );
   }
+  if (changes.milestone !== undefined && changes.milestone_id !== undefined) {
+    throw new OflowError(
+      "Use either milestone or milestone_id, not both.",
+      "DUPLICATE_ISSUE_MILESTONE",
+    );
+  }
+  if (
+    changes.milestone_id !== undefined &&
+    (!Number.isSafeInteger(changes.milestone_id) || changes.milestone_id < 0)
+  ) {
+    throw new OflowError(
+      "Issue milestone ID must be a non-negative integer; use 0 to clear the milestone.",
+      "INVALID_ISSUE_MILESTONE",
+    );
+  }
   if (changes.assignee_ids !== undefined) {
     changes.assignee_ids = validateAssigneeIds(changes.assignee_ids);
   }
@@ -1448,6 +1463,10 @@ function verifyIssue(
   }
   if (changes.milestone !== undefined) {
     checks.push(check("milestone", changes.milestone, namedValue(issue.milestone)));
+  }
+  if (changes.milestone_id !== undefined) {
+    const expected = changes.milestone_id === 0 ? "" : String(changes.milestone_id);
+    checks.push(check("milestone_id", expected, issueMilestoneId(issue)));
   }
   if (changes.epic_id !== undefined) {
     const expected = changes.epic_id === 0 ? "" : String(changes.epic_id);
@@ -1877,5 +1896,13 @@ function issueParentId(issue: GitLabIssue): string {
     return "";
   }
   const id = (parent as Record<string, unknown>).id;
+  return typeof id === "number" || typeof id === "string" ? String(id) : "";
+}
+
+function issueMilestoneId(issue: GitLabIssue): string {
+  if (!issue.milestone || typeof issue.milestone !== "object") {
+    return "";
+  }
+  const id = issue.milestone.id;
   return typeof id === "number" || typeof id === "string" ? String(id) : "";
 }
