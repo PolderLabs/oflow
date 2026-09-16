@@ -174,6 +174,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "local JSONL",
         "No GitLab permission",
       ),
+      capability(
+        "planning.cache.read",
+        "implemented",
+        "read",
+        "Local sync snapshot",
+        "local JSON",
+        "No GitLab permission; use --cached explicitly",
+      ),
     ],
   };
 }
