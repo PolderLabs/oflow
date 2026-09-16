@@ -97,8 +97,8 @@ and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
 REST adapter as the predictable core and does not silently invoke or configure
 MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
-The current apply-capable operations are `plan issue update` (including guarded
-assignment), `plan issue note`,
+The current apply-capable operations are `plan issue create`, `plan issue update`
+(including guarded assignment), `plan issue note`,
 `plan label create/update`, and `plan milestone create/update`; boards,
 iterations, and
 merge-request writes remain roadmap work. `oflow glab api` only permits an

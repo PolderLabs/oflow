@@ -7,6 +7,7 @@ import { getGitLabRemote } from "./git.js";
 import { GitLabClient } from "./gitlab.js";
 import type {
   GitLabIssue,
+  GitLabIssueCreate,
   GitLabIssueUpdate,
   GitLabLabel,
   GitLabLabelCreate,
@@ -27,6 +28,13 @@ export interface IssueUpdateOperation {
   projectPath: string;
   issueIid: number;
   changes: GitLabIssueUpdate;
+}
+
+export interface IssueCreateOperation {
+  kind: "issue.create";
+  host: string;
+  projectPath: string;
+  issue: GitLabIssueCreate;
 }
 
 export interface IssueNoteCreateOperation {
@@ -74,6 +82,7 @@ export interface MilestoneUpdateOperation {
 }
 
 export type PlanOperation =
+  | IssueCreateOperation
   | IssueUpdateOperation
   | IssueNoteCreateOperation
   | LabelCreateOperation
@@ -122,6 +131,56 @@ export interface PlanVerification {
     passed: boolean;
   }>;
   reasons: string[];
+}
+
+export async function createIssueCreatePlan(
+  root: string,
+  issue: GitLabIssueCreate,
+  assignee?: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  if (assignee !== undefined && issue.assignee_ids !== undefined) {
+    throw new OflowError(
+      "Use either --assignee or assignee_ids, not both.",
+      "DUPLICATE_ASSIGNEE_INPUT",
+    );
+  }
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  await client.getProject(remote.projectPath);
+  const operationIssue = validateIssueCreate({
+    ...issue,
+    assignee_ids: assignee === undefined
+      ? issue.assignee_ids
+      : await resolveAssigneeIds(client, assignee),
+  });
+
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation: {
+      kind: "issue.create",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      issue: operationIssue,
+    },
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
 }
 
 export async function createIssueUpdatePlan(
@@ -466,7 +525,13 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
   }
   const client = new GitLabClient(remote.host);
-  if (stored.plan.operation.kind === "issue.update") {
+  if (stored.plan.operation.kind === "issue.create") {
+    const result = await client.createIssue(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.issue,
+    );
+    stored.plan.result = compactIssue(result, "issue.create");
+  } else if (stored.plan.operation.kind === "issue.update") {
     const result = await client.updateIssue(
       stored.plan.operation.projectPath,
       stored.plan.operation.issueIid,
@@ -545,7 +610,15 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
     );
   }
   const client = new GitLabClient(remote.host);
-  const verification = stored.plan.operation.kind === "issue.update"
+  const verification = stored.plan.operation.kind === "issue.create"
+    ? verifyIssue(
+        await client.getIssue(
+          stored.plan.operation.projectPath,
+          resultIssueIid(stored.plan.result?.iid),
+        ),
+        stored.plan.operation.issue,
+      )
+    : stored.plan.operation.kind === "issue.update"
     ? verifyIssue(
         await client.getIssue(
           stored.plan.operation.projectPath,
@@ -588,13 +661,17 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
 
 export function formatPlanMarkdown(stored: StoredPlan): string {
   const { plan } = stored;
-  const operationSummary = plan.operation.kind === "issue.update"
-    ? Object.entries(plan.operation.changes)
+  const operationSummary = plan.operation.kind === "issue.create"
+    ? Object.entries(plan.operation.issue)
         .map(([key, value]) => "- " + key + ": " + String(value))
         .join("\n")
-    : plan.operation.kind === "issue.note.create"
-      ? "- body: " + plan.operation.body
-      : plan.operation.kind === "label.create"
+    : plan.operation.kind === "issue.update"
+      ? Object.entries(plan.operation.changes)
+        .map(([key, value]) => "- " + key + ": " + String(value))
+        .join("\n")
+      : plan.operation.kind === "issue.note.create"
+        ? "- body: " + plan.operation.body
+        : plan.operation.kind === "label.create"
         ? [
             "- name: " + plan.operation.name,
             "- color: " + plan.operation.color,
@@ -619,9 +696,9 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
                   ? []
                   : ["- due_date: " + plan.operation.due_date]),
               ].join("\n")
-            : Object.entries(plan.operation.changes)
-                .map(([key, value]) => "- " + key + ": " + String(value))
-                .join("\n");
+                : Object.entries(plan.operation.changes)
+                    .map(([key, value]) => "- " + key + ": " + String(value))
+                    .join("\n");
   const lines = [
     "# oflow plan",
     "",
@@ -631,8 +708,10 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
     "Target: " + plan.operation.host + "/" + plan.operation.projectPath + " " + formatTarget(plan.operation),
     "Digest: " + plan.digest,
     "",
-    plan.operation.kind === "issue.update"
-      ? "Changes:"
+    plan.operation.kind === "issue.create"
+      ? "Create issue:"
+      : plan.operation.kind === "issue.update"
+        ? "Changes:"
       : plan.operation.kind === "issue.note.create"
         ? "Note:"
         : plan.operation.kind === "label.create"
@@ -693,6 +772,9 @@ function isSupportedOperation(
   ) {
     return false;
   }
+  if (operation.kind === "issue.create") {
+    return validIssueCreateOperation(operation);
+  }
   if (operation.kind === "issue.update") {
     return validIssueOperation(operation) &&
       Boolean(operation.changes && typeof operation.changes === "object");
@@ -733,6 +815,15 @@ function validIssueOperation(
   return "issueIid" in operation &&
     Number.isSafeInteger(operation.issueIid) &&
     operation.issueIid >= 1;
+}
+
+function validIssueCreateOperation(
+  operation: PlanOperation,
+): operation is IssueCreateOperation {
+  return operation.kind === "issue.create" &&
+    Boolean(operation.issue && typeof operation.issue === "object") &&
+    typeof operation.issue.title === "string" &&
+    operation.issue.title.trim().length > 0;
 }
 
 function validateIssueIid(issueIid: number): void {
@@ -824,18 +915,50 @@ function validateIssueChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
     );
   }
   if (changes.assignee_ids !== undefined) {
-    if (
-      !Array.isArray(changes.assignee_ids) ||
-      changes.assignee_ids.some((id) => !Number.isSafeInteger(id) || id < 1)
-    ) {
-      throw new OflowError(
-        "Issue assignee IDs must be positive integers.",
-        "INVALID_ISSUE_ASSIGNEES",
-      );
-    }
-    changes.assignee_ids = [...new Set(changes.assignee_ids)];
+    changes.assignee_ids = validateAssigneeIds(changes.assignee_ids);
   }
   return changes;
+}
+
+function validateIssueCreate(issue: GitLabIssueCreate): GitLabIssueCreate {
+  const title = requiredText(issue.title, "Issue title");
+  if (issue.due_date !== undefined) {
+    validateDate(issue.due_date, "Issue due date");
+  }
+  if (
+    issue.weight !== undefined &&
+    (!Number.isSafeInteger(issue.weight) || issue.weight < 0)
+  ) {
+    throw new OflowError(
+      "Issue weight must be a non-negative integer.",
+      "INVALID_ISSUE_WEIGHT",
+    );
+  }
+  const result: GitLabIssueCreate = {
+    title,
+    description: issue.description,
+    labels: issue.labels,
+    milestone: issue.milestone,
+    due_date: issue.due_date,
+    weight: issue.weight,
+    assignee_ids: validateAssigneeIds(issue.assignee_ids),
+  };
+  return Object.fromEntries(
+    Object.entries(result).filter(([, value]) => value !== undefined),
+  ) as GitLabIssueCreate;
+}
+
+function validateAssigneeIds(ids: number[] | undefined): number[] | undefined {
+  if (ids === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(ids) || ids.some((id) => !Number.isSafeInteger(id) || id < 1)) {
+    throw new OflowError(
+      "Issue assignee IDs must be positive integers.",
+      "INVALID_ISSUE_ASSIGNEES",
+    );
+  }
+  return [...new Set(ids)];
 }
 
 async function resolveAssigneeIds(
@@ -869,9 +992,12 @@ async function resolveAssigneeIds(
   return users.map((user) => user.id);
 }
 
-function compactIssue(issue: GitLabIssue): NonNullable<PlanArtifact["result"]> {
+function compactIssue(
+  issue: GitLabIssue,
+  kind: "issue.create" | "issue.update" = "issue.update",
+): NonNullable<PlanArtifact["result"]> {
   return {
-    kind: "issue.update",
+    kind,
     iid: issue.iid,
     title: issue.title,
     state: issue.state ?? null,
@@ -1205,6 +1331,17 @@ function resultMilestoneIid(milestoneIid: number | undefined): number {
   return milestoneIid;
 }
 
+function resultIssueIid(issueIid: number | undefined): number {
+  if (issueIid === undefined) {
+    throw new OflowError(
+      "Applied issue plan is missing its remote IID.",
+      "INVALID_PLAN",
+    );
+  }
+  validateIssueIid(issueIid);
+  return issueIid;
+}
+
 function requiredText(value: string | undefined, field: string): string {
   const normalized = value?.trim() ?? "";
   if (!normalized) {
@@ -1225,6 +1362,9 @@ function findLabel(labels: GitLabLabel[], reference: string): GitLabLabel | unde
 }
 
 function formatTarget(operation: PlanOperation): string {
+  if (operation.kind === "issue.create") {
+    return "new issue " + JSON.stringify(operation.issue.title);
+  }
   if (operation.kind === "issue.update" || operation.kind === "issue.note.create") {
     return "issue #" + operation.issueIid;
   }

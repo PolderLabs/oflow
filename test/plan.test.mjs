@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   applyPlan,
   approvePlan,
+  createIssueCreatePlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
   createIssueNotePlan,
@@ -102,6 +103,80 @@ test("issue update plans require approval and verify the applied result", async 
     stored.operation.changes.title = "tampered";
     await writeFile(created.path, JSON.stringify(stored));
     await assert.rejects(() => approvePlan(root, created.path), { code: "INVALID_PLAN_STATE" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("issue create plans stay guarded and verify the created work item", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-issue-create-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "issue-create-plan-test-token";
+  let issue;
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      if (url.pathname === "/api/v4/users") {
+        return response([{ id: 5, username: "zakar", name: "Zakar" }]);
+      }
+      if (url.pathname === "/api/v4/projects/team%2Fproject" && method === "GET") {
+        return response({ id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project" });
+      }
+      if (url.pathname === "/api/v4/projects/team%2Fproject/issues" && method === "POST") {
+        const body = new URLSearchParams(String(init.body));
+        issue = {
+          iid: 77,
+          title: body.get("title"),
+          description: body.get("description"),
+          labels: (body.get("labels") ?? "").split(",").filter(Boolean),
+          milestone: { name: body.get("milestone") },
+          due_date: body.get("due_date"),
+          weight: Number(body.get("weight")),
+          assignees: body.getAll("assignee_ids[]").map((id) => ({ id: Number(id), username: "zakar" })),
+          state: "opened",
+          web_url: "https://gitlab.example.test/team/project/-/issues/77",
+        };
+        return response(issue);
+      }
+      if (url.pathname.endsWith("/issues/77")) {
+        return response(issue);
+      }
+      return response({});
+    };
+
+    const created = await createIssueCreatePlan(root, {
+      title: "Reserve a pod",
+      description: "Acceptance criteria:\n- [ ] AC-1: Reservation persists",
+      labels: "User Story,Ready",
+      milestone: "Sprint 5",
+      due_date: "2027-01-20",
+      weight: 3,
+    }, "zakar");
+    assert.equal(created.plan.state, "draft");
+    assert.equal(created.plan.operation.kind, "issue.create");
+    assert.deepEqual(created.plan.operation.issue.assignee_ids, [5]);
+    await approvePlan(root, created.path);
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.result.iid, 77);
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

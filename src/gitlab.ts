@@ -2,6 +2,7 @@ import { OflowError } from "./errors.js";
 import { getGitLabToken, redactGitLabToken } from "./auth.js";
 import type {
   GitLabIssue,
+  GitLabIssueCreate,
   GitLabIssueUpdate,
   GitLabUser,
   GitLabBoard,
@@ -119,6 +120,23 @@ export class GitLabClient {
           string,
           string | number | boolean | Array<string | number | boolean> | undefined
         >,
+      },
+    );
+  }
+
+  async createIssue(
+    projectPath: string,
+    issue: GitLabIssueCreate,
+  ): Promise<GitLabIssue> {
+    return this.request<GitLabIssue>(
+      "/projects/" + encodeURIComponent(projectPath) + "/issues",
+      {
+        method: "POST",
+        form: issue as unknown as Record<
+          string,
+          string | number | boolean | Array<string | number | boolean> | undefined
+        >,
+        retryable: false,
       },
     );
   }

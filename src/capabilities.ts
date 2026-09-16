@@ -71,6 +71,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Project: Read; Group: Read; Work Item: Read",
       ),
       capability(
+        "work-items.create",
+        "implemented",
+        "apply",
+        "Work Item",
+        "REST",
+        "Work Item: Create; User: Read when resolving usernames",
+      ),
+      capability(
         "work-items.update",
         "implemented",
         "apply",

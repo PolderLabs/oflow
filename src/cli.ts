@@ -33,6 +33,7 @@ import {
   approvePlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
+  createIssueCreatePlan,
   createIssueNotePlan,
   createIssueUpdatePlan,
   createMilestoneCreatePlan,
@@ -163,6 +164,26 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "plan": {
+        if (options.planResource === "issue" && options.planOperation === "create") {
+          if (options.title === undefined) {
+            throw new OflowError(
+              "plan issue create requires --title.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createIssueCreatePlan(root, {
+            title: options.title,
+            description: options.description,
+            labels: options.labels,
+            milestone: options.milestone,
+            due_date: options.dueDate,
+            weight: options.weight === undefined
+              ? undefined
+              : parseNonNegativeInteger(options.weight, "issue weight"),
+          }, options.assignee);
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
         if (options.planResource === "issue" &&
           (options.planOperation === "update" || options.planOperation === "note")) {
           const storyIid = await resolveStoryIid(root, options.story);
@@ -260,7 +281,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         }
         {
           throw new OflowError(
-            "Use oflow plan issue update/note, plan label create/update, or plan milestone create/update with the required fields.",
+            "Use oflow plan issue create/update/note, plan label create/update, or plan milestone create/update with the required fields.",
             "UNSUPPORTED_PLAN",
           );
         }
@@ -766,6 +787,7 @@ function helpText(): string {
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
+    "  plan issue create --title <title>   prepare an auditable issue create",
     "  plan issue update --story <iid>     prepare an auditable issue update",
     "  plan issue note --story <iid>       prepare an auditable issue note",
     "  plan label create --name --color    prepare an auditable label create",

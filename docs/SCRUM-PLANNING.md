@@ -135,10 +135,19 @@ oflow apply .oflow/state/plans/<plan-id>.json
 oflow verify --plan .oflow/state/plans/<plan-id>.json
 ```
 
-The currently implemented plan operations are issue/work-item update, issue
-note creation, project label create/update, and project milestone create/update:
+The currently implemented plan operations are issue/work-item create and update,
+issue note creation, project label create/update, and project milestone
+create/update:
 
 ```bash
+oflow plan issue create \
+  --title "Reserve a pod" \
+  --description "Acceptance criteria:\n- [ ] AC-1: Reservation persists" \
+  --labels "User Story,Ready" \
+  --assignee zakar \
+  --milestone "Sprint 5" \
+  --due-date 2027-01-20 \
+  --weight 3
 oflow plan issue update --story <iid> \
   --title "Updated title" \
   --labels "Ready,backend" \
@@ -167,7 +176,9 @@ API ([Issues API](https://docs.gitlab.com/api/issues/),
 
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before
-writing, and re-read GitLab during verification. Issue assignment resolves
+writing, and re-read GitLab during verification. Issue creation is a
+non-idempotent POST and therefore is never automatically retried. Issue
+assignment resolves
 usernames before the plan is written. Note creation disables automatic
 request retries because repeating a non-idempotent POST could create duplicate
 comments. Label creation also disables automatic retries because it is a

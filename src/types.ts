@@ -98,6 +98,16 @@ export interface GitLabIssueUpdate {
   state_event?: "close" | "reopen";
 }
 
+export interface GitLabIssueCreate {
+  title: string;
+  description?: string;
+  labels?: string;
+  milestone?: string;
+  due_date?: string;
+  weight?: number;
+  assignee_ids?: number[];
+}
+
 export interface GitLabUser {
   id: number;
   username: string;
