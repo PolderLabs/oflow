@@ -153,6 +153,11 @@ test("issue update plans require approval and verify the applied result", async 
     assert.ok(!JSON.stringify(audit.events).includes("Choose a pod now"));
     assert.ok(!JSON.stringify(audit.events).includes("secret"));
 
+    const conflict = await createIssueUpdatePlan(root, 42, { title: "Race-safe update" });
+    issue.updated_at = "2027-01-01T00:00:00Z";
+    await approvePlan(root, conflict.path);
+    await assert.rejects(() => applyPlan(root, conflict.path), { code: "PLAN_TARGET_CHANGED" });
+
     await assert.rejects(
       () => createIssueUpdatePlan(root, 42, {
         labels: "Only",

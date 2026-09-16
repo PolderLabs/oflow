@@ -116,6 +116,7 @@ This is the immediate implementation focus.
 - [x] Apply shared owner and milestone/timebox changes through bounded bulk
   planning workflows; keep iteration assignment plan-only until its write API
   is version-aware.
+- [x] Guard issue writes against stale remote `updated_at` preconditions.
 - [x] Create/update project milestones through guarded plans; keep deletion disabled.
 - [x] Create/update boards and label-backed board lists through guarded plans;
   keep deletion disabled and use issue labels for board-card movement.

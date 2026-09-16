@@ -33,6 +33,7 @@ export interface IssueUpdateOperation {
   projectPath: string;
   issueIid: number;
   changes: GitLabIssueUpdate;
+  expectedUpdatedAt?: string | null;
 }
 
 export interface BulkIssueLabelsUpdateOperation {
@@ -42,6 +43,7 @@ export interface BulkIssueLabelsUpdateOperation {
   issueIids: number[];
   add_labels?: string;
   remove_labels?: string;
+  expectedUpdatedAt?: Record<string, string | null>;
 }
 
 export interface BulkIssuePlanningUpdateOperation {
@@ -50,6 +52,7 @@ export interface BulkIssuePlanningUpdateOperation {
   projectPath: string;
   issueIids: number[];
   changes: Pick<GitLabIssueUpdate, "milestone" | "milestone_id" | "assignee_ids">;
+  expectedUpdatedAt?: Record<string, string | null>;
 }
 
 export interface IssueCreateOperation {
@@ -276,7 +279,7 @@ export async function createIssueUpdatePlan(
   }
   const remote = await getGitLabRemote(root);
   const client = new GitLabClient(remote.host);
-  await client.getIssue(remote.projectPath, issueIid);
+  const currentIssue = await client.getIssue(remote.projectPath, issueIid);
   const operationChanges = validateIssueChanges(
     cleanChanges({
       ...changes,
@@ -307,6 +310,7 @@ export async function createIssueUpdatePlan(
       projectPath: remote.projectPath,
       issueIid,
       changes: operationChanges,
+      expectedUpdatedAt: currentIssue.updated_at ?? null,
     },
   };
   plan.digest = planDigest(plan);
@@ -332,13 +336,16 @@ export async function createBulkIssueLabelsPlan(
   const operationChanges = validateBulkIssueLabelChanges(changes);
   const remote = await getGitLabRemote(root);
   const client = new GitLabClient(remote.host);
-  await Promise.all(normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)));
+  const currentIssues = await Promise.all(
+    normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)),
+  );
   return writePlan(root, {
     kind: "issues.labels.update",
     host: remote.host,
     projectPath: remote.projectPath,
     issueIids: normalizedIids,
     ...operationChanges,
+    expectedUpdatedAt: expectedUpdatedAtFor(currentIssues),
   });
 }
 
@@ -372,13 +379,16 @@ export async function createBulkIssuePlanningPlan(
         : await resolveAssigneeIds(client, assignee),
     }),
   );
-  await Promise.all(normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)));
+  const currentIssues = await Promise.all(
+    normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)),
+  );
   return writePlan(root, {
     kind: "issues.planning.update",
     host: remote.host,
     projectPath: remote.projectPath,
     issueIids: normalizedIids,
     changes: operationChanges,
+    expectedUpdatedAt: expectedUpdatedAtFor(currentIssues),
   });
 }
 
@@ -857,6 +867,12 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
     stored.plan.result = compactIssue(result, "issue.create");
   } else if (stored.plan.operation.kind === "issue.update") {
+    await assertIssueFresh(
+      client,
+      stored.plan.operation.projectPath,
+      stored.plan.operation.issueIid,
+      stored.plan.operation.expectedUpdatedAt,
+    );
     const result = await client.updateIssue(
       stored.plan.operation.projectPath,
       stored.plan.operation.issueIid,
@@ -866,6 +882,12 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
   } else if (stored.plan.operation.kind === "issues.labels.update") {
     const results = [] as Array<{ iid: number; labels: string[] }>;
     for (const issueIid of stored.plan.operation.issueIids) {
+      await assertIssueFresh(
+        client,
+        stored.plan.operation.projectPath,
+        issueIid,
+        stored.plan.operation.expectedUpdatedAt?.[String(issueIid)],
+      );
       const result = await client.updateIssue(
         stored.plan.operation.projectPath,
         issueIid,
@@ -880,6 +902,12 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
   } else if (stored.plan.operation.kind === "issues.planning.update") {
     const results: NonNullable<PlanArtifact["result"]>["issues"] = [];
     for (const issueIid of stored.plan.operation.issueIids) {
+      await assertIssueFresh(
+        client,
+        stored.plan.operation.projectPath,
+        issueIid,
+        stored.plan.operation.expectedUpdatedAt?.[String(issueIid)],
+      );
       const result = await client.updateIssue(
         stored.plan.operation.projectPath,
         issueIid,
@@ -1240,7 +1268,8 @@ function isSupportedOperation(
   }
   if (operation.kind === "issue.update") {
     return validIssueOperation(operation) &&
-      Boolean(operation.changes && typeof operation.changes === "object");
+      Boolean(operation.changes && typeof operation.changes === "object") &&
+      validExpectedUpdatedAt(operation.expectedUpdatedAt);
   }
   if (operation.kind === "issues.labels.update") {
     const addLabelsValid = operation.add_labels === undefined ||
@@ -1254,7 +1283,8 @@ function isSupportedOperation(
       operation.issueIids.every((issueIid) => Number.isSafeInteger(issueIid) && issueIid > 0) &&
       (operation.add_labels !== undefined || operation.remove_labels !== undefined) &&
       addLabelsValid &&
-      removeLabelsValid;
+      removeLabelsValid &&
+      validExpectedUpdatedAtMap(operation.expectedUpdatedAt);
   }
   if (operation.kind === "issues.planning.update") {
     return Array.isArray(operation.issueIids) &&
@@ -1266,7 +1296,8 @@ function isSupportedOperation(
       Object.keys(operation.changes).length > 0 &&
       Object.keys(operation.changes).every((key) =>
         key === "milestone" || key === "milestone_id" || key === "assignee_ids"
-      );
+      ) &&
+      validExpectedUpdatedAtMap(operation.expectedUpdatedAt);
   }
   if (operation.kind === "issue.note.create") {
     return validIssueOperation(operation) &&
@@ -1360,6 +1391,45 @@ function validateIssueIids(issueIids: number[]): number[] {
     );
   }
   return normalized;
+}
+
+function expectedUpdatedAtFor(issues: GitLabIssue[]): Record<string, string | null> {
+  return Object.fromEntries(
+    issues.map((issue) => [String(issue.iid), issue.updated_at ?? null]),
+  );
+}
+
+async function assertIssueFresh(
+  client: GitLabClient,
+  projectPath: string,
+  issueIid: number,
+  expectedUpdatedAt: string | null | undefined,
+): Promise<void> {
+  if (expectedUpdatedAt === undefined) {
+    return;
+  }
+  const current = await client.getIssue(projectPath, issueIid);
+  const actualUpdatedAt = current.updated_at ?? null;
+  if (actualUpdatedAt !== expectedUpdatedAt) {
+    throw new OflowError(
+      "Issue #" + String(issueIid) + " changed after the plan was created; re-run the plan before applying.",
+      "PLAN_TARGET_CHANGED",
+    );
+  }
+}
+
+function validExpectedUpdatedAt(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+function validExpectedUpdatedAtMap(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).every((item) => item === null || typeof item === "string");
 }
 
 function validateBulkIssuePlanningChanges(

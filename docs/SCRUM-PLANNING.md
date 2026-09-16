@@ -276,6 +276,14 @@ assignment is not included because GitLab's current REST issue update endpoint
 does not document `iteration_id` or `iteration_title` as update fields; use
 the read-only iteration view until a version-aware write adapter is added.
 
+Issue update plans also capture each target's `updated_at` during preflight.
+Apply re-reads the target immediately before a guarded write and refuses with
+`PLAN_TARGET_CHANGED` when the remote issue has changed since plan creation.
+Bulk issue plans do this per target, so a stale item stops the sequential apply
+before that item is written; earlier successful items remain changed and are
+reported by the approved plan. Older plan artifacts without this precondition
+remain readable for compatibility.
+
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before
 writing, and re-read GitLab during verification. Issue creation is a

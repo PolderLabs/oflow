@@ -224,6 +224,12 @@ update API does not expose iteration assignment as a supported update field,
 so this command uses milestones for NestPod's Sprint 1–4 timeboxes; iteration
 assignment remains a separate roadmap item.
 
+Issue update plans capture the target issue's `updated_at` value when the plan
+is created. Apply re-reads each guarded issue immediately before writing and
+refuses with `PLAN_TARGET_CHANGED` if another user or agent changed it in the
+meantime. This adds one small precondition read per target and prevents a
+stale plan from silently overwriting newer planning work.
+
 GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
 and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
