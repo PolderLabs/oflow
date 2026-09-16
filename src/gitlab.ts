@@ -125,6 +125,17 @@ export class GitLabClient {
         query.set("iteration_title", iteration);
       }
     }
+    if (filters.epic !== undefined) {
+      const epic = filters.epic.trim();
+      const normalized = epic.toLowerCase();
+      if (["none", "null", "unassigned"].includes(normalized)) {
+        query.set("epic_id", "None");
+      } else if (normalized === "any") {
+        query.set("epic_id", "Any");
+      } else {
+        query.set("epic_id", epic);
+      }
+    }
     if (filters.search !== undefined) {
       query.set("search", filters.search);
     }
@@ -142,6 +153,9 @@ export class GitLabClient {
           query.append("assignee_username[]", username);
         }
       }
+    }
+    if (filters.author !== undefined) {
+      query.set("author_username", filters.author.trim());
     }
     const result = await this.request<unknown>(
       "/projects/" +

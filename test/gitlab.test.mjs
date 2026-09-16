@@ -82,7 +82,9 @@ test("applies server-side work-item filters without downloading descriptions", a
         label: "User Story",
         milestone: "Sprint 1",
         iteration: "none",
+        epic: "12",
         assignee: "zakar,alice",
+        author: "zakar",
         search: "pod",
         updatedAfter: "2026-01-01T00:00:00Z",
       });
@@ -94,7 +96,9 @@ test("applies server-side work-item filters without downloading descriptions", a
     assert.equal(query.get("milestone"), "Sprint 1");
     assert.equal(query.get("iteration_id"), "None");
     assert.equal(query.get("iteration_title"), null);
+    assert.equal(query.get("epic_id"), "12");
     assert.deepEqual(query.getAll("assignee_username[]"), ["zakar", "alice"]);
+    assert.equal(query.get("author_username"), "zakar");
     assert.equal(query.get("search"), "pod");
     assert.equal(query.get("updated_after"), "2026-01-01T00:00:00Z");
   } finally {

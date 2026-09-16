@@ -95,6 +95,7 @@ interface CliOptions {
   milestone?: string;
   epic?: string;
   assignee?: string;
+  author?: string;
   search?: string;
   updatedAfter?: string;
   limit?: string;
@@ -604,6 +605,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--milestone" ||
       argument === "--epic" ||
       argument === "--assignee" ||
+      argument === "--author" ||
       argument === "--search" ||
       argument === "--updated-after" ||
       argument === "--limit" ||
@@ -660,6 +662,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.epic = value;
       } else if (argument === "--assignee") {
         options.assignee = value;
+      } else if (argument === "--author") {
+        options.author = value;
       } else if (argument === "--search") {
         options.search = value;
       } else if (argument === "--updated-after") {
@@ -731,6 +735,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.epic = argument.slice("--epic=".length);
     } else if (argument.startsWith("--assignee=")) {
       options.assignee = argument.slice("--assignee=".length);
+    } else if (argument.startsWith("--author=")) {
+      options.author = argument.slice("--author=".length);
     } else if (argument.startsWith("--search=")) {
       options.search = argument.slice("--search=".length);
     } else if (argument.startsWith("--updated-after=")) {
@@ -912,8 +918,14 @@ function collectIssueFilters(options: CliOptions): GitLabIssueFilters {
   if (options.iteration !== undefined) {
     filters.iteration = requiredFilter(options.iteration, "--iteration");
   }
+  if (options.epic !== undefined) {
+    filters.epic = normalizeEpicFilter(options.epic);
+  }
   if (options.assignee !== undefined) {
     filters.assignee = requiredFilter(options.assignee, "--assignee");
+  }
+  if (options.author !== undefined) {
+    filters.author = requiredFilter(options.author, "--author");
   }
   if (options.search !== undefined) {
     filters.search = requiredFilter(options.search, "--search");
@@ -930,6 +942,27 @@ function requiredFilter(value: string, flag: string): string {
     throw new OflowError(flag + " cannot be empty.", "INVALID_ISSUE_FILTER");
   }
   return normalized;
+}
+
+function normalizeEpicFilter(value: string): string {
+  const normalized = value.trim();
+  const lower = normalized.toLowerCase();
+  if (["none", "null", "unassigned"].includes(lower)) {
+    return "none";
+  }
+  if (lower === "any") {
+    return "any";
+  }
+  if (/^[1-9]\d*$/.test(normalized)) {
+    const parsed = Number(normalized);
+    if (Number.isSafeInteger(parsed)) {
+      return String(parsed);
+    }
+  }
+  throw new OflowError(
+    "Epic filter must be a positive integer, none, or any.",
+    "INVALID_ISSUE_FILTER",
+  );
 }
 
 function parsePosition(value: string): number {
@@ -1101,7 +1134,7 @@ function helpText(): string {
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
-    "  filters: --label, --milestone, --iteration, --assignee, --search, --updated-after, --limit 1..100",
+    "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --limit 1..100",
   ].join("\n") + "\n";
 }
 

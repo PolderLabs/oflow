@@ -8,7 +8,9 @@ export interface GitLabIssueFilters {
   label?: string;
   milestone?: string;
   iteration?: string;
+  epic?: string;
   assignee?: string;
+  author?: string;
   search?: string;
   updatedAfter?: string;
 }

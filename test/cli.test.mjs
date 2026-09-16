@@ -49,7 +49,7 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     symlinkSync(cli, linkedCli);
     const result = execFileSync(linkedCli, ["help"], { encoding: "utf8" });
     assert.match(result, /^oflow - GitLab-first workflow/);
-    assert.match(result, /filters: --label, --milestone, --iteration, --assignee/);
+    assert.match(result, /filters: --label, --milestone, --iteration, --epic, --assignee, --author/);
     assert.match(result, /mr --iid <iid> \[--full\] \[--json\]/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
