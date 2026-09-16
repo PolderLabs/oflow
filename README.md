@@ -79,6 +79,7 @@ oflow mr --iid 8 --full       # include the MR description when needed
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
 oflow plan issue update --story 42 --add-labels "Ready" --remove-labels "In Progress"
+oflow plan assess --story 42 --assignee zakar --milestone "Sprint 1"
 oflow plan issues labels --stories 17,18,23 --add-labels "Ready"
 oflow plan issue update --story 42 --epic 12
 oflow plan issue note --story 42 --body "Progress: API contract confirmed."

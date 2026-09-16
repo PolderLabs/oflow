@@ -138,7 +138,8 @@ This is the immediate implementation focus.
 - [x] Detect missing acceptance criteria and work items without owners or
   timeboxes when the API provides the relevant fields.
 - [x] Recommend the smallest next implementation or planning action.
-- [ ] Generate an approval-ready plan from those recommendations.
+- [x] Generate an approval-ready owner/timebox plan from those recommendations;
+  other recommendations remain explicit agent/user decisions.
 - [x] Add local context caching with explicit cached/refresh modes and no credentials.
 - [x] Support concise Markdown and machine-readable reports suitable for Claude,
   Codex, CI jobs, and future agents.

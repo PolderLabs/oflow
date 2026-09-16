@@ -22,6 +22,7 @@ import {
   createBoardUpdatePlan,
   createMilestoneCreatePlan,
   createMilestoneUpdatePlan,
+  formatPlanMarkdown,
   verifyPlan,
 } from "../dist/plan.js";
 import { readAudit } from "../dist/audit.js";
@@ -111,8 +112,14 @@ test("issue update plans require approval and verify the applied result", async 
       weight: 3,
       epic_id: 12,
       state_event: "close",
-    }, "zakar,alice");
+    }, "zakar,alice", {
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      status: "in-progress",
+      recommendations: ["Assign an owner or explicitly confirm why the story is unassigned."],
+    });
     assert.equal(created.plan.state, "draft");
+    assert.equal(created.plan.sourceAssessment.status, "in-progress");
+    assert.match(formatPlanMarkdown(created), /Source assessment: in-progress/);
     assert.deepEqual(created.plan.operation.changes.assignee_ids, [5, 6]);
     assert.equal(created.plan.operation.changes.epic_id, 12);
     const approved = await approvePlan(root, created.path);

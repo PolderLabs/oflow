@@ -323,8 +323,14 @@ pipeline status, recent notes, and local branch/working-tree evidence. It also
 recommends assigning an owner and milestone/iteration when those fields are
 missing. It classifies only explicit evidence;
 it does not claim that local code satisfies a criterion merely because files
-changed. The agent performs the final reasoning and may then create a guarded
-plan.
+changed. The agent performs the final reasoning. When the owner and/or
+milestone decision is known, `oflow plan assess --story <iid> --assignee
+<username> --milestone <title>` turns that assessment into a digest-protected
+issue-update plan. The command never invents planning values, only supports
+owner/timebox changes, records the assessment status and recommendations in
+the plan, and still requires `approve`, `apply`, and `verify`. Use `none` to
+explicitly clear an owner or milestone; iteration assignment remains read-only
+until a version-aware write adapter exists.
 
 `oflow audit --json` is a local-only, bounded read of the plan lifecycle audit
 log. Successful `created`, `approved`, `applied`, and `verified` transitions,

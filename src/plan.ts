@@ -36,6 +36,12 @@ export interface IssueUpdateOperation {
   expectedUpdatedAt?: string | null;
 }
 
+export interface AssessmentPlanSource {
+  generatedAt: string;
+  status: string;
+  recommendations: string[];
+}
+
 export interface BulkIssueLabelsUpdateOperation {
   kind: "issues.labels.update";
   host: string;
@@ -163,6 +169,7 @@ export interface PlanArtifact {
   state: PlanState;
   digest: string;
   operation: PlanOperation;
+  sourceAssessment?: AssessmentPlanSource;
   result?: {
     kind: PlanOperation["kind"];
     iid?: number;
@@ -267,6 +274,7 @@ export async function createIssueUpdatePlan(
   issueIid: number,
   changes: GitLabIssueUpdate,
   assignee?: string,
+  sourceAssessment?: AssessmentPlanSource,
 ): Promise<StoredPlan> {
   const config = await loadConfig(root);
   if (!config) {
@@ -317,6 +325,7 @@ export async function createIssueUpdatePlan(
       changes: operationChanges,
       expectedUpdatedAt: currentIssue.updated_at ?? null,
     },
+    sourceAssessment,
   };
   plan.digest = planDigest(plan);
   const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
@@ -1203,6 +1212,16 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
     "State: " + plan.state,
     "Target: " + plan.operation.host + "/" + plan.operation.projectPath + " " + formatTarget(plan.operation),
     "Digest: " + plan.digest,
+    ...(plan.sourceAssessment
+      ? [
+        "Source assessment: " + plan.sourceAssessment.status +
+          " at " + plan.sourceAssessment.generatedAt,
+        "Assessment recommendations: " +
+          (plan.sourceAssessment.recommendations.length > 0
+            ? plan.sourceAssessment.recommendations.join(" | ")
+            : "none"),
+      ]
+      : []),
     "",
     plan.operation.kind === "issue.create"
       ? "Create issue:"
@@ -1629,6 +1648,7 @@ function planDigest(plan: PlanArtifact): string {
     id: plan.id,
     createdAt: plan.createdAt,
     operation: plan.operation,
+    sourceAssessment: plan.sourceAssessment,
   };
   return createHash("sha256")
     .update(JSON.stringify(sortKeys(core)))

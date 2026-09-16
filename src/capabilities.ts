@@ -182,6 +182,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "local JSON",
         "No GitLab permission; use --cached explicitly",
       ),
+      capability(
+        "assessment.plan",
+        "implemented",
+        "plan-only",
+        "Owner/timebox update derived from a story assessment",
+        "REST + local assessment",
+        "Work Item: Read; User: Read for username lookup",
+      ),
     ],
   };
 }

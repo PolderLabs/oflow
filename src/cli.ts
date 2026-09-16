@@ -277,6 +277,30 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "plan": {
+        if (options.planResource === "assess" && options.planOperation === "update") {
+          assertAssessmentPlanOptions(options);
+          if (options.assignee === undefined && options.milestone === undefined) {
+            throw new OflowError(
+              "plan assess requires --assignee and/or --milestone; it never invents planning values.",
+              "EMPTY_PLAN",
+            );
+          }
+          const storyIid = await resolveStoryIid(root, options.story);
+          const assessment = await assessStory(root, storyIid);
+          const stored = await createIssueUpdatePlan(
+            root,
+            storyIid,
+            normalizeIssueMilestone(options.milestone),
+            options.assignee,
+            {
+              generatedAt: assessment.generatedAt,
+              status: assessment.status,
+              recommendations: assessment.nextActions,
+            },
+          );
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
         if (options.planResource === "issues" && options.planOperation === "labels") {
           if (options.stories === undefined) {
             throw new OflowError(
@@ -663,8 +687,13 @@ function parseArgs(argv: string[]): CliOptions {
     firstOptionIndex = 2;
   } else if (command === "plan") {
     options.planResource = argv[1];
-    options.planOperation = argv[2];
-    firstOptionIndex = 3;
+    if (argv[2] && !argv[2].startsWith("-")) {
+      options.planOperation = argv[2];
+      firstOptionIndex = 3;
+    } else {
+      options.planOperation = "update";
+      firstOptionIndex = 2;
+    }
   } else if (command === "glab") {
     options.glabAction = argv[1];
     options.glabEndpoint = argv[2];
@@ -1306,6 +1335,7 @@ function helpText(): string {
     "  plan issue update --story <iid>     prepare an auditable issue update",
     "  plan issues labels --stories 1,2    prepare guarded bulk label changes",
     "  plan issues update --stories 1,2    prepare guarded owner/timebox changes",
+    "  plan assess --story <iid>           prepare owner/timebox plan from assessment",
     "  plan issue note --story <iid>       prepare an auditable issue note",
     "  plan label create --name --color    prepare an auditable label create",
     "  plan label update --label <name>    prepare an auditable label update",
@@ -1377,6 +1407,47 @@ function assertBulkPlanningOptions(options: CliOptions): void {
     throw new OflowError(
       "plan issues update supports only --milestone and --assignee; use plan issue update for other fields.",
       "UNSUPPORTED_BULK_ISSUE_FIELD",
+    );
+  }
+}
+
+function assertAssessmentPlanOptions(options: CliOptions): void {
+  const unsupported = [
+    ["--title", options.title],
+    ["--description", options.description],
+    ["--body", options.body],
+    ["--name", options.name],
+    ["--color", options.color],
+    ["--new-name", options.newName],
+    ["--label", options.label],
+    ["--iteration", options.iteration],
+    ["--start-date", options.startDate],
+    ["--due-date", options.dueDate],
+    ["--weight", options.weight],
+    ["--labels", options.labels],
+    ["--add-labels", options.addLabels],
+    ["--remove-labels", options.removeLabels],
+    ["--epic", options.epic],
+    ["--state", options.state],
+    ["--author", options.author],
+    ["--search", options.search],
+    ["--updated-after", options.updatedAfter],
+    ["--updated-before", options.updatedBefore],
+    ["--stale-days", options.staleDays],
+    ["--limit", options.limit],
+    ["--board", options.board],
+    ["--list", options.list],
+    ["--position", options.position],
+    ["--iid", options.iid],
+    ["--stories", options.stories],
+    ["--group", options.group ? "true" : undefined],
+    ["--epics", options.epics ? "true" : undefined],
+    ["--full", options.full ? "true" : undefined],
+  ].filter(([, value]) => value !== undefined);
+  if (unsupported.length > 0) {
+    throw new OflowError(
+      "plan assess supports only --story, --assignee, and --milestone.",
+      "UNSUPPORTED_ASSESSMENT_PLAN_FIELD",
     );
   }
 }

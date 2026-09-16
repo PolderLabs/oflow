@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { main } from "../dist/cli.js";
 
 const cli = join(process.cwd(), "dist", "cli.js");
 
@@ -55,6 +56,7 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /sync --epics/);
     assert.match(result, /plan issues labels --stories 1,2/);
     assert.match(result, /plan issues update --stories 1,2/);
+    assert.match(result, /plan assess --story <iid>/);
     assert.match(result, /audit \[--limit <n>\] \[--json\]/);
     assert.match(result, /sync --stale-days <n>/);
     assert.match(result, /sync --cached/);
@@ -95,6 +97,81 @@ test("audit reads local lifecycle history without contacting GitLab", () => {
     assert.equal(result.events[0].action, "verified");
     assert.equal(result.events[0].details.verificationPassed, true);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("plan assess creates a guarded owner/timebox plan from a story assessment", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-assessment-plan-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "assessment-plan-cli-test-token";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      const responses = new Map([
+        ["/api/v4/projects/team%2Fproject", { id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project" }],
+        ["/api/v4/projects/team%2Fproject/issues/42", {
+          iid: 42,
+          title: "Choose a pod",
+          description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod",
+          state: "opened",
+          labels: ["User Story"],
+          assignees: [],
+          milestone: null,
+          iteration: null,
+          task_completion_status: { count: 1, completed_count: 0 },
+          web_url: "https://gitlab.example.test/team/project/-/issues/42",
+        }],
+        ["/api/v4/projects/team%2Fproject/issues/42/notes", []],
+        ["/api/v4/projects/team%2Fproject/issues/42/related_merge_requests", []],
+        ["/api/v4/projects/team%2Fproject/pipelines", []],
+        ["/api/v4/users", [{ id: 6, username: "zakar", name: "Zakar" }]],
+      ]);
+      const response = responses.get(url.pathname);
+      assert.ok(response, "unexpected request " + url.pathname);
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify(response),
+      };
+    };
+    const exitCode = await main([
+      "plan",
+      "assess",
+      "--root",
+      root,
+      "--story",
+      "42",
+      "--assignee",
+      "zakar",
+      "--milestone",
+      "Sprint 1",
+    ]);
+    assert.equal(exitCode, 0);
+    const planFiles = readdirSync(join(root, ".oflow", "state", "plans"));
+    assert.equal(planFiles.length, 1);
+    const result = JSON.parse(readFileSync(join(root, ".oflow", "state", "plans", planFiles[0]), "utf8"));
+    assert.equal(result.operation.kind, "issue.update");
+    assert.deepEqual(result.operation.changes.assignee_ids, [6]);
+    assert.equal(result.operation.changes.milestone, "Sprint 1");
+    assert.equal(result.sourceAssessment.status, "unknown");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
     rmSync(root, { recursive: true, force: true });
   }
 });
