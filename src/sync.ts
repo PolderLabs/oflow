@@ -100,6 +100,48 @@ export interface SyncResult {
   warnings: string[];
 }
 
+export interface SyncSummary {
+  generatedAt: string;
+  cache: SyncResult["cache"];
+  project: SyncResult["project"];
+  repository: SyncResult["repository"];
+  query: SyncResult["query"];
+  workItems: Array<Pick<SyncWorkItem, "iid" | "title" | "state" | "labels" | "milestone" | "iteration" | "assignees" | "taskCompletion" | "updatedAt" | "webUrl">>;
+  workItemsMayBeTruncated: boolean;
+  mergeRequests: Array<Pick<SyncMergeRequest, "iid" | "title" | "state" | "draft" | "sourceBranch" | "targetBranch" | "webUrl">>;
+  pipelines: Array<Pick<SyncPipeline, "id" | "status" | "ref" | "sha" | "webUrl">>;
+  planning: {
+    labels: string[];
+    milestones: Array<Pick<SyncMilestone, "iid" | "title" | "state" | "startDate" | "dueDate">>;
+    boards: Array<{
+      id: number;
+      name: string;
+      lists: string[];
+    }>;
+    iterations: Array<Pick<SyncIteration, "iid" | "title" | "state" | "startDate" | "dueDate">>;
+    epicCount: number;
+    epicsMayBeTruncated: boolean;
+  };
+  story: {
+    iid: number;
+    title: string;
+    state: string | null;
+    labels: string[];
+    milestone: string | null;
+    iteration: string | null;
+    assignees: string[];
+    taskCompletion: SyncStory["taskCompletion"];
+    acceptanceCriteria: number;
+    mergeRequests: number;
+    pipelines: number;
+    recentNotes: number;
+    webUrl: string | null;
+  } | null;
+  stats: SyncResult["stats"];
+  planningHealth: SyncPlanningHealth;
+  warnings: string[];
+}
+
 export interface SyncPlanningHealth {
   findings: Array<{
     code:
@@ -618,6 +660,163 @@ export function formatSyncMarkdown(result: SyncResult): string {
     "Use `oflow sync --json` for the compact agent handoff or `oflow context --story <iid>` for full story evidence.",
     "",
   );
+  return lines.join("\n");
+}
+
+export function compactSyncSummary(result: SyncResult): SyncSummary {
+  return {
+    generatedAt: result.generatedAt,
+    cache: result.cache,
+    project: result.project,
+    repository: result.repository,
+    query: result.query,
+    workItems: result.workItems.map((item) => ({
+      iid: item.iid,
+      title: item.title,
+      state: item.state,
+      labels: item.labels,
+      milestone: item.milestone,
+      iteration: item.iteration,
+      assignees: item.assignees,
+      taskCompletion: item.taskCompletion,
+      updatedAt: item.updatedAt,
+      webUrl: item.webUrl,
+    })),
+    workItemsMayBeTruncated: result.workItemsMayBeTruncated,
+    mergeRequests: result.mergeRequests.map((mergeRequest) => ({
+      iid: mergeRequest.iid,
+      title: mergeRequest.title,
+      state: mergeRequest.state,
+      draft: mergeRequest.draft,
+      sourceBranch: mergeRequest.sourceBranch,
+      targetBranch: mergeRequest.targetBranch,
+      webUrl: mergeRequest.webUrl,
+    })),
+    pipelines: result.pipelines.map((pipeline) => ({
+      id: pipeline.id,
+      status: pipeline.status,
+      ref: pipeline.ref,
+      sha: pipeline.sha,
+      webUrl: pipeline.webUrl,
+    })),
+    planning: {
+      labels: result.planning.labels.map((label) => label.name),
+      milestones: result.planning.milestones.map(({ iid, title, state, startDate, dueDate }) => ({
+        iid,
+        title,
+        state,
+        startDate,
+        dueDate,
+      })),
+      boards: result.planning.boards.map((board) => ({
+        id: board.id,
+        name: board.name,
+        lists: board.lists
+          .map((list) => list.label)
+          .filter((label): label is string => label !== null),
+      })),
+      iterations: result.planning.iterations.map(({ iid, title, state, startDate, dueDate }) => ({
+        iid,
+        title,
+        state,
+        startDate,
+        dueDate,
+      })),
+      epicCount: result.planning.epics.length,
+      epicsMayBeTruncated: result.planning.epicsMayBeTruncated,
+    },
+    story: result.story === null
+      ? null
+      : {
+          iid: result.story.iid,
+          title: result.story.title,
+          state: result.story.state,
+          labels: result.story.labels,
+          milestone: result.story.milestone,
+          iteration: result.story.iteration,
+          assignees: result.story.assignees,
+          taskCompletion: result.story.taskCompletion,
+          acceptanceCriteria: result.story.acceptanceCriteria.length,
+          mergeRequests: result.story.mergeRequests.length,
+          pipelines: result.story.pipelines.length,
+          recentNotes: result.story.recentNotes,
+          webUrl: result.story.webUrl,
+        },
+    stats: result.stats,
+    planningHealth: result.planningHealth,
+    warnings: result.warnings,
+  };
+}
+
+export function formatSyncSummaryMarkdown(result: SyncSummary): string {
+  const lines = [
+    "# oflow sync summary",
+    "",
+    "Generated: " + result.generatedAt,
+    "Source: " + (result.cache.source === "cache" ? "local cache" : "GitLab REST") +
+      "; snapshot age " + formatAge(result.cache.ageSeconds),
+    "Project: [" + result.project.path + "](" + result.project.webUrl + ")",
+    "Branch: " + (result.repository.branch ?? "detached/unknown"),
+    "Work-item query: " + result.query.state + "; limit " + String(result.query.issueLimit),
+    "",
+    "## Counts",
+    "",
+    "- Work items: " + String(result.stats.workItems) +
+      (result.workItemsMayBeTruncated ? " (more available)" : ""),
+    "- Open merge requests: " + String(result.stats.mergeRequests),
+    "- Pipelines: " + String(result.stats.pipelines),
+    "- Labels: " + String(result.stats.labels),
+    "- Active milestones: " + String(result.stats.milestones),
+    "- Boards: " + String(result.stats.boards),
+    "- Project-visible iterations: " + String(result.stats.iterations),
+    ...(result.query.includeEpics
+      ? ["- Group epics: " + String(result.planning.epicCount) +
+        (result.planning.epicsMayBeTruncated ? " (more available)" : "")]
+      : []),
+    "",
+    "## Work items",
+    "",
+  ];
+  if (result.workItems.length === 0) {
+    lines.push("_None found._");
+  } else {
+    lines.push(...result.workItems.map((item) =>
+      "- #" + String(item.iid) + " " + linkOrText(item.title, item.webUrl) +
+      (item.milestone ? " · milestone: " + item.milestone : "") +
+      (item.iteration ? " · iteration: " + item.iteration : "") +
+      (item.assignees.length > 0 ? " · assignee: " + item.assignees.join(", ") : "") +
+      (item.taskCompletion
+        ? " · tasks: " + String(item.taskCompletion.completed) + "/" + String(item.taskCompletion.total)
+        : ""),
+    ));
+  }
+  if (result.story !== null) {
+    lines.push(
+      "",
+      "## Focused story",
+      "",
+      "- #" + String(result.story.iid) + " " + linkOrText(result.story.title, result.story.webUrl) +
+        " · acceptance criteria: " + String(result.story.acceptanceCriteria) +
+        " · merge requests: " + String(result.story.mergeRequests) +
+        " · notes: " + String(result.story.recentNotes),
+    );
+  }
+  if (result.planningHealth.findings.length > 0) {
+    lines.push(
+      "",
+      "## Planning health",
+      "",
+      ...result.planningHealth.findings.map((finding) =>
+        "- " + finding.message +
+        (finding.storyIids.length > 0
+          ? " (stories: " + finding.storyIids.map((iid) => "#" + iid).join(", ") + ")"
+          : "")),
+    );
+  }
+  if (result.warnings.length > 0) {
+    lines.push("", "## Warnings", "", ...result.warnings.map((warning) => "- " + warning));
+  }
+  lines.push("", "Use `oflow assess --story <iid>` for detailed acceptance and delivery evidence.", "");
   return lines.join("\n");
 }
 

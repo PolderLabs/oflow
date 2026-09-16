@@ -64,7 +64,12 @@ import {
 } from "./plan.js";
 import { formatAuditMarkdown, readAudit } from "./audit.js";
 import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.js";
-import { formatSyncMarkdown, syncProject } from "./sync.js";
+import {
+  compactSyncSummary,
+  formatSyncMarkdown,
+  formatSyncSummaryMarkdown,
+  syncProject,
+} from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
 import type {
   GitLabIssueFilters,
@@ -95,6 +100,7 @@ interface CliOptions {
   group: boolean;
   cached: boolean;
   refresh: boolean;
+  summary: boolean;
   planResource?: string;
   planOperation?: string;
   planPath?: string;
@@ -262,7 +268,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             : parseIssueLimit(options.limit, 100),
           cache: options.cached ? "cached" : "refresh",
         });
-        print(options.json, result, formatSyncMarkdown(result));
+        if (options.summary) {
+          const summary = compactSyncSummary(result);
+          print(options.json, summary, formatSyncSummaryMarkdown(summary));
+        } else {
+          print(options.json, result, formatSyncMarkdown(result));
+        }
         return result.warnings.length === 0 ? 0 : 1;
       }
       case "assess": {
@@ -716,6 +727,7 @@ function parseArgs(argv: string[]): CliOptions {
     group: false,
     cached: false,
     refresh: false,
+    summary: false,
     full: false,
   };
 
@@ -762,6 +774,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.cached = true;
     } else if (argument === "--refresh") {
       options.refresh = true;
+    } else if (argument === "--summary") {
+      options.summary = true;
     } else if (
       argument === "--story" ||
       argument === "--stories" ||
@@ -1365,6 +1379,7 @@ function helpText(): string {
     "  iteration [--group] [--state <state>] list project or group sprints",
     "  cadence [--limit <n>]               list parent-group iteration cadences",
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
+    "  sync --summary                       token-light counts and planning health",
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
     "  audit [--limit <n>] [--json]         read local plan lifecycle history",

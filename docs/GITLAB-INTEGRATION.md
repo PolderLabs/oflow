@@ -32,8 +32,8 @@ agent -> oflow intent/sync/plan/approve/apply/verify
 The current release implements the REST path for compact project-scoped read
 commands, the guarded issue-update/note/label/milestone/board/board-list plans,
 including existing epic association through issue `epic_id`, bounded bulk
-owner/timebox planning updates, and a single-story iteration assignment plan
-that uses the GraphQL `IssueSetIteration` mutation. It also provides an explicit
+owner/timebox planning updates, and single-story/bounded bulk iteration
+assignment plans that use the GraphQL `IssueSetIteration` mutation. It also provides an explicit
 read-only `oflow glab api` fallback. Group epic listing and hierarchy reads use
 an explicit, bounded Work Item GraphQL path; they are not included in the
 default sync because they require parent-group access and an extra request.

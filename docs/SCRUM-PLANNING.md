@@ -396,7 +396,9 @@ flow.
 When an agent is asked to “sync oflow”, “check progress”, or “see where we are”:
 
 1. Read `AGENTS.md`, `README.md`, `.oflow/WORKFLOW.md`, and relevant local code.
-2. Run `oflow sync --json` for the compact project snapshot. Add
+2. Run `oflow sync --summary --json` for the token-light project overview. Use
+   `oflow sync --json` when the full bounded planning collections are needed.
+   Add
    `--story <iid>` when assessing one story, then use `oflow context` and
    `oflow verify` for detailed acceptance evidence.
 3. Preserve the exact story and acceptance-criterion IDs.

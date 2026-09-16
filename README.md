@@ -141,6 +141,9 @@ read without a token or network request; it only accepts a snapshot with the
 same project and query, and reports its source, age, and original generation
 time. Use `--refresh` when current GitLab state is required. Cached snapshots
 are evidence for orientation, not freshness proof before a remote write.
+For the smallest agent handoff, use `oflow sync --summary --json`; it keeps
+story planning fields, counts, planning-health findings, delivery counts, and
+warnings while omitting pagination and full planning collections.
 
 Group epics are an explicit opt-in because they require a group-scoped read and
 an additional GraphQL request. `oflow epic` lists the current project's parent

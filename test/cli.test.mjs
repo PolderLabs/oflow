@@ -62,6 +62,7 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /plan issue update --story <iid> --iteration <title\|iid\|none>/);
     assert.match(result, /audit \[--limit <n>\] \[--json\]/);
     assert.match(result, /sync --stale-days <n>/);
+    assert.match(result, /sync --summary/);
     assert.match(result, /sync --cached/);
     assert.match(result, /sync --refresh/);
     assert.match(result, /mr --iid <iid> \[--full\] \[--json\]/);

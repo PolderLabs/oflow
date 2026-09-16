@@ -6,7 +6,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import test from "node:test";
-import { formatSyncMarkdown, syncProject } from "../dist/sync.js";
+import {
+  compactSyncSummary,
+  formatSyncMarkdown,
+  formatSyncSummaryMarkdown,
+  syncProject,
+} from "../dist/sync.js";
 
 const run = promisify(execFile);
 
@@ -89,6 +94,12 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.equal(result.warnings.length, 0);
     assert.match(formatSyncMarkdown(result), /Open merge requests: 1/);
     assert.doesNotMatch(formatSyncMarkdown(result), /description/);
+    const summary = compactSyncSummary(result);
+    assert.equal(summary.pagination, undefined);
+    assert.deepEqual(summary.planning.labels, ["User Story"]);
+    assert.equal(summary.workItems[0].taskCompletion.completed, 1);
+    assert.match(formatSyncSummaryMarkdown(summary), /# oflow sync summary/);
+    assert.match(formatSyncSummaryMarkdown(summary), /1 open work item has no assignee/);
 
     const storyResult = await syncProject(root, { storyIid: 1 });
     assert.equal(storyResult.workItemsMayBeTruncated, false);
@@ -97,6 +108,22 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.deepEqual(storyResult.story.taskCompletion, { completed: 1, total: 3 });
     assert.equal(storyResult.story.notes[0].body, "Blocked on hardware access");
     assert.equal(storyResult.story.recentNotes, 1);
+    const storySummary = compactSyncSummary(storyResult);
+    assert.deepEqual(storySummary.story, {
+      iid: 1,
+      title: "Choose a pod",
+      state: "opened",
+      labels: ["User Story"],
+      milestone: null,
+      iteration: null,
+      assignees: [],
+      taskCompletion: { completed: 1, total: 3 },
+      acceptanceCriteria: 1,
+      mergeRequests: 1,
+      pipelines: 1,
+      recentNotes: 1,
+      webUrl: "https://gitlab.example.test/team/project/-/issues/1",
+    });
 
     const staleResult = await syncProject(root, { staleDays: 1 });
     assert.equal(staleResult.query.staleDays, 1);
