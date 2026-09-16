@@ -73,6 +73,8 @@ This is the immediate implementation focus.
 - [x] List and inspect project labels.
 - [x] List and inspect project milestones.
 - [ ] List and inspect group epics and parent/child relationships.
+- [x] Preserve parent/epic references already returned by project work-item
+  reads without adding per-item API calls.
 - [x] List project-visible iterations/sprints.
 - [ ] Inspect iteration cadences where the GitLab version supports them.
 - [ ] Add filters for state, label, milestone, iteration, assignee, author, and

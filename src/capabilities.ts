@@ -66,7 +66,7 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "planning.sync",
         "implemented",
         "read",
-        "Work items, labels, milestones, boards, iterations",
+        "Work items, parent context, labels, milestones, boards, iterations",
         "REST",
         "Project: Read; Group: Read; Work Item: Read",
       ),

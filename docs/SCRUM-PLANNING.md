@@ -26,8 +26,9 @@ changes must remain explicit and auditable.
 normalizes the currently supported subset:
 
 1. The current repository, branch, and local workflow configuration.
-2. Project work items, with compact labels, milestone/iteration, state, and
-   links. The default query is bounded to 50 items.
+2. Project work items, with compact parent/epic context, labels,
+   milestone/iteration, state, and links. The default query is bounded to 50
+   items.
 3. Open merge requests and current-branch pipelines, bounded to 20 and 10.
 4. Project labels, active milestones, boards/lists, and project-visible
    iterations.
@@ -204,6 +205,10 @@ it does not claim that local code satisfies a criterion merely because files
 changed. The agent performs the final reasoning and may then create a guarded
 plan.
 
+Project sync preserves parent/epic references when GitLab includes them on the
+work-item response, without issuing a second request per story. It does not
+enumerate group epics yet: GitLab's older Epics REST collection is deprecated
+in favor of the Work Items API, so that future adapter must be version-aware.
 Project sync can read group-backed iterations. Iteration creation and editing
 remain planned because GitLab documents the project/group REST endpoints as
 listing APIs; sprint creation is tied to group iteration cadences and is not a

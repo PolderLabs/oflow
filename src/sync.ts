@@ -74,7 +74,14 @@ export interface SyncWorkItem {
   labels: string[];
   milestone: string | null;
   iteration: string | null;
+  parent: SyncParent | null;
   updatedAt: string | null;
+  webUrl: string | null;
+}
+
+export interface SyncParent {
+  title: string;
+  iid: number | null;
   webUrl: string | null;
 }
 
@@ -141,6 +148,7 @@ export interface SyncStory {
   labels: string[];
   milestone: string | null;
   iteration: string | null;
+  parent: SyncParent | null;
   updatedAt: string | null;
   webUrl: string | null;
   acceptanceCriteria: Array<{
@@ -301,6 +309,7 @@ export function formatSyncMarkdown(result: SyncResult): string {
           " " +
           linkOrText(item.title, item.webUrl) +
           (item.labels.length > 0 ? " · " + item.labels.join(", ") : "") +
+          (item.parent ? " · parent: " + item.parent.title : "") +
           (item.milestone ? " · milestone: " + item.milestone : "") +
           (item.iteration ? " · iteration: " + item.iteration : ""),
       ),
@@ -439,6 +448,7 @@ async function loadStorySummary(
     labels: issue.labels ?? [],
     milestone: namedValue(issue.milestone),
     iteration: namedValue(issue.iteration),
+    parent: compactParent(issue.parent ?? issue.epic),
     updatedAt: issue.updated_at ?? null,
     webUrl: issue.web_url ?? null,
     acceptanceCriteria: criteria,
@@ -486,6 +496,7 @@ function compactWorkItem(issue: GitLabIssue): SyncWorkItem {
     labels: issue.labels ?? [],
     milestone: namedValue(issue.milestone),
     iteration: namedValue(issue.iteration),
+    parent: compactParent(issue.parent ?? issue.epic),
     updatedAt: issue.updated_at ?? null,
     webUrl: issue.web_url ?? null,
   };
@@ -632,6 +643,27 @@ function namedValue(value: unknown): string | null {
   const record = value as Record<string, unknown>;
   const name = record.name ?? record.title;
   return typeof name === "string" && name.trim() ? oneLine(name) : null;
+}
+
+function compactParent(value: unknown): SyncParent | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const title = record.title ?? record.name;
+  if (typeof title !== "string" || !title.trim()) {
+    return null;
+  }
+  const iid = typeof record.iid === "number"
+    ? record.iid
+    : typeof record.parent_iid === "number"
+      ? record.parent_iid
+      : null;
+  return {
+    title: oneLine(title),
+    iid,
+    webUrl: typeof record.web_url === "string" ? record.web_url : null,
+  };
 }
 
 function linkOrText(value: string, url: string | null): string {

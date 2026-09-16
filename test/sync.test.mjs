@@ -33,8 +33,8 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
       const query = new URL(String(input)).search;
       const responses = new Map([
         ["/api/v4/projects/team%2Fproject", { id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project", default_branch: "main" }],
-        ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story"], description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", assignees: [], milestone: null, iteration: null, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
-        ["/api/v4/projects/team%2Fproject/issues/1", { iid: 1, title: "Choose a pod", description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", state: "opened", labels: ["User Story"], updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }],
+        ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story"], description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", assignees: [], milestone: null, iteration: null, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
+        ["/api/v4/projects/team%2Fproject/issues/1", { iid: 1, title: "Choose a pod", description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", state: "opened", labels: ["User Story"], parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }],
         ["/api/v4/projects/team%2Fproject/issues/1/notes", [{ id: 4, body: "Blocked on hardware access", author: { username: "zakar" }, created_at: "2026-01-01T00:00:00Z" }]],
         ["/api/v4/projects/team%2Fproject/issues/1/related_merge_requests", [{ iid: 3, title: "Reservation UI", state: "opened", draft: false, source_branch: "story/1", target_branch: "main" }]],
         ["/api/v4/projects/team%2Fproject/merge_requests", [{ iid: 3, title: "Reservation UI", state: "opened", draft: false, source_branch: "story/1", target_branch: "main" }]],
@@ -58,6 +58,11 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     const result = await syncProject(root);
     assert.equal(result.project.path, "team/project");
     assert.equal(result.stats.workItems, 1);
+    assert.deepEqual(result.workItems[0].parent, {
+      iid: 9,
+      title: "Reservations",
+      webUrl: "https://gitlab.example.test/group/-/epics/9",
+    });
     assert.equal(result.planning.boards[0].lists[0].label, "Ready");
     assert.deepEqual(
       result.planningHealth.findings.map((finding) => finding.code),
@@ -68,6 +73,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.doesNotMatch(formatSyncMarkdown(result), /description/);
 
     const storyResult = await syncProject(root, { storyIid: 1 });
+    assert.equal(storyResult.story.parent.title, "Reservations");
     assert.equal(storyResult.story.notes[0].body, "Blocked on hardware access");
     assert.equal(storyResult.story.recentNotes, 1);
   } finally {
