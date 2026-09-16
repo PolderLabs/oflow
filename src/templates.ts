@@ -25,6 +25,8 @@ export const WORKFLOW_MARKDOWN = [
   "- Keep secrets and local .oflow/state/ files out of commits.",
   "- Refresh context when the story, MR, pipeline, or user direction changes.",
   "- Treat oflow sync as evidence collection; do not infer completion without concrete local or GitLab evidence.",
+  "- In assess JSON, localReferences are advisory pointers only; inspect the referenced code/test and never treat an ID match as acceptance proof.",
+  "- Verify pipeline evidence belongs to the selected MR and matches its head SHA when GitLab provides one; a branch pipeline alone is not enough.",
   "",
   "## Before handoff",
   "",

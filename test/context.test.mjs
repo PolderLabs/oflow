@@ -5,6 +5,7 @@ import {
   compactWorkItems,
   formatMergeRequestMarkdown,
   formatWorkItemsMarkdown,
+  selectVerificationEvidence,
 } from "../dist/context.js";
 
 test("merge request summaries stay compact unless full description is requested", () => {
@@ -88,4 +89,37 @@ test("work markdown reports the effective bounded query", () => {
 
   assert.match(markdown, /Query: opened; limit 1; filters: label="User Story", assignee="none"/);
   assert.match(markdown, /Count: 1 \(more may exist\)/);
+});
+
+test("verification selects the branch MR and matching head pipeline", () => {
+  const evidence = selectVerificationEvidence({
+    branch: "feature/pod",
+    mergeRequests: [
+      { iid: 7, title: "Old pod work", source_branch: "feature/old", sha: "old-head" },
+      { iid: 8, title: "Current pod work", source_branch: "feature/pod", sha: "current-head" },
+    ],
+    mergeRequestPipelines: [
+      { id: 70, status: "success", sha: "old-head" },
+      { id: 80, status: "success", sha: "current-head" },
+    ],
+  });
+
+  assert.equal(evidence.mergeRequest.iid, 8);
+  assert.equal(evidence.pipeline.id, 80);
+  assert.equal(evidence.warning, null);
+});
+
+test("verification refuses ambiguous merge requests", () => {
+  const evidence = selectVerificationEvidence({
+    branch: null,
+    mergeRequests: [
+      { iid: 7, title: "First pod work" },
+      { iid: 8, title: "Second pod work" },
+    ],
+    mergeRequestPipelines: [{ id: 80, status: "success" }],
+  });
+
+  assert.equal(evidence.mergeRequest, null);
+  assert.equal(evidence.pipeline, null);
+  assert.match(evidence.warning, /Could not identify one related merge request/);
 });

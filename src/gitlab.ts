@@ -735,6 +735,31 @@ export class GitLabClient {
     return (await this.listRelatedMergeRequestsPage(projectPath, issueIid, limit)).items;
   }
 
+  async listMergeRequestPipelinesPage(
+    projectPath: string,
+    mergeRequestIid: number,
+    limit = 20,
+  ): Promise<GitLabListPage<GitLabPipeline>> {
+    return this.listResponsePage<GitLabPipeline>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/merge_requests/" +
+        String(mergeRequestIid) +
+        "/pipelines?per_page=" +
+        String(limit),
+      "merge request pipeline list",
+      limit,
+    );
+  }
+
+  async listMergeRequestPipelines(
+    projectPath: string,
+    mergeRequestIid: number,
+    limit = 20,
+  ): Promise<GitLabPipeline[]> {
+    return (await this.listMergeRequestPipelinesPage(projectPath, mergeRequestIid, limit)).items;
+  }
+
   async listPipelinesPage(
     projectPath: string,
     ref?: string | null,

@@ -351,6 +351,21 @@ export async function loadStoryContext(
     ),
   ]);
 
+  const verificationMergeRequest = chooseVerificationMergeRequest({
+    branch,
+    mergeRequests,
+  });
+  const mergeRequestPipelines = verificationMergeRequest
+    ? await optionalFetch<GitLabPipeline[]>(
+      () => client.listMergeRequestPipelines(
+        remote.projectPath,
+        verificationMergeRequest.iid,
+      ),
+      "Could not read merge request pipelines",
+      warnings,
+    )
+    : [];
+
   const criteria = parseAcceptanceCriteria(story.description);
   const epic = normalizeEpic(story);
   if (criteria.length === 0) {
@@ -359,8 +374,21 @@ export async function loadStoryContext(
   if (mergeRequests.length === 0) {
     warnings.push("No merge request references this story yet.");
   }
-  if (pipelines.length === 0) {
+  if (
+    pipelines.length === 0 &&
+    mergeRequestPipelines.length === 0 &&
+    mergeRequests.length === 0
+  ) {
     warnings.push("No pipeline was found for the current branch.");
+  }
+
+  const verificationEvidence = selectVerificationEvidence({
+    branch,
+    mergeRequests,
+    mergeRequestPipelines,
+  });
+  if (verificationEvidence.warning) {
+    warnings.push(verificationEvidence.warning);
   }
 
   return {
@@ -377,6 +405,7 @@ export async function loadStoryContext(
     criteria,
     mergeRequests,
     pipelines,
+    mergeRequestPipelines,
     recentNotes: recentNotes.slice(0, 20),
     warnings,
   };
@@ -467,6 +496,25 @@ export function formatContextMarkdown(context: StoryContext): string {
     );
   }
 
+  lines.push("", "## Merge-request pipelines", "");
+  if (!context.mergeRequestPipelines || context.mergeRequestPipelines.length === 0) {
+    lines.push("_None found or no single merge request could be selected._");
+  } else {
+    lines.push(
+      ...context.mergeRequestPipelines.slice(0, 10).map(
+        (pipeline) =>
+          "- #" +
+          pipeline.id +
+          ": " +
+          (pipeline.status ?? "unknown") +
+          (pipeline.sha ? " (" + pipeline.sha.slice(0, 12) + ")" : "") +
+          (pipeline.web_url
+            ? " [" + pipeline.web_url + "](" + pipeline.web_url + ")"
+            : ""),
+      ),
+    );
+  }
+
   lines.push("", "## Recent notes", "");
   if (context.recentNotes.length === 0) {
     lines.push("_None found._");
@@ -515,6 +563,77 @@ export function chooseMergeRequest(context: StoryContext): GitLabMergeRequest | 
     }
   }
   return context.mergeRequests[0];
+}
+
+export function chooseVerificationMergeRequest(
+  context: Pick<StoryContext, "branch" | "mergeRequests">,
+): GitLabMergeRequest | null {
+  if (context.mergeRequests.length === 0) {
+    return null;
+  }
+  if (context.branch) {
+    const branchMatches = context.mergeRequests.filter(
+      (mergeRequest) => mergeRequest.source_branch === context.branch,
+    );
+    if (branchMatches.length === 1) {
+      return branchMatches[0];
+    }
+    if (branchMatches.length > 1) {
+      return null;
+    }
+  }
+  return context.mergeRequests.length === 1 ? context.mergeRequests[0] : null;
+}
+
+export interface VerificationEvidence {
+  mergeRequest: GitLabMergeRequest | null;
+  pipeline: GitLabPipeline | null;
+  warning: string | null;
+}
+
+type VerificationContext = Pick<StoryContext, "branch" | "mergeRequests"> & {
+  mergeRequestPipelines?: GitLabPipeline[];
+};
+
+export function selectVerificationEvidence(context: VerificationContext): VerificationEvidence {
+  const mergeRequest = chooseVerificationMergeRequest(context);
+  if (!mergeRequest) {
+    return {
+      mergeRequest: null,
+      pipeline: null,
+      warning: context.mergeRequests.length > 0
+        ? "Could not identify one related merge request for the current branch; pipeline verification is unavailable."
+        : null,
+    };
+  }
+
+  const expectedSha = mergeRequestHeadSha(mergeRequest);
+  const pipelines = context.mergeRequestPipelines ?? [];
+  const pipeline = pipelines.find((candidate) => pipelineMatchesSha(candidate, expectedSha)) ?? null;
+  return {
+    mergeRequest,
+    pipeline,
+    warning: pipeline
+      ? null
+      : expectedSha
+        ? "No merge request pipeline matches the selected merge request head SHA; pipeline verification is unavailable."
+        : "No pipeline was found for merge request !" + String(mergeRequest.iid) + "; pipeline verification is unavailable.",
+  };
+}
+
+function mergeRequestHeadSha(mergeRequest: GitLabMergeRequest): string | null {
+  if (typeof mergeRequest.sha === "string" && mergeRequest.sha) {
+    return mergeRequest.sha;
+  }
+  const headSha = mergeRequest.diff_refs?.head_sha;
+  return typeof headSha === "string" && headSha ? headSha : null;
+}
+
+function pipelineMatchesSha(
+  pipeline: GitLabPipeline,
+  expectedSha: string | null,
+): boolean {
+  return expectedSha === null || pipeline.sha === expectedSha;
 }
 
 export function formatMergeRequestTemplate(context: StoryContext): string {

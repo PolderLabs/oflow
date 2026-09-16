@@ -282,6 +282,9 @@ export interface GitLabMergeRequest {
   labels?: string[];
   source_branch?: string;
   target_branch?: string;
+  sha?: string;
+  diff_refs?: Record<string, unknown> | null;
+  head_pipeline?: Record<string, unknown> | null;
   draft?: boolean;
   merge_status?: string;
   detailed_merge_status?: string;
@@ -294,6 +297,7 @@ export interface GitLabPipeline {
   id: number;
   status?: string;
   ref?: string;
+  source?: string;
   web_url?: string;
   sha?: string;
   updated_at?: string;
@@ -309,6 +313,7 @@ export interface StoryContext {
   criteria: AcceptanceCriterion[];
   mergeRequests: GitLabMergeRequest[];
   pipelines: GitLabPipeline[];
+  mergeRequestPipelines?: GitLabPipeline[];
   recentNotes: GitLabNote[];
   warnings: string[];
 }

@@ -190,6 +190,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "REST + local assessment",
         "Work Item: Read; User: Read for username lookup",
       ),
+      capability(
+        "assessment.read",
+        "implemented",
+        "read",
+        "Acceptance criteria with bounded local code/test references",
+        "REST + local Git",
+        "Work Item: Read",
+      ),
     ],
   };
 }

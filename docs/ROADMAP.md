@@ -129,7 +129,8 @@ This is the immediate implementation focus.
 
 ### Phase 3 — Agent progress intelligence
 
-- [ ] Compare acceptance criteria to local code/test evidence.
+- [x] Compare acceptance criteria to explicit local code/test references as
+  bounded advisory evidence; never infer satisfaction from a file match alone.
 - [x] Collect compact local Git, MR, pipeline, and note evidence for agent reasoning.
 - [x] Classify explicit evidence as satisfied, partial, blocked, or unknown.
 - [x] Detect stale stories with an explicit `sync --stale-days` threshold

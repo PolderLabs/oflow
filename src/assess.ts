@@ -1,4 +1,6 @@
-import { chooseMergeRequest, loadStoryContext } from "./context.js";
+import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { loadStoryContext, selectVerificationEvidence } from "./context.js";
 import { evaluateCriteria, parseVerificationEvidence } from "./criteria.js";
 import { OflowError } from "./errors.js";
 import { getCurrentBranch, runGit } from "./git.js";
@@ -12,7 +14,14 @@ export interface AssessmentCriterion {
   status: CriterionStatus;
   checked: boolean;
   evidence: string[];
+  localReferences: LocalCriterionReference[];
   reason: string;
+}
+
+export interface LocalCriterionReference {
+  kind: "code" | "test";
+  path: string;
+  line: number;
 }
 
 export interface LocalEvidence {
@@ -21,6 +30,11 @@ export interface LocalEvidence {
   changedFiles: string[];
   diffStat: string | null;
   recentCommits: string[];
+}
+
+export interface LocalCriterionEvidence {
+  id: string;
+  references: LocalCriterionReference[];
 }
 
 export interface AssessmentResult {
@@ -80,8 +94,9 @@ export async function assessStory(
   }
 
   const context = await loadStoryContext(root, storyIid);
-  const mergeRequest = chooseMergeRequest(context);
-  const pipeline = context.pipelines[0] ?? null;
+  const verificationEvidence = selectVerificationEvidence(context);
+  const mergeRequest = verificationEvidence.mergeRequest;
+  const pipeline = verificationEvidence.pipeline;
   const verification = evaluateCriteria(
     context.criteria,
     mergeRequest?.description,
@@ -95,6 +110,14 @@ export async function assessStory(
       ? ["Latest pipeline is " + (pipeline.status ?? "unknown") + "; expected success."]
       : []),
   ];
+  const collectedLocal = await collectLocalEvidence(
+    root,
+    context.criteria.map((criterion) => criterion.id),
+  );
+  const local = collectedLocal.evidence;
+  const localCriteria = new Map(
+    collectedLocal.criteria.map((criterion) => [criterion.id, criterion.references]),
+  );
   const criteria = verification.checks.map((check) => {
     const record = evidenceRecords.get(check.id);
     const status = criterionStatus(check.verified, record, blockers.length > 0);
@@ -104,10 +127,10 @@ export async function assessStory(
       status,
       checked: check.checked,
       evidence: check.evidence.slice(0, 2).map((item) => compact(item, 180)),
+      localReferences: localCriteria.get(check.id) ?? [],
       reason: check.reason,
     };
   });
-  const local = await collectLocalEvidence(root);
   const status = overallStatus(criteria, verification.pipelineStatus, blockers);
   const milestone = namedValue(context.story.milestone);
   const iteration = namedValue(context.story.iteration);
@@ -168,7 +191,10 @@ export async function assessStory(
       assignees.length > 0,
       milestone !== null || iteration !== null,
     ),
-    warnings: context.warnings,
+    warnings: unique([
+      ...context.warnings,
+      ...(verificationEvidence.warning ? [verificationEvidence.warning] : []),
+    ]),
   };
 }
 
@@ -195,7 +221,10 @@ export function formatAssessmentMarkdown(result: AssessmentResult): string {
     lines.push(
       ...result.criteria.map(
         (criterion) =>
-          "- " + criterion.status.toUpperCase() + " " + criterion.id + ": " + criterion.reason,
+          "- " + criterion.status.toUpperCase() + " " + criterion.id + ": " + criterion.reason +
+          (criterion.localReferences.length > 0
+            ? " (local references: " + criterion.localReferences.length + ")"
+            : ""),
       ),
     );
   }
@@ -305,7 +334,10 @@ function nextActions(
   return unique(actions);
 }
 
-async function collectLocalEvidence(root: string): Promise<LocalEvidence> {
+async function collectLocalEvidence(
+  root: string,
+  criterionIds: string[] = [],
+): Promise<{ evidence: LocalEvidence; criteria: LocalCriterionEvidence[] }> {
   const branch = await getCurrentBranch(root);
   const status = await optionalGit(root, ["status", "--short"]);
   const diffStat = await optionalGit(root, ["diff", "--stat"]);
@@ -316,12 +348,108 @@ async function collectLocalEvidence(root: string): Promise<LocalEvidence> {
     .filter(Boolean)
     .slice(0, 50);
   return {
-    branch,
-    clean: changedFiles.length === 0,
-    changedFiles,
-    diffStat: diffStat ? compact(diffStat, 1200) : null,
-    recentCommits: commits.split(/\r?\n/).filter(Boolean).slice(0, 5),
+    evidence: {
+      branch,
+      clean: changedFiles.length === 0,
+      changedFiles,
+      diffStat: diffStat ? compact(diffStat, 1200) : null,
+      recentCommits: commits.split(/\r?\n/).filter(Boolean).slice(0, 5),
+    },
+    criteria: await collectLocalCriterionEvidence(root, criterionIds, changedFiles),
   };
+}
+
+const MAX_LOCAL_EVIDENCE_FILES = 250;
+const MAX_LOCAL_EVIDENCE_FILE_BYTES = 256 * 1024;
+const MAX_LOCAL_EVIDENCE_TOTAL_BYTES = 2 * 1024 * 1024;
+
+async function collectLocalCriterionEvidence(
+  root: string,
+  criterionIds: string[],
+  changedFiles: string[],
+): Promise<LocalCriterionEvidence[]> {
+  const ids = [...new Set(criterionIds.map((id) => id.toUpperCase()))];
+  if (ids.length === 0) {
+    return [];
+  }
+  const idSet = new Set(ids);
+  const listedFiles = (await optionalGit(
+    root,
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+  ))
+    .split("\0")
+    .filter((filePath) => filePath.length > 0)
+    .filter(isCandidateEvidenceFile);
+  const changed = new Set(changedFiles);
+  const files = listedFiles
+    .sort((left, right) => Number(changed.has(right)) - Number(changed.has(left)))
+    .slice(0, MAX_LOCAL_EVIDENCE_FILES);
+  const references = new Map<string, LocalCriterionReference[]>();
+  let totalBytes = 0;
+
+  for (const filePath of files) {
+    if (totalBytes >= MAX_LOCAL_EVIDENCE_TOTAL_BYTES || !safeRelativePath(filePath)) {
+      break;
+    }
+    let fileSize: number;
+    try {
+      fileSize = (await stat(join(root, filePath))).size;
+    } catch {
+      continue;
+    }
+    if (fileSize > MAX_LOCAL_EVIDENCE_FILE_BYTES ||
+      totalBytes + fileSize > MAX_LOCAL_EVIDENCE_TOTAL_BYTES) {
+      continue;
+    }
+
+    let contents: string;
+    try {
+      contents = await readFile(join(root, filePath), "utf8");
+    } catch {
+      continue;
+    }
+    totalBytes += fileSize;
+    const kind = isTestPath(filePath) ? "test" : "code";
+    for (const [index, line] of contents.split(/\r?\n/).entries()) {
+      for (const match of line.matchAll(/\b[A-Za-z]+-\d+\b/g)) {
+        const id = match[0].toUpperCase();
+        if (!idSet.has(id)) {
+          continue;
+        }
+        const list = references.get(id) ?? [];
+        if (list.length < 3) {
+          list.push({ kind, path: filePath, line: index + 1 });
+          references.set(id, list);
+        }
+      }
+    }
+  }
+
+  return ids.map((id) => ({
+    id,
+    references: references.get(id) ?? [],
+  }));
+}
+
+function isCandidateEvidenceFile(filePath: string): boolean {
+  const normalized = filePath.replaceAll("\\", "/");
+  if (
+    normalized.startsWith(".oflow/") ||
+    /(^|\/)(?:\.git|node_modules|dist|build|coverage|vendor)(?:\/|$)/i.test(normalized)
+  ) {
+    return false;
+  }
+  return /\.(?:[cm]?[jt]sx?|py|java|kt|go|rs|rb|php|cs|swift|sql|sh|vue|svelte|html|css|scss|ya?ml)$/i.test(normalized);
+}
+
+function isTestPath(filePath: string): boolean {
+  const normalized = filePath.replaceAll("\\", "/");
+  return /(^|\/)(?:test|tests|spec|specs|__tests__)(?:\/|$)/i.test(normalized) ||
+    /(?:\.test|\.spec)\.[^.]+$/i.test(normalized);
+}
+
+function safeRelativePath(filePath: string): boolean {
+  return !filePath.startsWith("/") && !filePath.split(/[\\/]/).includes("..");
 }
 
 async function optionalGit(root: string, args: string[]): Promise<string> {

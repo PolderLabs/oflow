@@ -148,6 +148,15 @@ test("plan assess creates a guarded owner/timebox plan from a story assessment",
         text: async () => JSON.stringify(response),
       };
     };
+    const assessmentExitCode = await main([
+      "assess",
+      "--root",
+      root,
+      "--story",
+      "42",
+      "--json",
+    ]);
+    assert.equal(assessmentExitCode, 0);
     const exitCode = await main([
       "plan",
       "assess",

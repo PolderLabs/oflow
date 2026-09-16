@@ -101,6 +101,28 @@ test("reads one merge request by project-local IID", async () => {
   }
 });
 
+test("lists pipelines through the merge-request-scoped endpoint", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  globalThis.fetch = async (input) => {
+    requestUrl = String(input);
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify([{ id: 10, status: "success", sha: "head-sha" }]),
+    };
+  };
+  try {
+    const pipelines = await new GitLabClient("gitlab.example.test", "test-token")
+      .listMergeRequestPipelines("team/project", 8);
+    assert.deepEqual(pipelines, [{ id: 10, status: "success", sha: "head-sha" }]);
+    assert.match(requestUrl, /\/projects\/team%2Fproject\/merge_requests\/8\/pipelines\?per_page=20$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("lists group epics through the bounded Work Item GraphQL query", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";

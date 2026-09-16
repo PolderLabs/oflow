@@ -42,7 +42,9 @@ changes, rerun `npm run build`; no token or project state is copied into the
 oflow repository. Without a link, `node dist/cli.js ...` remains a valid local
 fallback.
 
-It never writes tokens or user-level Claude/Codex settings.
+It never writes tokens or user-level Claude/Codex settings. The npm package
+does not bundle Claude, Codex, `glab`, or an MCP client; agent runtimes and
+optional GitLab tools remain independently installed.
 
 ## Commands
 
@@ -189,9 +191,18 @@ description is needed for evidence review. `mr --story <iid>` remains the
 acceptance-aware description template command.
 
 `assess --story <iid> --json` adds story-level owner, timebox, and task
-checklist progress to the deterministic evidence. It recommends the smallest
-planning follow-up when an owner or milestone/iteration is missing, while
-leaving the final status judgment to the agent.
+checklist progress to the deterministic evidence. It also reports bounded,
+explicit references to matching acceptance-criterion IDs in local code/test
+files as candidate evidence; those references never mark a criterion satisfied
+by themselves. It recommends the smallest planning follow-up when an owner or
+milestone/iteration is missing, while leaving the final status judgment to the
+agent. A successfully generated assessment exits 0 even when its status is
+`unknown`, `in-progress`, or `blocked`; those are findings, not CLI failures.
+
+For `assess` and `verify`, a successful pipeline must come from the selected
+merge-request pipeline endpoint. When GitLab exposes the merge request head
+SHA, oflow requires the pipeline SHA to match it; an unrelated branch pipeline,
+an ambiguous merge request, or a stale/mismatched SHA remains unverified.
 
 `oflow audit --json` reads the local `.oflow/state/audit.jsonl` lifecycle log.
 It records successful plan creation, approval, apply, and verification events,

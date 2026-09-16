@@ -33,6 +33,7 @@ import {
   loadMergeRequest,
   listWorkItemsPage,
   loadStoryContext,
+  selectVerificationEvidence,
 } from "./context.js";
 import { OflowError } from "./errors.js";
 import { formatDoctor, doctor } from "./doctor.js";
@@ -259,7 +260,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const storyIid = await resolveStoryIid(root, options.story);
         const result = await assessStory(root, storyIid);
         print(options.json, result, formatAssessmentMarkdown(result));
-        return result.status === "satisfied" ? 0 : 1;
+        // A completed assessment is a successful read even when its findings
+        // are unknown, in-progress, or blocked. The status is in the report;
+        // a non-zero exit code is reserved for an operational failure.
+        return 0;
       }
       case "capabilities": {
         const result = await getCapabilities();
@@ -591,8 +595,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         }
         const storyIid = await resolveStoryIid(root, options.story);
         const context = await loadStoryContext(root, storyIid);
-        const mergeRequest = chooseMergeRequest(context);
-        const pipelineStatus = context.pipelines[0]?.status ?? null;
+        const verificationEvidence = selectVerificationEvidence(context);
+        const mergeRequest = verificationEvidence.mergeRequest;
+        const pipelineStatus = verificationEvidence.pipeline?.status ?? null;
         const result = evaluateCriteria(
           context.criteria,
           mergeRequest?.description,
@@ -601,8 +606,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const output = {
           storyIid,
           mergeRequest,
-          pipeline: context.pipelines[0] ?? null,
-          warnings: context.warnings,
+          pipeline: verificationEvidence.pipeline,
+          warnings: [
+            ...context.warnings,
+            ...(verificationEvidence.warning ? [verificationEvidence.warning] : []),
+          ].filter((warning, index, warnings) => warnings.indexOf(warning) === index),
           result,
         };
         print(options.json, output, formatVerification(output));

@@ -322,8 +322,14 @@ story's acceptance criteria, owner/timebox/task progress, related MR evidence,
 pipeline status, recent notes, and local branch/working-tree evidence. It also
 recommends assigning an owner and milestone/iteration when those fields are
 missing. It classifies only explicit evidence;
-it does not claim that local code satisfies a criterion merely because files
-changed. The agent performs the final reasoning. When the owner and/or
+it reports bounded local code/test references when an exact acceptance-criterion
+ID is present, but does not claim that local code satisfies a criterion merely
+because a file changed or contains a reference. The agent performs the final
+reasoning. A generated assessment exits successfully even when its status is
+`unknown`, `in-progress`, or `blocked`; those are report findings. For
+`assess` and `verify`, pipeline evidence is read from the selected
+merge-request pipeline endpoint and, when available, must match the merge
+request head SHA; branch pipelines cannot substitute for it. When the owner and/or
 milestone decision is known, `oflow plan assess --story <iid> --assignee
 <username> --milestone <title>` turns that assessment into a digest-protected
 issue-update plan. The command never invents planning values, only supports

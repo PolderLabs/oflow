@@ -128,6 +128,18 @@ Epics REST collection is deprecated, so the opt-in `epic` read uses the
 future-facing Work Item GraphQL API and reports unsupported/inaccessible groups
 instead of treating them as empty.
 
+Story verification uses the merge-request-scoped pipeline endpoint rather than
+assuming that the newest pipeline for the local checkout belongs to the
+selected MR. When the MR response includes `sha` (or `diff_refs.head_sha`),
+the selected pipeline must expose the same `sha` before `verify` or `assess`
+can treat a successful pipeline as evidence. If one MR cannot be selected from
+the related MRs, or no pipeline matches, the result is unverified and the
+report explains why. This costs one bounded MR-pipeline read for a focused
+story context and prevents an unrelated branch pipeline from passing
+acceptance verification. GitLab documents the [merge request pipelines
+endpoint](https://docs.gitlab.com/api/merge_requests/#list-merge-request-pipelines)
+and the MR head SHA fields in its [merge requests API](https://docs.gitlab.com/api/merge_requests/).
+
 Iterations are a deliberate boundary: GitLab documents project and group REST
 endpoints for listing iterations, while sprint creation is group/cadence-backed
 and not exposed as a simple project REST create/update operation. `oflow` reads
