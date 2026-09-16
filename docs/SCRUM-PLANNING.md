@@ -40,8 +40,8 @@ normalizes the currently supported subset:
    fields.
 
 Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`,
-`--search`, or
-`--updated-after` with `work` or `sync` to apply the corresponding GitLab
+`--search`, `--updated-after`, or `--updated-before` with `work` or `sync` to
+apply the corresponding GitLab
 server-side issue filter. `--iteration` accepts a title, `none`, or `any`;
 iteration assignment is deliberately not exposed because its write API is
 version-sensitive. Use `--limit 1..100` to cap returned work items

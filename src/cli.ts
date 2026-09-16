@@ -98,6 +98,7 @@ interface CliOptions {
   author?: string;
   search?: string;
   updatedAfter?: string;
+  updatedBefore?: string;
   limit?: string;
   board?: string;
   list?: string;
@@ -608,6 +609,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--author" ||
       argument === "--search" ||
       argument === "--updated-after" ||
+      argument === "--updated-before" ||
       argument === "--limit" ||
       argument === "--board" ||
       argument === "--list" ||
@@ -668,6 +670,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.search = value;
       } else if (argument === "--updated-after") {
         options.updatedAfter = value;
+      } else if (argument === "--updated-before") {
+        options.updatedBefore = value;
       } else if (argument === "--limit") {
         options.limit = value;
       } else if (argument === "--board") {
@@ -741,6 +745,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.search = argument.slice("--search=".length);
     } else if (argument.startsWith("--updated-after=")) {
       options.updatedAfter = argument.slice("--updated-after=".length);
+    } else if (argument.startsWith("--updated-before=")) {
+      options.updatedBefore = argument.slice("--updated-before=".length);
     } else if (argument.startsWith("--limit=")) {
       options.limit = argument.slice("--limit=".length);
     } else if (argument.startsWith("--board=")) {
@@ -932,6 +938,9 @@ function collectIssueFilters(options: CliOptions): GitLabIssueFilters {
   }
   if (options.updatedAfter !== undefined) {
     filters.updatedAfter = requiredFilter(options.updatedAfter, "--updated-after");
+  }
+  if (options.updatedBefore !== undefined) {
+    filters.updatedBefore = requiredFilter(options.updatedBefore, "--updated-before");
   }
   return filters;
 }
@@ -1134,7 +1143,7 @@ function helpText(): string {
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
-    "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --limit 1..100",
+    "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
   ].join("\n") + "\n";
 }
 

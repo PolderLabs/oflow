@@ -103,8 +103,8 @@ specific story is selected. The agent performs the reasoning over that data;
 oflow does not require an embedded model or spend tokens generating a duplicate
 summary.
 
-Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`, `--search`, and
-`--updated-after` with `work` or `sync` to filter issues server-side.
+Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`, `--search`,
+`--updated-after`, and `--updated-before` with `work` or `sync` to filter issues server-side.
 `--iteration` accepts a title, `none`, or `any`; it is a read-only filter
 because iteration assignment remains version-sensitive. Use
 `--limit 1..100` to cap the returned work items; the default is 100 for
@@ -113,6 +113,8 @@ because iteration assignment remains version-sensitive. Use
 to one epic or its association state, and `--author <username>` narrows
 results to stories created by one user. These filters reduce both API response
 size and the context an agent must read.
+Use `--updated-before` to inspect an older slice without making oflow decide
+how many days qualifies as stale.
 `work --json` includes the same `query` and `workItemsMayBeTruncated` metadata
 as `sync`, alongside a compact `issues` array containing state, labels,
 assignees, timebox, dates, weight, task-checklist progress, parent, timestamps,

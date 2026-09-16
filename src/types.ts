@@ -13,6 +13,7 @@ export interface GitLabIssueFilters {
   author?: string;
   search?: string;
   updatedAfter?: string;
+  updatedBefore?: string;
 }
 
 export type FileAction = "created" | "updated" | "unchanged" | "skipped";

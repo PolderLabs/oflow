@@ -126,7 +126,8 @@ This is the immediate implementation focus.
 - [ ] Compare acceptance criteria to local code/test evidence.
 - [x] Collect compact local Git, MR, pipeline, and note evidence for agent reasoning.
 - [x] Classify explicit evidence as satisfied, partial, blocked, or unknown.
-- [ ] Detect stale stories.
+- [ ] Detect stale stories (agents can already select an older slice with
+  `--updated-before`).
 - [x] Detect conflicting board-state labels.
 - [x] Detect missing acceptance criteria and work items without owners or
   timeboxes when the API provides the relevant fields.

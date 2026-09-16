@@ -142,6 +142,9 @@ export class GitLabClient {
     if (filters.updatedAfter !== undefined) {
       query.set("updated_after", filters.updatedAfter);
     }
+    if (filters.updatedBefore !== undefined) {
+      query.set("updated_before", filters.updatedBefore);
+    }
     if (filters.assignee !== undefined) {
       const assignee = filters.assignee.trim();
       if (["none", "null", "unassigned"].includes(assignee.toLowerCase())) {

@@ -87,6 +87,7 @@ test("applies server-side work-item filters without downloading descriptions", a
         author: "zakar",
         search: "pod",
         updatedAfter: "2026-01-01T00:00:00Z",
+        updatedBefore: "2026-02-01T00:00:00Z",
       });
     const query = new URL(requestUrl).searchParams;
     assert.equal(query.get("state"), "opened");
@@ -101,6 +102,7 @@ test("applies server-side work-item filters without downloading descriptions", a
     assert.equal(query.get("author_username"), "zakar");
     assert.equal(query.get("search"), "pod");
     assert.equal(query.get("updated_after"), "2026-01-01T00:00:00Z");
+    assert.equal(query.get("updated_before"), "2026-02-01T00:00:00Z");
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -38,7 +38,7 @@ export const WORKFLOW_MARKDOWN = [
   "",
   "Read-only context, sync, and verification commands may run automatically.",
   "Use work/sync filters (--label, --milestone, --iteration, --epic, --assignee,",
-  "--author, --search, --updated-after, --limit) when a smaller server-side snapshot is enough.",
+  "--author, --search, --updated-after, --updated-before, --limit) when a smaller server-side snapshot is enough.",
   "oflow does not configure or invoke MCP servers. Use plan issue update (including",
   "--labels for replacement or --add-labels/--remove-labels to preserve unrelated labels,",
   "--assignee username or --epic <id|none>), plan issue create/note, or",
