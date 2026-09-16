@@ -71,13 +71,16 @@ command-line argument. A read-only `read_api` token is sufficient for
 `context` and `verify`; use broader write scopes only for tools that explicitly
 need them.
 
-The current release uses the GitLab REST API for read-only context and
-verification. GitLab's official MCP server remains the preferred optional
-agent-facing interface for interactive changes in Claude or Codex. `oflow`
-does not invoke or configure MCP servers: it complements them. Remote changes
-must be explicit and follow `plan -> approve -> apply -> verify`; `oflow` does
-not create or update GitLab issues, merge requests, comments, labels, or
-branches.
+The current release uses the GitLab REST API for deterministic read-only
+context and verification. GitLab's official `glab` CLI is an optional
+companion—not a replacement for the API or its permissions—and the GitLab MCP
+server is an optional agent-facing path. `oflow` does not currently invoke or
+configure either one: it complements them. Remote changes must be explicit and
+follow `plan -> approve -> apply -> verify`; `oflow` does not create or update
+GitLab issues, merge requests, comments, labels, or branches.
+
+See [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the backend,
+authentication, security, and implementation decision record.
 
 For the NestPod self-managed GitLab instance, configure the MCP server in the
 agent's user-level MCP settings (not in this repository):

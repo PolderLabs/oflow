@@ -157,24 +157,33 @@ An agent may reason and recommend automatically. It must not silently update a
 story, move a card, change a sprint, create labels, or alter acceptance
 criteria.
 
-## Adapter and MCP boundary
+## Adapter, REST, `glab`, and MCP boundary
 
 `oflow` owns the local contract, plan schema, safety checks, evidence model,
 and verification. Provider-specific API calls belong in a GitLab adapter.
 
-The adapter may eventually have two execution paths:
+The adapter may eventually have three execution paths:
 
 ```text
 oflow plan/apply
        |
-       +-- GitLab REST adapter
+       +-- GitLab REST adapter (default, typed and deterministic)
+       +-- glab adapter (optional fallback/diagnostics)
        +-- GitLab MCP adapter (when exposed by the agent runtime)
 ```
+
+The current release implements only direct REST reads. `glab` is an optional
+external executable and must not become an npm/runtime dependency. GitLab's
+hosted MCP server and `glab mcp serve` are separate integrations; the latter is
+currently documented by GitLab as experimental. Neither one changes the
+workflow safety rules.
 
 MCP configuration and authorization belong to the agent/runtime user
 configuration, never to the repository. `oflow` must not assume that an MCP
 server is installed or that every MCP exposes every GitLab resource. Capability
-discovery and clear unsupported-operation errors are required.
+discovery, backend reporting, and clear unsupported-operation errors are
+required. See [`GITLAB-INTEGRATION.md`](GITLAB-INTEGRATION.md) for the complete
+decision record.
 
 ## Token requirements
 

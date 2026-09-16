@@ -17,7 +17,25 @@ The product boundary remains:
 - GitLab is the only provider in this release.
 - The local `.oflow/` contract is stable and provider-independent.
 - Read, plan, apply, and verify are separate operations.
-- REST and MCP are provider execution mechanisms, not separate workflow rules.
+- REST, `glab`, and MCP are provider execution mechanisms, not separate
+  workflow rules.
+
+## Integration strategy
+
+The backend decision is intentionally hybrid:
+
+- Direct GitLab REST is the default `oflow` core for typed, deterministic
+  Scrum/planning reads and future plan/apply operations.
+- `glab` is an optional official CLI fallback and diagnostic tool. It must be
+  detected rather than required, and it cannot bypass token permissions.
+- GitLab's hosted MCP server is an optional agent-facing path. `glab mcp
+  serve` is also available in newer CLI versions, but GitLab documents it as
+  experimental, so neither MCP path is the Scrum foundation.
+
+`oflow` owns normalized models, capability metadata, plan/approval gates,
+evidence, and verification. Backend-specific calls stay in adapters. See
+[`GITLAB-INTEGRATION.md`](GITLAB-INTEGRATION.md) for auth, security, and the
+backend selection policy.
 
 ## Status
 
@@ -42,6 +60,8 @@ This is the immediate implementation focus.
 
 - [ ] Add `oflow capabilities --json` with supported, planned, and unavailable
   operations plus required token boundaries/permissions.
+- [ ] Detect optional `glab` in `oflow doctor` without making it a hard
+  dependency or exposing credentials.
 - [ ] Add `oflow sync` as a deterministic, read-only planning snapshot.
 - [ ] Expand the GitLab adapter for project/group planning metadata.
 - [ ] List and inspect project/group boards and board lists.
@@ -55,6 +75,9 @@ This is the immediate implementation focus.
 - [ ] Add pagination, response validation, retries, and useful unsupported
   endpoint errors for every new collection.
 - [ ] Produce a stable JSON evidence model for agent handoff.
+- [ ] Add an opt-in read-only `glab api` fallback for capabilities not yet
+  wrapped by the typed REST adapter, with strict JSON parsing and backend
+  reporting.
 
 ### Phase 2 — Safe Scrum mutations
 
@@ -62,6 +85,8 @@ This is the immediate implementation focus.
 - [ ] Implement plan creation without remote writes.
 - [ ] Implement explicit approval with plan identity and digest checks.
 - [ ] Implement apply through a GitLab REST adapter.
+- [ ] Permit a `glab` apply adapter only after the same plan and approval gates
+  are implemented and tested.
 - [ ] Implement post-apply verification and an audit trail.
 - [ ] Create/update/close/assign work items.
 - [ ] Add and update work-item comments/notes.
@@ -129,7 +154,7 @@ Every capability must document:
 5. Whether it is read-only, plan-only, apply-capable, or destructive.
 6. Idempotency and retry behavior.
 7. Verification evidence and failure states.
-8. REST and MCP support, including unsupported paths.
+8. REST, `glab`, and MCP support, including unsupported paths.
 9. Unit, integration, CLI, and safety tests.
 
 ## Definition of ready for an agent
