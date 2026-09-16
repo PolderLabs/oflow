@@ -33,11 +33,17 @@ normalizes the currently supported subset:
    iterations.
 5. When `--story <iid>` is supplied, that story's acceptance criteria, notes
    count, merge requests, and pipelines.
+6. Conservative planning-health findings for missing acceptance criteria,
+   unassigned work items, and work items with neither a milestone nor an
+   iteration, when the GitLab response includes those fields.
 
 It emits human-readable Markdown and a compact `--json` result. Descriptions
 are excluded from the overall snapshot and fetched only for the selected story,
 so the result is suitable for low-token agent handoff. Local implementation and
 test evidence still comes from repository inspection and `oflow verify`.
+Planning-health findings are advisory and only emitted when the corresponding
+fields are present; missing API fields are treated as unknown rather than as
+planning defects.
 Sync is not allowed to create, update, delete, comment on, or otherwise mutate
 GitLab.
 

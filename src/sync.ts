@@ -52,7 +52,19 @@ export interface SyncResult {
     boards: number;
     iterations: number;
   };
+  planningHealth: SyncPlanningHealth;
   warnings: string[];
+}
+
+export interface SyncPlanningHealth {
+  findings: Array<{
+    code:
+      | "missing-acceptance-criteria"
+      | "unassigned-work-item"
+      | "untimeboxed-work-item";
+    message: string;
+    storyIids: number[];
+  }>;
 }
 
 export interface SyncWorkItem {
@@ -250,6 +262,7 @@ export async function syncProject(
       boards: boards.length,
       iterations: iterations.length,
     },
+    planningHealth: inspectPlanningHealth(issues),
     warnings,
   };
   return result;
@@ -338,6 +351,22 @@ export function formatSyncMarkdown(result: SyncResult): string {
             .join(", ")
         : "none"),
   );
+
+  if (result.planningHealth.findings.length > 0) {
+    lines.push(
+      "",
+      "## Planning health",
+      "",
+      ...result.planningHealth.findings.map(
+        (finding) =>
+          "- " +
+          finding.message +
+          (finding.storyIids.length > 0
+            ? " (stories: " + finding.storyIids.map((iid) => "#" + iid).join(", ") + ")"
+            : ""),
+      ),
+    );
+  }
 
   if (result.story) {
     lines.push(
@@ -460,6 +489,50 @@ function compactWorkItem(issue: GitLabIssue): SyncWorkItem {
     updatedAt: issue.updated_at ?? null,
     webUrl: issue.web_url ?? null,
   };
+}
+
+function inspectPlanningHealth(issues: GitLabIssue[]): SyncPlanningHealth {
+  const findings: SyncPlanningHealth["findings"] = [];
+  const describedIssues = issues.filter((issue) => typeof issue.description === "string");
+  const missingCriteria = describedIssues.filter(
+    (issue) => parseAcceptanceCriteria(issue.description ?? "").length === 0,
+  );
+  if (missingCriteria.length > 0) {
+    findings.push({
+      code: "missing-acceptance-criteria",
+      message: `${missingCriteria.length} work item${missingCriteria.length === 1 ? " has" : "s have"} no acceptance-criteria checklist`,
+      storyIids: missingCriteria.slice(0, 10).map((issue) => issue.iid),
+    });
+  }
+
+  const assigneesKnown = issues.length > 0 && issues.every((issue) => Array.isArray(issue.assignees));
+  const unassigned = assigneesKnown
+    ? issues.filter((issue) => (issue.assignees ?? []).length === 0)
+    : [];
+  if (unassigned.length > 0) {
+    findings.push({
+      code: "unassigned-work-item",
+      message: `${unassigned.length} open work item${unassigned.length === 1 ? " has" : "s have"} no assignee`,
+      storyIids: unassigned.slice(0, 10).map((issue) => issue.iid),
+    });
+  }
+
+  const timeboxKnown =
+    issues.length > 0 &&
+    issues.every((issue) => Object.prototype.hasOwnProperty.call(issue, "milestone") ||
+      Object.prototype.hasOwnProperty.call(issue, "iteration"));
+  const untimeboxed = timeboxKnown
+    ? issues.filter((issue) => !namedValue(issue.milestone) && !namedValue(issue.iteration))
+    : [];
+  if (untimeboxed.length > 0) {
+    findings.push({
+      code: "untimeboxed-work-item",
+      message: `${untimeboxed.length} open work item${untimeboxed.length === 1 ? " has" : "s have"} no milestone or iteration`,
+      storyIids: untimeboxed.slice(0, 10).map((issue) => issue.iid),
+    });
+  }
+
+  return { findings };
 }
 
 function compactMergeRequest(mergeRequest: GitLabMergeRequest): SyncMergeRequest {

@@ -114,9 +114,10 @@ This is the immediate implementation focus.
 - [ ] Compare acceptance criteria to local code/test evidence.
 - [x] Collect compact local Git, MR, pipeline, and note evidence for agent reasoning.
 - [x] Classify explicit evidence as satisfied, partial, blocked, or unknown.
-- [ ] Detect stale stories, missing acceptance criteria, conflicting labels, and
-  work items without owners or timeboxes.
-- [ ] Recommend the smallest next implementation or planning action.
+- [ ] Detect stale stories and conflicting labels.
+- [x] Detect missing acceptance criteria and work items without owners or
+  timeboxes when the API provides the relevant fields.
+- [x] Recommend the smallest next implementation or planning action.
 - [ ] Generate an approval-ready plan from those recommendations.
 - [ ] Add local context caching with explicit refresh and no credentials.
 - [x] Support concise Markdown and machine-readable reports suitable for Claude,
