@@ -9,6 +9,9 @@ import type {
   GitLabIssue,
   GitLabIssueCreate,
   GitLabIssueUpdate,
+  GitLabBoard,
+  GitLabBoardList,
+  GitLabBoardUpdate,
   GitLabLabel,
   GitLabLabelCreate,
   GitLabLabelUpdate,
@@ -81,6 +84,39 @@ export interface MilestoneUpdateOperation {
   changes: GitLabMilestoneUpdate;
 }
 
+export interface BoardCreateOperation {
+  kind: "board.create";
+  host: string;
+  projectPath: string;
+  name: string;
+}
+
+export interface BoardUpdateOperation {
+  kind: "board.update";
+  host: string;
+  projectPath: string;
+  boardId: number;
+  changes: GitLabBoardUpdate;
+}
+
+export interface BoardListCreateOperation {
+  kind: "board-list.create";
+  host: string;
+  projectPath: string;
+  boardId: number;
+  labelId: number;
+  labelName: string;
+}
+
+export interface BoardListUpdateOperation {
+  kind: "board-list.update";
+  host: string;
+  projectPath: string;
+  boardId: number;
+  listId: number;
+  position: number;
+}
+
 export type PlanOperation =
   | IssueCreateOperation
   | IssueUpdateOperation
@@ -88,7 +124,11 @@ export type PlanOperation =
   | LabelCreateOperation
   | LabelUpdateOperation
   | MilestoneCreateOperation
-  | MilestoneUpdateOperation;
+  | MilestoneUpdateOperation
+  | BoardCreateOperation
+  | BoardUpdateOperation
+  | BoardListCreateOperation
+  | BoardListUpdateOperation;
 
 export interface PlanArtifact {
   managedBy: "oflow";
@@ -113,6 +153,9 @@ export interface PlanArtifact {
     description?: string | null;
     milestoneId?: number;
     milestoneIid?: number;
+    boardId?: number;
+    listId?: number;
+    position?: number;
   };
   verification?: PlanVerification;
 }
@@ -499,6 +542,185 @@ export async function createMilestoneUpdatePlan(
   return { path, plan };
 }
 
+export async function createBoardCreatePlan(
+  root: string,
+  name: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const normalizedName = requiredText(name, "Board name");
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const boards = await client.listBoards(remote.projectPath);
+  if (boards.some((board) => board.name === normalizedName)) {
+    throw new OflowError(
+      "A project board named " + JSON.stringify(normalizedName) + " already exists.",
+      "BOARD_EXISTS",
+    );
+  }
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation: {
+      kind: "board.create",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      name: normalizedName,
+    },
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
+}
+
+export async function createBoardUpdatePlan(
+  root: string,
+  boardId: number,
+  changes: GitLabBoardUpdate,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateBoardId(boardId);
+  const operationChanges = cleanBoardChanges(changes);
+  if (Object.keys(operationChanges).length === 0) {
+    throw new OflowError(
+      "No board changes were provided. Use --name.",
+      "EMPTY_PLAN",
+    );
+  }
+  if (operationChanges.name !== undefined) {
+    operationChanges.name = requiredText(operationChanges.name, "Board name");
+  }
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const current = await client.getBoard(remote.projectPath, boardId);
+  if (
+    operationChanges.name !== undefined &&
+    operationChanges.name !== current.name
+  ) {
+    const boards = await client.listBoards(remote.projectPath);
+    if (boards.some((board) => board.id !== boardId && board.name === operationChanges.name)) {
+      throw new OflowError(
+        "A project board named " + JSON.stringify(operationChanges.name) + " already exists.",
+        "BOARD_EXISTS",
+      );
+    }
+  }
+  return writePlan(root, {
+    kind: "board.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    boardId,
+    changes: operationChanges,
+  });
+}
+
+export async function createBoardListCreatePlan(
+  root: string,
+  boardId: number,
+  labelReference: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateBoardId(boardId);
+  const label = requiredText(labelReference, "Board list label");
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  await client.getBoard(remote.projectPath, boardId);
+  const labels = await client.listLabels(remote.projectPath);
+  const currentLabel = findLabel(labels, label);
+  if (!currentLabel || currentLabel.id === undefined) {
+    throw new OflowError(
+      "Could not find a project label with a numeric ID for " + JSON.stringify(label) + ".",
+      "LABEL_NOT_FOUND",
+    );
+  }
+  const lists = await client.listBoardLists(remote.projectPath, boardId);
+  if (lists.some((item) => item.label?.id === currentLabel.id)) {
+    throw new OflowError(
+      "Board " + String(boardId) + " already has a list for label " + JSON.stringify(currentLabel.name) + ".",
+      "BOARD_LIST_EXISTS",
+    );
+  }
+  return writePlan(root, {
+    kind: "board-list.create",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    boardId,
+    labelId: currentLabel.id,
+    labelName: currentLabel.name,
+  });
+}
+
+export async function createBoardListUpdatePlan(
+  root: string,
+  boardId: number,
+  listId: number,
+  position: number,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateBoardId(boardId);
+  validateBoardListId(listId);
+  validateBoardListPosition(position);
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  await client.getBoardList(remote.projectPath, boardId, listId);
+  return writePlan(root, {
+    kind: "board-list.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    boardId,
+    listId,
+    position,
+  });
+}
+
+async function writePlan(root: string, operation: PlanOperation): Promise<StoredPlan> {
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation,
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
+}
+
 export async function approvePlan(root: string, input: string): Promise<StoredPlan> {
   const stored = await loadPlan(root, input);
   assertState(stored.plan, "draft", "approve");
@@ -555,6 +777,34 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
       },
     );
     stored.plan.result = compactLabel(result, "label.create");
+  } else if (stored.plan.operation.kind === "board.create") {
+    const result = await client.createBoard(
+      stored.plan.operation.projectPath,
+      { name: stored.plan.operation.name },
+    );
+    stored.plan.result = compactBoard(result, "board.create");
+  } else if (stored.plan.operation.kind === "board.update") {
+    const result = await client.updateBoard(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.boardId,
+      stored.plan.operation.changes,
+    );
+    stored.plan.result = compactBoard(result, "board.update");
+  } else if (stored.plan.operation.kind === "board-list.create") {
+    const result = await client.createBoardList(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.boardId,
+      { label_id: stored.plan.operation.labelId },
+    );
+    stored.plan.result = compactBoardList(result, "board-list.create");
+  } else if (stored.plan.operation.kind === "board-list.update") {
+    const result = await client.updateBoardList(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.boardId,
+      stored.plan.operation.listId,
+      { position: stored.plan.operation.position },
+    );
+    stored.plan.result = compactBoardList(result, "board-list.update");
   } else {
     if (stored.plan.operation.kind === "label.update") {
       const result = await client.updateLabel(
@@ -641,7 +891,8 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
           stored.plan.operation,
           stored.plan.result?.labelId,
         )
-        : verifyMilestone(
+        : stored.plan.operation.kind === "milestone.create" || stored.plan.operation.kind === "milestone.update"
+        ? verifyMilestone(
             await client.getMilestone(
               stored.plan.operation.projectPath,
               stored.plan.operation.kind === "milestone.create"
@@ -649,7 +900,27 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
                 : stored.plan.operation.milestoneIid,
             ),
             stored.plan.operation,
-          );
+          )
+        : stored.plan.operation.kind === "board.create" || stored.plan.operation.kind === "board.update"
+          ? verifyBoard(
+              await client.getBoard(
+                stored.plan.operation.projectPath,
+                stored.plan.operation.kind === "board.create"
+                  ? resultBoardId(stored.plan.result?.boardId)
+                  : stored.plan.operation.boardId,
+              ),
+              stored.plan.operation,
+            )
+          : verifyBoardList(
+              await client.getBoardList(
+                stored.plan.operation.projectPath,
+                stored.plan.operation.boardId,
+                stored.plan.operation.kind === "board-list.create"
+                  ? resultListId(stored.plan.result?.listId)
+                  : stored.plan.operation.listId,
+              ),
+              stored.plan.operation,
+            );
   stored.plan.verification = verification;
   if (verification.passed) {
     stored.plan.state = "verified";
@@ -696,9 +967,27 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
                   ? []
                   : ["- due_date: " + plan.operation.due_date]),
               ].join("\n")
-                : Object.entries(plan.operation.changes)
+                : plan.operation.kind === "milestone.update"
+                  ? Object.entries(plan.operation.changes)
                     .map(([key, value]) => "- " + key + ": " + String(value))
-                    .join("\n");
+                    .join("\n")
+                  : plan.operation.kind === "board.create"
+                    ? "- name: " + plan.operation.name
+                    : plan.operation.kind === "board.update"
+                      ? Object.entries(plan.operation.changes)
+                          .map(([key, value]) => "- " + key + ": " + String(value))
+                          .join("\n")
+                      : plan.operation.kind === "board-list.create"
+                        ? [
+                            "- board_id: " + plan.operation.boardId,
+                            "- label_id: " + plan.operation.labelId,
+                            "- label: " + plan.operation.labelName,
+                          ].join("\n")
+                        : [
+                            "- board_id: " + plan.operation.boardId,
+                            "- list_id: " + plan.operation.listId,
+                            "- position: " + plan.operation.position,
+                          ].join("\n");
   const lines = [
     "# oflow plan",
     "",
@@ -719,8 +1008,16 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
           : plan.operation.kind === "label.update"
             ? "Update label:"
             : plan.operation.kind === "milestone.create"
-              ? "Create milestone:"
-              : "Update milestone:",
+            ? "Create milestone:"
+              : plan.operation.kind === "milestone.update"
+                ? "Update milestone:"
+                : plan.operation.kind === "board.create"
+                  ? "Create board:"
+                  : plan.operation.kind === "board.update"
+                    ? "Update board:"
+                    : plan.operation.kind === "board-list.create"
+                      ? "Create board list:"
+                      : "Update board list:",
     operationSummary,
   ];
   if (plan.result) {
@@ -802,11 +1099,29 @@ function isSupportedOperation(
       isDateString(operation.start_date) &&
       isDateString(operation.due_date);
   }
-  return operation.kind === "milestone.update" &&
-    Number.isSafeInteger(operation.milestoneIid) &&
-    operation.milestoneIid > 0 &&
-    Boolean(operation.changes && typeof operation.changes === "object") &&
-    Object.keys(operation.changes).length > 0;
+  if (operation.kind === "milestone.update") {
+    return Number.isSafeInteger(operation.milestoneIid) &&
+      operation.milestoneIid > 0 &&
+      Boolean(operation.changes && typeof operation.changes === "object") &&
+      Object.keys(operation.changes).length > 0;
+  }
+  if (operation.kind === "board.create") {
+    return typeof operation.name === "string" && operation.name.trim().length > 0;
+  }
+  if (operation.kind === "board.update") {
+    return Number.isSafeInteger(operation.boardId) && operation.boardId > 0 &&
+      Boolean(operation.changes && typeof operation.changes === "object") &&
+      Object.keys(operation.changes).length > 0;
+  }
+  if (operation.kind === "board-list.create") {
+    return Number.isSafeInteger(operation.boardId) && operation.boardId > 0 &&
+      Number.isSafeInteger(operation.labelId) && operation.labelId > 0 &&
+      typeof operation.labelName === "string" && operation.labelName.trim().length > 0;
+  }
+  return operation.kind === "board-list.update" &&
+    Number.isSafeInteger(operation.boardId) && operation.boardId > 0 &&
+    Number.isSafeInteger(operation.listId) && operation.listId > 0 &&
+    Number.isSafeInteger(operation.position) && operation.position >= 0;
 }
 
 function validIssueOperation(
@@ -1045,6 +1360,29 @@ function compactMilestone(
   };
 }
 
+function compactBoard(
+  board: GitLabBoard,
+  kind: "board.create" | "board.update",
+): NonNullable<PlanArtifact["result"]> {
+  return {
+    kind,
+    boardId: board.id,
+    name: board.name,
+  };
+}
+
+function compactBoardList(
+  list: GitLabBoardList,
+  kind: "board-list.create" | "board-list.update",
+): NonNullable<PlanArtifact["result"]> {
+  return {
+    kind,
+    listId: list.id,
+    position: list.position,
+    name: list.label?.name,
+  };
+}
+
 function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   if (result.kind === "issue.note.create") {
     return "note #" + String(result.noteId ?? "unknown") + " created";
@@ -1056,6 +1394,14 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   if (result.kind === "milestone.create" || result.kind === "milestone.update") {
     return "milestone " + JSON.stringify(result.name ?? "unknown") + " (" +
       (result.state ?? "unknown") + ")";
+  }
+  if (result.kind === "board.create" || result.kind === "board.update") {
+    return "board " + JSON.stringify(result.name ?? "unknown") +
+      " (#" + String(result.boardId ?? "unknown") + ")";
+  }
+  if (result.kind === "board-list.create" || result.kind === "board-list.update") {
+    return "board list " + JSON.stringify(result.name ?? "unknown") +
+      " (#" + String(result.listId ?? "unknown") + ")";
   }
   return (
     (result.title ?? "issue updated") +
@@ -1211,6 +1557,58 @@ function verifyMilestone(
   };
 }
 
+function verifyBoard(
+  board: GitLabBoard,
+  operation: BoardCreateOperation | BoardUpdateOperation,
+): PlanVerification {
+  const expected = operation.kind === "board.create"
+    ? { name: operation.name }
+    : operation.changes;
+  const checks: PlanVerification["checks"] = [];
+  if (expected.name !== undefined) {
+    checks.push(check("board.name", expected.name, board.name));
+  }
+  for (const field of ["hide_backlog_list", "hide_closed_list"] as const) {
+    if (expected[field] !== undefined) {
+      checks.push(check(field, String(expected[field]), String(board[field] ?? false)));
+    }
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: failed.map(
+      (item) => "GitLab did not report the requested " + item.field + " value.",
+    ),
+  };
+}
+
+function verifyBoardList(
+  list: GitLabBoardList,
+  operation: BoardListCreateOperation | BoardListUpdateOperation,
+): PlanVerification {
+  const checks: PlanVerification["checks"] = [];
+  if (operation.kind === "board-list.create") {
+    const actualLabelId = list.label?.id;
+    const actualLabelName = list.label?.name ?? "";
+    if (actualLabelId !== undefined) {
+      checks.push(check("board-list.label_id", String(operation.labelId), String(actualLabelId)));
+    } else {
+      checks.push(check("board-list.label", operation.labelName, actualLabelName));
+    }
+  } else {
+    checks.push(check("board-list.position", String(operation.position), String(list.position ?? "")));
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: failed.map(
+      (item) => "GitLab did not report the requested " + item.field + " value.",
+    ),
+  };
+}
+
 function check(
   field: string,
   expected: string,
@@ -1237,6 +1635,12 @@ function cleanLabelChanges(changes: GitLabLabelUpdate): GitLabLabelUpdate {
   return Object.fromEntries(
     Object.entries(changes).filter(([, value]) => value !== undefined),
   ) as GitLabLabelUpdate;
+}
+
+function cleanBoardChanges(changes: GitLabBoardUpdate): GitLabBoardUpdate {
+  return Object.fromEntries(
+    Object.entries(changes).filter(([, value]) => value !== undefined),
+  ) as GitLabBoardUpdate;
 }
 
 function validateMilestoneDates(
@@ -1320,6 +1724,27 @@ function validateMilestoneIid(milestoneIid: number): void {
   }
 }
 
+function validateBoardId(boardId: number): void {
+  if (!Number.isSafeInteger(boardId) || boardId < 1) {
+    throw new OflowError("Board ID must be a positive integer.", "INVALID_BOARD_ID");
+  }
+}
+
+function validateBoardListId(listId: number): void {
+  if (!Number.isSafeInteger(listId) || listId < 1) {
+    throw new OflowError("Board list ID must be a positive integer.", "INVALID_BOARD_LIST_ID");
+  }
+}
+
+function validateBoardListPosition(position: number): void {
+  if (!Number.isSafeInteger(position) || position < 0) {
+    throw new OflowError(
+      "Board list position must be a non-negative integer.",
+      "INVALID_BOARD_POSITION",
+    );
+  }
+}
+
 function resultMilestoneIid(milestoneIid: number | undefined): number {
   if (milestoneIid === undefined) {
     throw new OflowError(
@@ -1340,6 +1765,28 @@ function resultIssueIid(issueIid: number | undefined): number {
   }
   validateIssueIid(issueIid);
   return issueIid;
+}
+
+function resultBoardId(boardId: number | undefined): number {
+  if (boardId === undefined) {
+    throw new OflowError(
+      "Applied board plan is missing its remote ID.",
+      "INVALID_PLAN",
+    );
+  }
+  validateBoardId(boardId);
+  return boardId;
+}
+
+function resultListId(listId: number | undefined): number {
+  if (listId === undefined) {
+    throw new OflowError(
+      "Applied board-list plan is missing its remote ID.",
+      "INVALID_PLAN",
+    );
+  }
+  validateBoardListId(listId);
+  return listId;
 }
 
 function requiredText(value: string | undefined, field: string): string {
@@ -1377,7 +1824,19 @@ function formatTarget(operation: PlanOperation): string {
   if (operation.kind === "milestone.create") {
     return "milestone " + JSON.stringify(operation.title);
   }
-  return "milestone #" + operation.milestoneIid;
+  if (operation.kind === "milestone.update") {
+    return "milestone #" + operation.milestoneIid;
+  }
+  if (operation.kind === "board.create") {
+    return "board " + JSON.stringify(operation.name);
+  }
+  if (operation.kind === "board.update") {
+    return "board #" + operation.boardId;
+  }
+  if (operation.kind === "board-list.create") {
+    return "board #" + operation.boardId + " list for " + JSON.stringify(operation.labelName);
+  }
+  return "board #" + operation.boardId + " list #" + operation.listId;
 }
 
 function namedValue(value: unknown): string | null {

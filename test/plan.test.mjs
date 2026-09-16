@@ -14,6 +14,10 @@ import {
   createLabelUpdatePlan,
   createIssueNotePlan,
   createIssueUpdatePlan,
+  createBoardCreatePlan,
+  createBoardListCreatePlan,
+  createBoardListUpdatePlan,
+  createBoardUpdatePlan,
   createMilestoneCreatePlan,
   createMilestoneUpdatePlan,
   verifyPlan,
@@ -428,6 +432,94 @@ test("milestone plans create and update timeboxes through approval and verificat
     const verifiedUpdate = await verifyPlan(root, updated.path);
     assert.equal(verifiedUpdate.plan.state, "verified");
     assert.equal(verifiedUpdate.plan.verification.passed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("board and label-backed board-list plans stay guarded and verify remote state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-board-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "board-plan-test-token";
+  const boards = [{ id: 1, name: "Planning" }];
+  const labels = [{ id: 5, name: "Ready", color: "#428BCA" }];
+  const lists = [{ id: 2, label: { id: 4, name: "In Progress" }, position: 1 }];
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      const path = url.pathname;
+      if (path.endsWith("/boards") && method === "GET") return response(boards);
+      if (path.endsWith("/boards") && method === "POST") {
+        const body = new URLSearchParams(String(init.body));
+        const board = { id: 3, name: body.get("name") };
+        boards.push(board);
+        return response(board);
+      }
+      if (path.endsWith("/boards/1") && method === "GET") return response(boards[0]);
+      if (/\/boards\/\d+$/.test(path) && method === "GET") {
+        const board = boards.find((item) => item.id === Number(path.split("/").pop()));
+        return response(board);
+      }
+      if (path.endsWith("/boards/1") && method === "PUT") {
+        const body = new URLSearchParams(String(init.body));
+        boards[0].name = body.get("name") ?? boards[0].name;
+        return response(boards[0]);
+      }
+      if (path.endsWith("/labels") && method === "GET") return response(labels);
+      if (path.endsWith("/boards/1/lists") && method === "GET") return response(lists);
+      if (path.endsWith("/boards/1/lists") && method === "POST") {
+        const body = new URLSearchParams(String(init.body));
+        const list = { id: 4, label: { id: Number(body.get("label_id")), name: "Ready" }, position: 2 };
+        lists.push(list);
+        return response(list);
+      }
+      if (path.endsWith("/boards/1/lists/2") && method === "GET") return response(lists[0]);
+      if (path.endsWith("/boards/1/lists/2") && method === "PUT") {
+        const body = new URLSearchParams(String(init.body));
+        lists[0].position = Number(body.get("position"));
+        return response(lists[0]);
+      }
+      if (path.endsWith("/boards/1/lists/4") && method === "GET") return response(lists[1]);
+      return response({});
+    };
+
+    const created = await createBoardCreatePlan(root, "Product Backlog");
+    await approvePlan(root, created.path);
+    const appliedCreate = await applyPlan(root, created.path);
+    assert.equal(appliedCreate.plan.result.boardId, 3);
+    assert.equal((await verifyPlan(root, created.path)).plan.state, "verified");
+
+    const updated = await createBoardUpdatePlan(root, 1, { name: "Product Planning" });
+    await approvePlan(root, updated.path);
+    await applyPlan(root, updated.path);
+    assert.equal((await verifyPlan(root, updated.path)).plan.state, "verified");
+
+    const listCreated = await createBoardListCreatePlan(root, 1, "Ready");
+    await approvePlan(root, listCreated.path);
+    const appliedList = await applyPlan(root, listCreated.path);
+    assert.equal(appliedList.plan.result.listId, 4);
+    assert.equal((await verifyPlan(root, listCreated.path)).plan.state, "verified");
+
+    const listUpdated = await createBoardListUpdatePlan(root, 1, 2, 0);
+    await approvePlan(root, listUpdated.path);
+    await applyPlan(root, listUpdated.path);
+    assert.equal((await verifyPlan(root, listUpdated.path)).plan.state, "verified");
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

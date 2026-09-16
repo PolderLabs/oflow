@@ -113,8 +113,8 @@ oflow context --story <iid> [--json]
 oflow verify --story <iid> [--json]
 ```
 
-Board, sprint, epic, and issue-show subcommands remain planned; label and
-milestone create/update plans are implemented, while `sync` composes the
+Sprint, epic, and issue-show subcommands remain planned. Board and board-list
+administration is implemented through guarded plans, while `sync` composes the
 currently supported overlapping inspection without breaking the local workflow
 contract.
 
@@ -126,9 +126,11 @@ All remote mutations use a plan artifact:
 oflow plan issue create ...
 oflow plan issue update ...
 oflow plan label create ...
+oflow plan board create ...
 oflow plan board update ...
+oflow plan board-list create ...
+oflow plan board-list update ...
 oflow plan milestone create ...
-oflow plan sprint create ...
 
 oflow approve .oflow/state/plans/<plan-id>.json
 oflow apply .oflow/state/plans/<plan-id>.json
@@ -136,8 +138,8 @@ oflow verify --plan .oflow/state/plans/<plan-id>.json
 ```
 
 The currently implemented plan operations are issue/work-item create and update,
-issue note creation, project label create/update, and project milestone
-create/update:
+issue note creation, project label create/update, project milestone create/update,
+and board/board-list administration:
 
 ```bash
 oflow plan issue create \
@@ -163,6 +165,10 @@ oflow plan label update --label "Ready" --color "#36A269"
 oflow plan milestone create --title "Sprint 5" \
   --start-date 2027-01-11 --due-date 2027-01-31
 oflow plan milestone update --milestone 1 --state closed
+oflow plan board create --name "Product Backlog"
+oflow plan board update --board 1 --name "Product Planning"
+oflow plan board-list create --board 1 --label "Ready"
+oflow plan board-list update --board 1 --list 2 --position 0
 ```
 
 `--assignee` accepts one or more comma-separated GitLab usernames. Use
@@ -183,8 +189,13 @@ usernames before the plan is written. Note creation disables automatic
 request retries because repeating a non-idempotent POST could create duplicate
 comments. Label creation also disables automatic retries because it is a
 non-idempotent POST; label updates use the idempotent PUT endpoint. Milestone
-creation also disables retries for the non-idempotent POST. Board movement,
-iterations, and merge-request writes are not yet apply-capable.
+creation also disables retries for the non-idempotent POST. Board creation and
+board-list creation likewise disable retries; board updates and list reordering
+use idempotent PUT requests. Board-card movement is represented by guarded issue
+label updates, not an unverified board-card mutation. Board deletion,
+iterations, and merge-request writes are not yet apply-capable. The supported
+board endpoint behavior is documented by GitLab's [project issue boards
+API](https://docs.gitlab.com/api/boards/).
 
 `oflow assess --story <iid>` is the compact progress handoff. It combines the
 story's acceptance criteria, related MR evidence, pipeline status, recent notes,

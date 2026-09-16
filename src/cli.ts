@@ -36,6 +36,10 @@ import {
   createIssueCreatePlan,
   createIssueNotePlan,
   createIssueUpdatePlan,
+  createBoardCreatePlan,
+  createBoardListCreatePlan,
+  createBoardListUpdatePlan,
+  createBoardUpdatePlan,
   createMilestoneCreatePlan,
   createMilestoneUpdatePlan,
   formatPlanMarkdown,
@@ -46,6 +50,7 @@ import { formatSyncMarkdown, syncProject } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
 import type {
   GitLabIssueUpdate,
+  GitLabBoardUpdate,
   GitLabLabelUpdate,
   GitLabMilestoneUpdate,
   IssueState,
@@ -81,6 +86,9 @@ interface CliOptions {
   labels?: string;
   milestone?: string;
   assignee?: string;
+  board?: string;
+  list?: string;
+  position?: string;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -279,9 +287,67 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           print(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
+        if (options.planResource === "board" && options.planOperation === "create") {
+          if (options.name === undefined) {
+            throw new OflowError(
+              "plan board create requires --name.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createBoardCreatePlan(root, options.name);
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "board" && options.planOperation === "update") {
+          if (options.board === undefined) {
+            throw new OflowError(
+              "plan board update requires --board <id>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const changes: GitLabBoardUpdate = { name: options.name };
+          const stored = await createBoardUpdatePlan(
+            root,
+            parsePositiveInteger(options.board, "board ID"),
+            changes,
+          );
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "board-list" && options.planOperation === "create") {
+          if (options.board === undefined || options.label === undefined) {
+            throw new OflowError(
+              "plan board-list create requires --board <id> and --label <name-or-id>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createBoardListCreatePlan(
+            root,
+            parsePositiveInteger(options.board, "board ID"),
+            options.label,
+          );
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "board-list" && options.planOperation === "update") {
+          if (options.board === undefined || options.list === undefined || options.position === undefined) {
+            throw new OflowError(
+              "plan board-list update requires --board <id>, --list <id>, and --position <n>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createBoardListUpdatePlan(
+            root,
+            parsePositiveInteger(options.board, "board ID"),
+            parsePositiveInteger(options.list, "board list ID"),
+            parsePosition(options.position),
+          );
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
         {
           throw new OflowError(
-            "Use oflow plan issue create/update/note, plan label create/update, or plan milestone create/update with the required fields.",
+            "Use oflow plan issue create/update/note, plan label create/update, plan milestone create/update, plan board create/update, or plan board-list create/update with the required fields.",
             "UNSUPPORTED_PLAN",
           );
         }
@@ -479,6 +545,9 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--labels" ||
       argument === "--milestone" ||
       argument === "--assignee" ||
+      argument === "--board" ||
+      argument === "--list" ||
+      argument === "--position" ||
       argument === "--plan"
     ) {
       const value = argv[index + 1];
@@ -520,6 +589,12 @@ function parseArgs(argv: string[]): CliOptions {
         options.milestone = value;
       } else if (argument === "--assignee") {
         options.assignee = value;
+      } else if (argument === "--board") {
+        options.board = value;
+      } else if (argument === "--list") {
+        options.list = value;
+      } else if (argument === "--position") {
+        options.position = value;
       } else if (argument === "--plan") {
         options.planPath = value;
       } else {
@@ -565,6 +640,12 @@ function parseArgs(argv: string[]): CliOptions {
       options.milestone = argument.slice("--milestone=".length);
     } else if (argument.startsWith("--assignee=")) {
       options.assignee = argument.slice("--assignee=".length);
+    } else if (argument.startsWith("--board=")) {
+      options.board = argument.slice("--board=".length);
+    } else if (argument.startsWith("--list=")) {
+      options.list = argument.slice("--list=".length);
+    } else if (argument.startsWith("--position=")) {
+      options.position = argument.slice("--position=".length);
     } else if (argument.startsWith("--plan=")) {
       const value = argument.slice("--plan=".length);
       if (!value) {
@@ -658,6 +739,23 @@ function parseNonNegativeInteger(value: string, field: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     throw new OflowError(field + " must be a non-negative integer.", "INVALID_ISSUE_WEIGHT");
+  }
+  return parsed;
+}
+
+function parsePosition(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new OflowError(
+      "Board list position must be a non-negative integer.",
+      "INVALID_BOARD_POSITION",
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new OflowError(
+      "Board list position must be a non-negative integer.",
+      "INVALID_BOARD_POSITION",
+    );
   }
   return parsed;
 }
@@ -794,6 +892,10 @@ function helpText(): string {
     "  plan label update --label <name>    prepare an auditable label update",
     "  plan milestone create --title       prepare an auditable milestone create",
     "  plan milestone update --milestone  prepare an auditable milestone update",
+    "  plan board create --name             prepare an auditable board create",
+    "  plan board update --board --name     prepare an auditable board update",
+    "  plan board-list create --board --label prepare a label-backed board list",
+    "  plan board-list update --board --list --position reorder a board list",
     "  approve <plan.json>                  approve a local plan artifact",
     "  apply <plan.json>                    apply an approved plan",
     "  start --story <iid>",

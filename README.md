@@ -52,6 +52,10 @@ oflow plan issue update --story 42 --labels "Ready,backend"
 oflow plan issue note --story 42 --body "Progress: API contract confirmed."
 oflow plan label update --label "Ready" --color "#36A269"
 oflow plan milestone update --milestone 1 --state closed
+oflow plan board create --name "Product Backlog"
+oflow plan board update --board 1 --name "Product Planning"
+oflow plan board-list create --board 1 --label "Ready"
+oflow plan board-list update --board 1 --list 2 --position 0
 oflow approve .oflow/state/plans/<plan-id>.json
 oflow apply .oflow/state/plans/<plan-id>.json
 oflow verify --plan .oflow/state/plans/<plan-id>.json
@@ -85,7 +89,8 @@ need them.
 The current release uses the GitLab REST API for deterministic, compact
 planning snapshots and guarded Scrum writes: updating issues/work items (including
 assignment by username),
-adding issue notes, and creating/updating project labels and milestones.
+adding issue notes, creating/updating project labels and milestones, and
+creating/updating boards and label-backed board lists.
 `oflow sync --json` gathers bounded project, work-item, label, milestone, board,
 iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
@@ -99,10 +104,12 @@ REST adapter as the predictable core and does not silently invoke or configure
 MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
 The current apply-capable operations are `plan issue create`, `plan issue update`
 (including guarded assignment), `plan issue note`,
-`plan label create/update`, and `plan milestone create/update`; boards,
-iterations, and
-merge-request writes remain roadmap work. `oflow glab api` only permits an
-explicit GET through glab, so it cannot bypass the write gates.
+`plan label create/update`, `plan milestone create/update`, and guarded board/
+board-list administration; board-card movement, iterations, and merge-request
+writes remain roadmap work.
+Board-card movement is represented by guarded issue label updates rather than a
+separate unsafe card mutation. `oflow glab api` only permits an explicit GET
+through glab, so it cannot bypass the write gates.
 
 See [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the backend,
 authentication, security, and implementation decision record.

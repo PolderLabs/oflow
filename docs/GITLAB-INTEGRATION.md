@@ -30,9 +30,11 @@ agent -> oflow intent/sync/plan/approve/apply/verify
 ```
 
 The current release implements the REST path for compact read commands, the
-guarded issue-update/note/label/milestone plans, and an explicit read-only `oflow glab api`
-fallback. This document does not claim that `oflow` silently invokes `glab` or
-MCP; both remain optional integrations.
+guarded issue-update/note/label/milestone/board/board-list plans, and an
+explicit read-only `oflow glab api` fallback. Board lists are currently
+label-backed; board-card movement uses guarded issue label updates. This
+document does not claim that `oflow` silently invokes `glab` or MCP; both
+remain optional integrations.
 
 ## What the four options actually provide
 
@@ -122,6 +124,14 @@ endpoints for listing iterations, while sprint creation is group/cadence-backed
 and not exposed as a simple project REST create/update operation. `oflow` reads
 them when available but does not pretend that a milestone or label mutation is
 an iteration mutation.
+
+Board administration follows the same boundary. GitLab's [project issue boards
+API](https://docs.gitlab.com/api/boards/) supports creating/updating boards,
+creating label-backed lists, and reordering lists. oflow exposes those
+non-destructive operations through guarded plans, but keeps board deletion and
+direct card movement out of the default capability surface. A card's workflow
+state is represented by the issue labels that back the board lists, so agents
+can use the existing issue update plan and verify the resulting issue state.
 
 GitLab's fine-grained REST permission mapping also gives us an explicit way to
 document each capability. For the current Scrum scope, start with the

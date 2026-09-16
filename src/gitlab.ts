@@ -7,6 +7,10 @@ import type {
   GitLabUser,
   GitLabBoard,
   GitLabBoardList,
+  GitLabBoardCreate,
+  GitLabBoardUpdate,
+  GitLabBoardListCreate,
+  GitLabBoardListUpdate,
   GitLabIteration,
   GitLabLabel,
   GitLabLabelCreate,
@@ -282,6 +286,30 @@ export class GitLabClient {
     );
   }
 
+  async getBoard(projectPath: string, boardId: number): Promise<GitLabBoard> {
+    return this.request<GitLabBoard>(
+      "/projects/" + encodeURIComponent(projectPath) + "/boards/" + String(boardId),
+    );
+  }
+
+  async createBoard(projectPath: string, board: GitLabBoardCreate): Promise<GitLabBoard> {
+    return this.request<GitLabBoard>(
+      "/projects/" + encodeURIComponent(projectPath) + "/boards",
+      { method: "POST", form: { ...board }, retryable: false },
+    );
+  }
+
+  async updateBoard(
+    projectPath: string,
+    boardId: number,
+    changes: GitLabBoardUpdate,
+  ): Promise<GitLabBoard> {
+    return this.request<GitLabBoard>(
+      "/projects/" + encodeURIComponent(projectPath) + "/boards/" + String(boardId),
+      { method: "PUT", form: { ...changes } },
+    );
+  }
+
   async listBoardLists(
     projectPath: string,
     boardId: number,
@@ -295,6 +323,42 @@ export class GitLabClient {
         "/lists?per_page=" +
         String(limit),
       "board list entries",
+    );
+  }
+
+  async getBoardList(
+    projectPath: string,
+    boardId: number,
+    listId: number,
+  ): Promise<GitLabBoardList> {
+    return this.request<GitLabBoardList>(
+      "/projects/" + encodeURIComponent(projectPath) + "/boards/" +
+        String(boardId) + "/lists/" + String(listId),
+    );
+  }
+
+  async createBoardList(
+    projectPath: string,
+    boardId: number,
+    list: GitLabBoardListCreate,
+  ): Promise<GitLabBoardList> {
+    return this.request<GitLabBoardList>(
+      "/projects/" + encodeURIComponent(projectPath) + "/boards/" +
+        String(boardId) + "/lists",
+      { method: "POST", form: { ...list }, retryable: false },
+    );
+  }
+
+  async updateBoardList(
+    projectPath: string,
+    boardId: number,
+    listId: number,
+    changes: GitLabBoardListUpdate,
+  ): Promise<GitLabBoardList> {
+    return this.request<GitLabBoardList>(
+      "/projects/" + encodeURIComponent(projectPath) + "/boards/" +
+        String(boardId) + "/lists/" + String(listId),
+      { method: "PUT", form: { ...changes } },
     );
   }
 

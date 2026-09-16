@@ -112,11 +112,11 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
       ),
       capability(
         "boards.write",
-        "planned",
-        "plan-only",
+        "implemented",
+        "apply",
         "Board and board list",
-        "REST or glab",
-        "Work Item: Update",
+        "REST",
+        "Project Planning: Create/Update; Label: Read for label-backed lists",
       ),
       capability(
         "merge-requests.write",

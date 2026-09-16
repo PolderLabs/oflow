@@ -20,8 +20,8 @@ The product boundary remains:
 - REST, `glab`, and MCP are provider execution mechanisms, not separate
   workflow rules.
 - The current usable milestone is compact Scrum/project reads plus guarded issue,
-  note, label, and milestone operations; board, iteration, and delivery writes
-  remain explicitly staged.
+  note, label, milestone, and board administration; iteration and delivery
+  writes remain explicitly staged.
 
 ## Integration strategy
 
@@ -102,7 +102,8 @@ This is the immediate implementation focus.
 - [x] Create/update labels through guarded plans; keep deletion disabled.
 - [ ] Apply/remove labels from bulk planning workflows.
 - [x] Create/update project milestones through guarded plans; keep deletion disabled.
-- [ ] Create/update boards and lists.
+- [x] Create/update boards and label-backed board lists through guarded plans;
+  keep deletion disabled and use issue labels for board-card movement.
 - [ ] Create/update epics and relationships at group scope.
 - [ ] Create/update iterations/cadences only after validating the target
   GitLab version and permission model.

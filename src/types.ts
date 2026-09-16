@@ -178,9 +178,27 @@ export interface GitLabBoard {
   [key: string]: unknown;
 }
 
+export interface GitLabBoardCreate {
+  name: string;
+}
+
+export interface GitLabBoardUpdate {
+  name?: string;
+  hide_backlog_list?: boolean;
+  hide_closed_list?: boolean;
+}
+
+export interface GitLabBoardListCreate {
+  label_id: number;
+}
+
+export interface GitLabBoardListUpdate {
+  position: number;
+}
+
 export interface GitLabBoardList {
   id: number;
-  label?: { name?: string; color?: string } | null;
+  label?: { id?: number; name?: string; color?: string } | null;
   position?: number;
   [key: string]: unknown;
 }
