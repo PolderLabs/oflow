@@ -99,7 +99,7 @@ export async function loadStoryContext(
       warnings,
     ),
     optionalFetch<GitLabMergeRequest[]>(
-      () => client.listMergeRequests(remote.projectPath, storyIid),
+      () => client.listRelatedMergeRequests(remote.projectPath, storyIid),
       "Could not read related merge requests",
       warnings,
     ),

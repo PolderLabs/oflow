@@ -100,14 +100,15 @@ assumed to exist just because the API supports them.
 ```bash
 oflow capabilities --json
 oflow sync [--story <iid>] [--json]
+oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
 oflow context --story <iid> [--json]
 oflow verify --story <iid> [--json]
 ```
 
-Label, board, milestone, sprint, epic, and issue-show subcommands remain
-planned. `sync` composes the currently supported overlapping inspection without
-breaking the local workflow contract.
+Board, milestone, sprint, epic, and issue-show subcommands remain planned;
+label create/update plans are implemented, while `sync` composes the currently
+supported overlapping inspection without breaking the local workflow contract.
 
 ### Explicit mutations
 
@@ -126,19 +127,28 @@ oflow apply .oflow/state/plans/<plan-id>.json
 oflow verify --plan .oflow/state/plans/<plan-id>.json
 ```
 
-The currently implemented plan operation is issue/work-item update:
+The currently implemented plan operations are issue/work-item update, issue
+note creation, and project label create/update:
 
 ```bash
 oflow plan issue update --story <iid> \
   --title "Updated title" \
   --labels "Ready,backend" \
   --state closed
+oflow plan issue note --story <iid> \
+  --body "Progress: API contract confirmed."
+oflow plan label create --name "Ready" --color "#428BCA" \
+  --description "Ready for implementation"
+oflow plan label update --label "Ready" --color "#36A269"
 ```
 
-It validates that the target exists while creating the local plan, requires an
-unchanged digest for approval and apply, checks the current Git remote before
-writing, and re-reads the issue during verification. Notes, label resources,
-board movement, milestones, iterations, and merge-request writes are not yet
+Both validate that the target exists while creating the local plan, require an
+unchanged digest for approval and apply, check the current Git remote before
+writing, and re-read GitLab during verification. Note creation disables automatic
+request retries because repeating a non-idempotent POST could create duplicate
+comments. Label creation also disables automatic retries because it is a
+non-idempotent POST; label updates use the idempotent PUT endpoint. Board
+movement, milestones, iterations, and merge-request writes are not yet
 apply-capable.
 
 The exact syntax may change, but the state transition must not:
@@ -189,9 +199,11 @@ oflow plan/apply
        +-- GitLab MCP adapter (when exposed by the agent runtime)
 ```
 
-The current release implements direct REST reads plus the guarded REST issue
-update plan. `glab` is detected as an optional external executable but is not
-required and must not become an npm/runtime dependency. GitLab's hosted MCP
+The current release implements direct REST reads plus guarded REST issue update
+and note plans. It also exposes an explicit `oflow glab api` GET-only escape
+hatch for endpoints not yet wrapped by REST. `glab` is detected as an optional
+external executable but is not required and must not become an npm/runtime
+dependency. GitLab's hosted MCP
 server and `glab mcp serve` are separate integrations; the latter is currently
 documented by GitLab as experimental. Neither one changes the workflow safety
 rules or is silently invoked by `oflow`.

@@ -93,6 +93,22 @@ export interface GitLabIssueUpdate {
   state_event?: "close" | "reopen";
 }
 
+export interface GitLabNoteCreate {
+  body: string;
+}
+
+export interface GitLabLabelCreate {
+  name: string;
+  color: string;
+  description?: string;
+}
+
+export interface GitLabLabelUpdate {
+  new_name?: string;
+  color?: string;
+  description?: string;
+}
+
 export interface GitLabLabel {
   id?: number;
   name: string;

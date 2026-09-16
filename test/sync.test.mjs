@@ -34,6 +34,9 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
       const responses = new Map([
         ["/api/v4/projects/team%2Fproject", { id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project", default_branch: "main" }],
         ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story"], updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
+        ["/api/v4/projects/team%2Fproject/issues/1", { iid: 1, title: "Choose a pod", description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", state: "opened", labels: ["User Story"], updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }],
+        ["/api/v4/projects/team%2Fproject/issues/1/notes", [{ id: 4, body: "Blocked on hardware access", author: { username: "zakar" }, created_at: "2026-01-01T00:00:00Z" }]],
+        ["/api/v4/projects/team%2Fproject/issues/1/related_merge_requests", [{ iid: 3, title: "Reservation UI", state: "opened", draft: false, source_branch: "story/1", target_branch: "main" }]],
         ["/api/v4/projects/team%2Fproject/merge_requests", [{ iid: 3, title: "Reservation UI", state: "opened", draft: false, source_branch: "story/1", target_branch: "main" }]],
         ["/api/v4/projects/team%2Fproject/pipelines", [{ id: 9, status: "success", ref: "main", sha: "abc" }]],
         ["/api/v4/projects/team%2Fproject/labels", [{ name: "User Story", color: "#fff", open_issues_count: 1 }]],
@@ -59,6 +62,10 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.equal(result.warnings.length, 0);
     assert.match(formatSyncMarkdown(result), /Open merge requests: 1/);
     assert.doesNotMatch(formatSyncMarkdown(result), /description/);
+
+    const storyResult = await syncProject(root, { storyIid: 1 });
+    assert.equal(storyResult.story.notes[0].body, "Blocked on hardware access");
+    assert.equal(storyResult.story.recentNotes, 1);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

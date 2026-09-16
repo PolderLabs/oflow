@@ -29,9 +29,10 @@ agent -> oflow intent/sync/plan/approve/apply/verify
                     +-- MCP adapter (optional agent/runtime path)
 ```
 
-The current release implements the REST path for compact read commands and the
-guarded issue-update plan. This document does not claim that `oflow` silently
-invokes `glab` or MCP; both remain optional integrations.
+The current release implements the REST path for compact read commands, the
+guarded issue-update/note/label plans, and an explicit read-only `oflow glab api`
+fallback. This document does not claim that `oflow` silently invokes `glab` or
+MCP; both remain optional integrations.
 
 ## What the four options actually provide
 
@@ -181,8 +182,8 @@ Every capability must expose:
    model (group epics, iterations, and cadences remain).
 2. Add backend-neutral capability metadata and optional `glab` availability
    detection without exposing credentials.
-3. Add a small, opt-in `glab api` bridge for endpoints not yet wrapped by
-   REST, starting read-only and with strict JSON parsing.
+3. [x] Add a small, opt-in `glab api` bridge for endpoints not yet wrapped by
+   REST, restricted to GET and strict JSON parsing.
 4. Implement plan artifacts and approval before any additional `glab` or REST
    mutation; issue updates already use this path.
 5. Add MCP capability discovery/bridging only where the agent runtime can

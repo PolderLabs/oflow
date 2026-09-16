@@ -42,11 +42,13 @@ oflow doctor --check-api      # also make a read-only GitLab API request
 oflow work                    # list open GitLab issues/work items
 oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
 oflow capabilities --json      # show implemented, planned, and optional paths
+oflow glab api <endpoint>      # optional read-only glab API fallback
 oflow start --story 42        # remember the active story locally
 oflow context --story 42     # print story, epic, MRs, pipelines, and notes
 oflow mr --story 42           # print an acceptance-aware MR description
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
+oflow plan issue note --story 42 --body "Progress: API contract confirmed."
 oflow approve .oflow/state/plans/<plan-id>.json
 oflow apply .oflow/state/plans/<plan-id>.json
 oflow verify --plan .oflow/state/plans/<plan-id>.json
@@ -78,7 +80,8 @@ command-line argument. A read-only `read_api` token is sufficient for
 need them.
 
 The current release uses the GitLab REST API for deterministic, compact
-planning snapshots and the first guarded write: updating an issue/work item.
+planning snapshots and guarded Scrum writes: updating issues/work items,
+adding issue notes, and creating/updating project labels.
 `oflow sync --json` gathers bounded project, work-item, label, milestone, board,
 iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
@@ -86,12 +89,14 @@ oflow does not require an embedded model or spend tokens generating a duplicate
 summary.
 
 GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
-and future endpoint fallbacks—not a replacement for GitLab permissions. The
+and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
 REST adapter as the predictable core and does not silently invoke or configure
 MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
-The current apply-capable operation is `plan issue update`; comments, labels,
-boards, milestones, iterations, and merge-request writes remain roadmap work.
+The current apply-capable operations are `plan issue update`, `plan issue note`,
+and `plan label create/update`; boards, milestones, iterations, and
+merge-request writes remain roadmap work. `oflow glab api` only permits an
+explicit GET through glab, so it cannot bypass the write gates.
 
 See [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the backend,
 authentication, security, and implementation decision record.

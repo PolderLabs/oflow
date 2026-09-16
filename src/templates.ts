@@ -37,8 +37,8 @@ export const WORKFLOW_MARKDOWN = [
   "## Safety",
   "",
   "Read-only context, sync, and verification commands may run automatically.",
-  "oflow does not configure or invoke MCP servers. Use plan issue update, then",
-  "approve, apply, and verify for the currently supported remote write. Do not",
+  "oflow does not configure or invoke MCP servers. Use plan issue update/note or",
+  "plan label create/update, then approve, apply, and verify for supported writes. Do not",
   "use planned commands until oflow capabilities reports them as supported.",
 ].join("\n");
 
@@ -52,6 +52,7 @@ export const OFLOW_README_MARKDOWN = [
   "- templates/merge-request.md is the acceptance-aware MR template.",
   "- GitLab credentials live outside the repository; use oflow auth login.",
   "- oflow reads GitLab through its typed REST API; glab and MCP remain optional integrations.",
+  "- oflow glab api is an explicit GET-only fallback for unwrapped endpoints.",
   "- state/ and cache/ are local and ignored; they may contain active context.",
   "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, MRs, and pipelines.",
   "",
@@ -91,7 +92,8 @@ export function agentInstructionBlock(agent: AgentName): string {
     "access is missing, use oflow auth login; never place a token in the repository.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
     "in the merge request, and run oflow verify --story <iid> before handoff. Use",
-    "oflow plan issue update followed by approve/apply/verify for supported writes; do",
-    "not make other remote planning changes without an explicit supported plan.",
+    "oflow plan issue update/note or plan label create/update followed by",
+    "approve/apply/verify for supported writes; do not make other remote planning",
+    "changes without an explicit supported plan.",
   ].join("\n");
 }

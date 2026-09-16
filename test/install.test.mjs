@@ -28,7 +28,7 @@ test("install is idempotent and preserves the managed marker", async () => {
 
     const workflow = await readFile(join(root, ".oflow", "WORKFLOW.md"), "utf8");
     assert.ok(workflow.includes("oflow sync --json"));
-    assert.ok(workflow.includes("currently supported remote write"));
+    assert.ok(workflow.includes("supported writes"));
     assert.ok(workflow.includes("approve, apply, and verify"));
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -65,3 +65,16 @@ export async function resolveStoryIid(
     "MISSING_STORY",
   );
 }
+
+export async function resolveOptionalStoryIid(
+  root: string,
+): Promise<number | undefined> {
+  try {
+    return await resolveStoryIid(root);
+  } catch (error: unknown) {
+    if (error instanceof OflowError && error.code === "MISSING_STORY") {
+      return undefined;
+    }
+    throw error;
+  }
+}

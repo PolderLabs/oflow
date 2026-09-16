@@ -139,6 +139,14 @@ export interface SyncStory {
   mergeRequests: SyncMergeRequest[];
   pipelines: SyncPipeline[];
   recentNotes: number;
+  notes: SyncNote[];
+}
+
+export interface SyncNote {
+  id: number;
+  body: string;
+  createdAt: string | null;
+  author: string | null;
 }
 
 export async function syncProject(
@@ -342,6 +350,17 @@ export function formatSyncMarkdown(result: SyncResult): string {
       "Related merge requests: " + String(result.story.mergeRequests.length),
       "Recent notes: " + String(result.story.recentNotes),
     );
+    if (result.story.notes.length > 0) {
+      lines.push(
+        "",
+        ...result.story.notes.map(
+          (note) =>
+            "- " +
+            note.body +
+            (note.author ? " (" + note.author + ")" : ""),
+        ),
+      );
+    }
   }
 
   if (result.warnings.length > 0) {
@@ -370,7 +389,7 @@ async function loadStorySummary(
       warnings,
     ),
     optionalFetch(
-      () => client.listMergeRequests(projectPath, storyIid, "all", 20),
+      () => client.listRelatedMergeRequests(projectPath, storyIid, 20),
       "Could not read story merge requests",
       warnings,
     ),
@@ -397,6 +416,7 @@ async function loadStorySummary(
     mergeRequests: mergeRequests.map(compactMergeRequest),
     pipelines: pipelines.map(compactPipeline),
     recentNotes: notes.length,
+    notes: notes.slice(0, 5).map(compactNote),
   };
 }
 
@@ -495,6 +515,21 @@ function compactIteration(iteration: GitLabIteration): SyncIteration {
     startDate: iteration.start_date ?? null,
     dueDate: iteration.due_date ?? null,
     webUrl: iteration.web_url ?? null,
+  };
+}
+
+function compactNote(note: {
+  id: number;
+  body: string;
+  created_at?: string;
+  author?: Record<string, unknown> | null;
+}): SyncNote {
+  const author = note.author?.username ?? note.author?.name;
+  return {
+    id: note.id,
+    body: oneLine(note.body).slice(0, 280),
+    createdAt: note.created_at ?? null,
+    author: typeof author === "string" ? author : null,
   };
 }
 

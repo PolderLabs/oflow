@@ -7,8 +7,11 @@ import type {
   GitLabBoardList,
   GitLabIteration,
   GitLabLabel,
+  GitLabLabelCreate,
+  GitLabLabelUpdate,
   GitLabMergeRequest,
   GitLabMilestone,
+  GitLabNoteCreate,
   GitLabNote,
   GitLabPipeline,
   GitLabProject,
@@ -122,6 +125,45 @@ export class GitLabClient {
     );
   }
 
+  async createLabel(
+    projectPath: string,
+    label: GitLabLabelCreate,
+  ): Promise<GitLabLabel> {
+    return this.request<GitLabLabel>(
+      "/projects/" + encodeURIComponent(projectPath) + "/labels",
+      {
+        method: "POST",
+        form: {
+          name: label.name,
+          color: label.color,
+          description: label.description,
+        },
+        retryable: false,
+      },
+    );
+  }
+
+  async updateLabel(
+    projectPath: string,
+    label: string | number,
+    changes: GitLabLabelUpdate,
+  ): Promise<GitLabLabel> {
+    return this.request<GitLabLabel>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/labels/" +
+        encodeURIComponent(String(label)),
+      {
+        method: "PUT",
+        form: {
+          new_name: changes.new_name,
+          color: changes.color,
+          description: changes.description,
+        },
+      },
+    );
+  }
+
   async listMilestones(
     projectPath: string,
     state: "active" | "closed" | "all" = "active",
@@ -209,6 +251,21 @@ export class GitLabClient {
     );
   }
 
+  async createIssueNote(
+    projectPath: string,
+    iid: number,
+    note: GitLabNoteCreate,
+  ): Promise<GitLabNote> {
+    return this.request<GitLabNote>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/issues/" +
+        String(iid) +
+        "/notes",
+      { method: "POST", form: { body: note.body }, retryable: false },
+    );
+  }
+
   async listMergeRequests(
     projectPath: string,
     storyIid?: number,
@@ -240,6 +297,22 @@ export class GitLabClient {
     });
   }
 
+  async listRelatedMergeRequests(
+    projectPath: string,
+    issueIid: number,
+    limit = 20,
+  ): Promise<GitLabMergeRequest[]> {
+    return this.listResponse<GitLabMergeRequest>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/issues/" +
+        String(issueIid) +
+        "/related_merge_requests?per_page=" +
+        String(limit),
+      "related merge request list",
+    );
+  }
+
   async listPipelines(
     projectPath: string,
     ref?: string | null,
@@ -267,10 +340,15 @@ export class GitLabClient {
 
   private async request<T>(
     path: string,
-    options: { method?: string; form?: Record<string, string | number | boolean | undefined> } = {},
+    options: {
+      method?: string;
+      form?: Record<string, string | number | boolean | undefined>;
+      retryable?: boolean;
+    } = {},
   ): Promise<T> {
     let lastError: GitLabApiError | null = null;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    const maxRetries = options.retryable === false ? 0 : MAX_RETRIES;
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       try {
         const headers: Record<string, string> = {
           Accept: "application/json",
@@ -309,7 +387,7 @@ export class GitLabClient {
           retryAfter,
         );
         if (
-          attempt >= MAX_RETRIES ||
+          attempt >= maxRetries ||
           (response.status !== 429 && response.status < 500)
         ) {
           throw lastError;
@@ -327,7 +405,7 @@ export class GitLabClient {
           "GitLab API request failed for " + path + ": " + message,
           0,
         );
-        if (attempt >= MAX_RETRIES) {
+        if (attempt >= maxRetries) {
           throw lastError;
         }
         await delay(Math.min(1000 * 2 ** attempt, 5000));

@@ -80,7 +80,7 @@ This is the immediate implementation focus.
   endpoint errors for every new collection.
 - [x] Produce a compact JSON evidence model for project, Scrum, merge-request,
   and pipeline handoff.
-- [ ] Add an opt-in read-only `glab api` fallback for capabilities not yet
+- [x] Add an opt-in read-only `glab api` fallback for capabilities not yet
   wrapped by the typed REST adapter, with strict JSON parsing and backend
   reporting.
 
@@ -96,8 +96,9 @@ This is the immediate implementation focus.
 - [ ] Add a durable audit trail beyond the plan artifact.
 - [x] Update issue/work-item fields through the guarded plan path.
 - [ ] Create/close/assign work items.
-- [ ] Add and update work-item comments/notes.
-- [ ] Create/update/apply/remove labels.
+- [x] Add issue/work-item progress notes through the guarded plan path.
+- [x] Create/update labels through guarded plans; keep deletion disabled.
+- [ ] Apply/remove labels from bulk planning workflows.
 - [ ] Create/update/assign milestones.
 - [ ] Create/update boards and lists.
 - [ ] Create/update epics and relationships at group scope.

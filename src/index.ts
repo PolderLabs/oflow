@@ -10,6 +10,7 @@ export * from "./errors.js";
 export * from "./fs.js";
 export * from "./git.js";
 export * from "./gitlab.js";
+export * from "./glab.js";
 export * from "./install.js";
 export * from "./plan.js";
 export * from "./sync.js";

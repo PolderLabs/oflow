@@ -25,22 +25,28 @@ import {
 import { OflowError } from "./errors.js";
 import { formatDoctor, doctor } from "./doctor.js";
 import { getGitLabRemote, getRepoRoot } from "./git.js";
+import { glabApiGet } from "./glab.js";
 import { formatInstallResult, installProject } from "./install.js";
 import {
   applyPlan,
   approvePlan,
+  createLabelCreatePlan,
+  createLabelUpdatePlan,
+  createIssueNotePlan,
   createIssueUpdatePlan,
   formatPlanMarkdown,
   verifyPlan,
 } from "./plan.js";
-import { resolveStoryIid, startSession } from "./state.js";
+import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.js";
 import { formatSyncMarkdown, syncProject } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
-import type { GitLabIssueUpdate, IssueState } from "./types.js";
+import type { GitLabIssueUpdate, GitLabLabelUpdate, IssueState } from "./types.js";
 
 interface CliOptions {
   command: string;
   authAction?: string;
+  glabAction?: string;
+  glabEndpoint?: string;
   root: string;
   story?: string;
   state?: string;
@@ -55,6 +61,11 @@ interface CliOptions {
   planPath?: string;
   title?: string;
   description?: string;
+  body?: string;
+  name?: string;
+  color?: string;
+  newName?: string;
+  label?: string;
   labels?: string;
   milestone?: string;
 }
@@ -78,6 +89,24 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         ? await optionalRepoRoot(options.root)
         : await getRepoRoot(options.root);
       return await runAuth(options, root);
+    }
+
+    if (options.command === "glab" && options.glabAction === "api") {
+      if (!options.glabEndpoint) {
+        throw new OflowError(
+          "glab api requires a relative endpoint, for example projects/:fullpath/releases.",
+          "MISSING_GLAB_ENDPOINT",
+        );
+      }
+      const root = await getRepoRoot(options.root);
+      const remote = await getGitLabRemote(root);
+      const result = await glabApiGet({
+        root,
+        host: remote.host,
+        endpoint: options.glabEndpoint,
+      });
+      print(options.json, result, JSON.stringify(result, null, 2) + "\n");
+      return 0;
     }
 
     const root = await getRepoRoot(options.root);
@@ -105,7 +134,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const state = normalizeIssueState(options.state);
         const storyIid = options.story
           ? await resolveStoryIid(root, options.story)
-          : undefined;
+          : await resolveOptionalStoryIid(root);
         const result = await syncProject(root, { state, storyIid });
         print(options.json, result, formatSyncMarkdown(result));
         return result.warnings.length === 0 ? 0 : 1;
@@ -116,23 +145,68 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "plan": {
-        if (options.planResource !== "issue" || options.planOperation !== "update") {
+        if (options.planResource === "issue" &&
+          (options.planOperation === "update" || options.planOperation === "note")) {
+          const storyIid = await resolveStoryIid(root, options.story);
+          if (options.planOperation === "note") {
+            if (options.body === undefined) {
+              throw new OflowError(
+                "plan issue note requires --body.",
+                "MISSING_FLAG_VALUE",
+              );
+            }
+            const stored = await createIssueNotePlan(root, storyIid, options.body);
+            print(options.json, stored, formatPlanMarkdown(stored));
+            return 0;
+          }
+          const changes: GitLabIssueUpdate = {
+            title: options.title,
+            description: options.description,
+            labels: options.labels,
+            milestone: options.milestone,
+            state_event: normalizeIssueUpdateState(options.state),
+          };
+          const stored = await createIssueUpdatePlan(root, storyIid, changes);
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "label" && options.planOperation === "create") {
+          if (options.name === undefined || options.color === undefined) {
+            throw new OflowError(
+              "plan label create requires --name and --color.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createLabelCreatePlan(root, {
+            name: options.name,
+            color: options.color,
+            description: options.description,
+          });
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "label" && options.planOperation === "update") {
+          if (options.label === undefined) {
+            throw new OflowError(
+              "plan label update requires --label.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const changes: GitLabLabelUpdate = {
+            new_name: options.newName,
+            color: options.color,
+            description: options.description,
+          };
+          const stored = await createLabelUpdatePlan(root, options.label, changes);
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        {
           throw new OflowError(
-            "Use oflow plan issue update --story <iid> with one or more changes.",
+            "Use oflow plan issue update/note or plan label create/update with the required fields.",
             "UNSUPPORTED_PLAN",
           );
         }
-        const storyIid = await resolveStoryIid(root, options.story);
-        const changes: GitLabIssueUpdate = {
-          title: options.title,
-          description: options.description,
-          labels: options.labels,
-          milestone: options.milestone,
-          state_event: normalizeIssueUpdateState(options.state),
-        };
-        const stored = await createIssueUpdatePlan(root, storyIid, changes);
-        print(options.json, stored, formatPlanMarkdown(stored));
-        return 0;
       }
       case "approve": {
         if (!options.planPath) {
@@ -285,6 +359,10 @@ function parseArgs(argv: string[]): CliOptions {
     options.planResource = argv[1];
     options.planOperation = argv[2];
     firstOptionIndex = 3;
+  } else if (command === "glab") {
+    options.glabAction = argv[1];
+    options.glabEndpoint = argv[2];
+    firstOptionIndex = 3;
   } else if (
     (command === "approve" || command === "apply") &&
     argv[1] &&
@@ -312,6 +390,11 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--host" ||
       argument === "--title" ||
       argument === "--description" ||
+      argument === "--body" ||
+      argument === "--name" ||
+      argument === "--color" ||
+      argument === "--new-name" ||
+      argument === "--label" ||
       argument === "--labels" ||
       argument === "--milestone" ||
       argument === "--plan"
@@ -333,6 +416,16 @@ function parseArgs(argv: string[]): CliOptions {
         options.title = value;
       } else if (argument === "--description") {
         options.description = value;
+      } else if (argument === "--body") {
+        options.body = value;
+      } else if (argument === "--name") {
+        options.name = value;
+      } else if (argument === "--color") {
+        options.color = value;
+      } else if (argument === "--new-name") {
+        options.newName = value;
+      } else if (argument === "--label") {
+        options.label = value;
       } else if (argument === "--labels") {
         options.labels = value;
       } else if (argument === "--milestone") {
@@ -360,6 +453,16 @@ function parseArgs(argv: string[]): CliOptions {
       options.title = argument.slice("--title=".length);
     } else if (argument.startsWith("--description=")) {
       options.description = argument.slice("--description=".length);
+    } else if (argument.startsWith("--body=")) {
+      options.body = argument.slice("--body=".length);
+    } else if (argument.startsWith("--name=")) {
+      options.name = argument.slice("--name=".length);
+    } else if (argument.startsWith("--color=")) {
+      options.color = argument.slice("--color=".length);
+    } else if (argument.startsWith("--new-name=")) {
+      options.newName = argument.slice("--new-name=".length);
+    } else if (argument.startsWith("--label=")) {
+      options.label = argument.slice("--label=".length);
     } else if (argument.startsWith("--labels=")) {
       options.labels = argument.slice("--labels=".length);
     } else if (argument.startsWith("--milestone=")) {
@@ -544,7 +647,11 @@ function helpText(): string {
     "  work [--state opened|closed|all]    list current GitLab work items",
     "  sync [--story <iid>] [--json]       compact project and Scrum snapshot",
     "  capabilities [--json]               show supported and planned operations",
+    "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue update --story <iid>     prepare an auditable issue update",
+    "  plan issue note --story <iid>       prepare an auditable issue note",
+    "  plan label create --name --color    prepare an auditable label create",
+    "  plan label update --label <name>    prepare an auditable label update",
     "  approve <plan.json>                  approve a local plan artifact",
     "  apply <plan.json>                    apply an approved plan",
     "  start --story <iid>",

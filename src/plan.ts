@@ -5,7 +5,14 @@ import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
 import { GitLabClient } from "./gitlab.js";
-import type { GitLabIssue, GitLabIssueUpdate } from "./types.js";
+import type {
+  GitLabIssue,
+  GitLabIssueUpdate,
+  GitLabLabel,
+  GitLabLabelCreate,
+  GitLabLabelUpdate,
+  GitLabNote,
+} from "./types.js";
 
 export const PLAN_DIRECTORY = ".oflow/state/plans";
 
@@ -13,25 +20,65 @@ export type PlanState = "draft" | "approved" | "applied" | "verified";
 
 export interface IssueUpdateOperation {
   kind: "issue.update";
+  host: string;
   projectPath: string;
   issueIid: number;
   changes: GitLabIssueUpdate;
 }
 
+export interface IssueNoteCreateOperation {
+  kind: "issue.note.create";
+  host: string;
+  projectPath: string;
+  issueIid: number;
+  body: string;
+}
+
+export interface LabelCreateOperation {
+  kind: "label.create";
+  host: string;
+  projectPath: string;
+  name: string;
+  color: string;
+  description?: string;
+}
+
+export interface LabelUpdateOperation {
+  kind: "label.update";
+  host: string;
+  projectPath: string;
+  label: string;
+  labelId?: number;
+  changes: GitLabLabelUpdate;
+}
+
+export type PlanOperation =
+  | IssueUpdateOperation
+  | IssueNoteCreateOperation
+  | LabelCreateOperation
+  | LabelUpdateOperation;
+
 export interface PlanArtifact {
   managedBy: "oflow";
-  version: 1;
+  version: 2;
   id: string;
   createdAt: string;
   updatedAt: string;
   state: PlanState;
   digest: string;
-  operation: IssueUpdateOperation;
+  operation: PlanOperation;
   result?: {
-    iid: number;
-    title: string;
-    state: string | null;
-    webUrl: string | null;
+    kind: PlanOperation["kind"];
+    iid?: number;
+    title?: string;
+    body?: string;
+    state?: string | null;
+    webUrl?: string | null;
+    noteId?: number;
+    labelId?: number;
+    name?: string;
+    color?: string;
+    description?: string | null;
   };
   verification?: PlanVerification;
 }
@@ -64,9 +111,7 @@ export async function createIssueUpdatePlan(
       "NOT_INSTALLED",
     );
   }
-  if (!Number.isSafeInteger(issueIid) || issueIid < 1) {
-    throw new OflowError("Issue IID must be a positive integer.", "INVALID_ISSUE_IID");
-  }
+  validateIssueIid(issueIid);
   const operationChanges = cleanChanges(changes);
   if (Object.keys(operationChanges).length === 0) {
     throw new OflowError(
@@ -82,7 +127,7 @@ export async function createIssueUpdatePlan(
   const now = new Date().toISOString();
   const plan: PlanArtifact = {
     managedBy: "oflow",
-    version: 1,
+    version: 2,
     id: randomUUID(),
     createdAt: now,
     updatedAt: now,
@@ -90,8 +135,168 @@ export async function createIssueUpdatePlan(
     digest: "",
     operation: {
       kind: "issue.update",
+      host: remote.host,
       projectPath: remote.projectPath,
       issueIid,
+      changes: operationChanges,
+    },
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
+}
+
+export async function createIssueNotePlan(
+  root: string,
+  issueIid: number,
+  body: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateIssueIid(issueIid);
+  if (!body.trim()) {
+    throw new OflowError(
+      "Note body cannot be empty. Use --body with the progress or blocker update.",
+      "EMPTY_PLAN",
+    );
+  }
+
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  await client.getIssue(remote.projectPath, issueIid);
+
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation: {
+      kind: "issue.note.create",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      issueIid,
+      body,
+    },
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
+}
+
+export async function createLabelCreatePlan(
+  root: string,
+  label: GitLabLabelCreate,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const name = requiredText(label.name, "Label name");
+  const color = requiredText(label.color, "Label color");
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const labels = await client.listLabels(remote.projectPath);
+  if (labels.some((item) => item.name === name)) {
+    throw new OflowError(
+      "A project label named " + JSON.stringify(name) + " already exists.",
+      "LABEL_EXISTS",
+    );
+  }
+
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation: {
+      kind: "label.create",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      name,
+      color,
+      description: label.description,
+    },
+  };
+  plan.digest = planDigest(plan);
+  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
+  await writeJson(path, plan);
+  return { path, plan };
+}
+
+export async function createLabelUpdatePlan(
+  root: string,
+  labelReference: string,
+  changes: GitLabLabelUpdate,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const label = requiredText(labelReference, "Label identifier");
+  const operationChanges = cleanLabelChanges(changes);
+  if (Object.keys(operationChanges).length === 0) {
+    throw new OflowError(
+      "No label changes were provided. Use --new-name, --color, or --description.",
+      "EMPTY_PLAN",
+    );
+  }
+
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const labels = await client.listLabels(remote.projectPath);
+  const current = findLabel(labels, label);
+  if (!current) {
+    throw new OflowError(
+      "Could not find project label " + JSON.stringify(label) + ".",
+      "LABEL_NOT_FOUND",
+    );
+  }
+  if (
+    operationChanges.new_name !== undefined &&
+    labels.some((item) => item !== current && item.name === operationChanges.new_name)
+  ) {
+    throw new OflowError(
+      "A project label named " + JSON.stringify(operationChanges.new_name) + " already exists.",
+      "LABEL_EXISTS",
+    );
+  }
+
+  const now = new Date().toISOString();
+  const plan: PlanArtifact = {
+    managedBy: "oflow",
+    version: 2,
+    id: randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    state: "draft",
+    digest: "",
+    operation: {
+      kind: "label.update",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      label: current.name,
+      labelId: current.id,
       changes: operationChanges,
     },
   };
@@ -117,18 +322,48 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
   assertDigest(stored.plan);
 
   const remote = await getGitLabRemote(root);
-  if (remote.projectPath !== stored.plan.operation.projectPath) {
+  if (
+    remote.host !== stored.plan.operation.host ||
+    remote.projectPath !== stored.plan.operation.projectPath
+  ) {
     throw new OflowError(
       "The current Git remote does not match the plan target.",
       "PLAN_TARGET_MISMATCH",
     );
   }
-  const result = await new GitLabClient(remote.host).updateIssue(
-    stored.plan.operation.projectPath,
-    stored.plan.operation.issueIid,
-    stored.plan.operation.changes,
-  );
-  stored.plan.result = compactIssue(result);
+  const client = new GitLabClient(remote.host);
+  if (stored.plan.operation.kind === "issue.update") {
+    const result = await client.updateIssue(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.issueIid,
+      stored.plan.operation.changes,
+    );
+    stored.plan.result = compactIssue(result);
+  } else if (stored.plan.operation.kind === "issue.note.create") {
+    const result = await client.createIssueNote(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.issueIid,
+      { body: stored.plan.operation.body },
+    );
+    stored.plan.result = compactNote(result, stored.plan.operation.issueIid);
+  } else if (stored.plan.operation.kind === "label.create") {
+    const result = await client.createLabel(
+      stored.plan.operation.projectPath,
+      {
+        name: stored.plan.operation.name,
+        color: stored.plan.operation.color,
+        description: stored.plan.operation.description,
+      },
+    );
+    stored.plan.result = compactLabel(result, "label.create");
+  } else {
+    const result = await client.updateLabel(
+      stored.plan.operation.projectPath,
+      stored.plan.operation.labelId ?? stored.plan.operation.label,
+      stored.plan.operation.changes,
+    );
+    stored.plan.result = compactLabel(result, "label.update");
+  }
   stored.plan.state = "applied";
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
@@ -146,17 +381,38 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
   assertDigest(stored.plan);
 
   const remote = await getGitLabRemote(root);
-  if (remote.projectPath !== stored.plan.operation.projectPath) {
+  if (
+    remote.host !== stored.plan.operation.host ||
+    remote.projectPath !== stored.plan.operation.projectPath
+  ) {
     throw new OflowError(
       "The current Git remote does not match the plan target.",
       "PLAN_TARGET_MISMATCH",
     );
   }
-  const issue = await new GitLabClient(remote.host).getIssue(
-    stored.plan.operation.projectPath,
-    stored.plan.operation.issueIid,
-  );
-  const verification = verifyIssue(issue, stored.plan.operation.changes);
+  const client = new GitLabClient(remote.host);
+  const verification = stored.plan.operation.kind === "issue.update"
+    ? verifyIssue(
+        await client.getIssue(
+          stored.plan.operation.projectPath,
+          stored.plan.operation.issueIid,
+        ),
+        stored.plan.operation.changes,
+      )
+    : stored.plan.operation.kind === "issue.note.create"
+      ? verifyIssueNote(
+          await client.getIssueNotes(
+            stored.plan.operation.projectPath,
+            stored.plan.operation.issueIid,
+          ),
+          stored.plan.operation.body,
+          stored.plan.result?.noteId,
+        )
+      : verifyLabel(
+          await client.listLabels(stored.plan.operation.projectPath),
+          stored.plan.operation,
+          stored.plan.result?.labelId,
+        );
   stored.plan.verification = verification;
   if (verification.passed) {
     stored.plan.state = "verified";
@@ -168,30 +424,43 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
 
 export function formatPlanMarkdown(stored: StoredPlan): string {
   const { plan } = stored;
-  const changes = Object.entries(plan.operation.changes)
-    .map(([key, value]) => "- " + key + ": " + String(value))
-    .join("\n");
+  const operationSummary = plan.operation.kind === "issue.update"
+    ? Object.entries(plan.operation.changes)
+        .map(([key, value]) => "- " + key + ": " + String(value))
+        .join("\n")
+    : plan.operation.kind === "issue.note.create"
+      ? "- body: " + plan.operation.body
+      : plan.operation.kind === "label.create"
+        ? [
+            "- name: " + plan.operation.name,
+            "- color: " + plan.operation.color,
+            ...(plan.operation.description === undefined
+              ? []
+              : ["- description: " + plan.operation.description]),
+          ].join("\n")
+        : Object.entries(plan.operation.changes)
+            .map(([key, value]) => "- " + key + ": " + String(value))
+            .join("\n");
   const lines = [
     "# oflow plan",
     "",
     "Plan: " + stored.path,
     "ID: " + plan.id,
     "State: " + plan.state,
-    "Target: " + plan.operation.projectPath + " issue #" + plan.operation.issueIid,
+    "Target: " + plan.operation.host + "/" + plan.operation.projectPath + " " + formatTarget(plan.operation),
     "Digest: " + plan.digest,
     "",
-    "Changes:",
-    changes,
+    plan.operation.kind === "issue.update"
+      ? "Changes:"
+      : plan.operation.kind === "issue.note.create"
+        ? "Note:"
+        : plan.operation.kind === "label.create"
+          ? "Create label:"
+          : "Update label:",
+    operationSummary,
   ];
   if (plan.result) {
-    lines.push(
-      "",
-      "Applied result: " +
-        plan.result.title +
-        " (" +
-        (plan.result.state ?? "unknown") +
-        ")",
-    );
+    lines.push("", "Applied result: " + formatResult(plan.result));
   }
   if (plan.verification) {
     lines.push(
@@ -218,13 +487,61 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
 async function loadPlan(root: string, input: string): Promise<StoredPlan> {
   const path = resolvePlanPath(root, input);
   const plan = await readJson<PlanArtifact>(path);
-  if (!plan || plan.managedBy !== "oflow" || plan.version !== 1) {
+  if (!plan || plan.managedBy !== "oflow" || plan.version !== 2) {
     throw new OflowError("Invalid oflow plan artifact: " + path, "INVALID_PLAN");
   }
-  if (!plan.operation || plan.operation.kind !== "issue.update") {
+  if (!isSupportedOperation(plan.operation)) {
     throw new OflowError("Unsupported oflow plan operation.", "UNSUPPORTED_PLAN");
   }
   return { path, plan };
+}
+
+function isSupportedOperation(
+  operation: PlanArtifact["operation"] | undefined,
+): operation is PlanOperation {
+  if (!operation || typeof operation !== "object") {
+    return false;
+  }
+  if (
+    typeof operation.host !== "string" ||
+    typeof operation.projectPath !== "string"
+  ) {
+    return false;
+  }
+  if (operation.kind === "issue.update") {
+    return validIssueOperation(operation) &&
+      Boolean(operation.changes && typeof operation.changes === "object");
+  }
+  if (operation.kind === "issue.note.create") {
+    return validIssueOperation(operation) &&
+      typeof operation.body === "string" &&
+      operation.body.trim().length > 0;
+  }
+  if (operation.kind === "label.create") {
+    return typeof operation.name === "string" &&
+      typeof operation.color === "string" &&
+      operation.name.trim().length > 0 &&
+      operation.color.trim().length > 0;
+  }
+  return operation.kind === "label.update" &&
+    typeof operation.label === "string" &&
+    operation.label.trim().length > 0 &&
+    Boolean(operation.changes && typeof operation.changes === "object") &&
+    Object.keys(operation.changes).length > 0;
+}
+
+function validIssueOperation(
+  operation: PlanOperation,
+): operation is IssueUpdateOperation | IssueNoteCreateOperation {
+  return "issueIid" in operation &&
+    Number.isSafeInteger(operation.issueIid) &&
+    operation.issueIid >= 1;
+}
+
+function validateIssueIid(issueIid: number): void {
+  if (!Number.isSafeInteger(issueIid) || issueIid < 1) {
+    throw new OflowError("Issue IID must be a positive integer.", "INVALID_ISSUE_IID");
+  }
 }
 
 function resolvePlanPath(root: string, input: string): string {
@@ -298,11 +615,54 @@ function cleanChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
 
 function compactIssue(issue: GitLabIssue): NonNullable<PlanArtifact["result"]> {
   return {
+    kind: "issue.update",
     iid: issue.iid,
     title: issue.title,
     state: issue.state ?? null,
     webUrl: issue.web_url ?? null,
   };
+}
+
+function compactNote(
+  note: GitLabNote,
+  issueIid: number,
+): NonNullable<PlanArtifact["result"]> {
+  return {
+    kind: "issue.note.create",
+    iid: issueIid,
+    noteId: note.id,
+    body: note.body,
+    webUrl: null,
+  };
+}
+
+function compactLabel(
+  label: GitLabLabel,
+  kind: "label.create" | "label.update",
+): NonNullable<PlanArtifact["result"]> {
+  return {
+    kind,
+    labelId: label.id,
+    name: label.name,
+    color: label.color,
+    description: label.description ?? null,
+  };
+}
+
+function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
+  if (result.kind === "issue.note.create") {
+    return "note #" + String(result.noteId ?? "unknown") + " created";
+  }
+  if (result.kind === "label.create" || result.kind === "label.update") {
+    return "label " + JSON.stringify(result.name ?? "unknown") + " (" +
+      (result.color ?? "unknown") + ")";
+  }
+  return (
+    (result.title ?? "issue updated") +
+    " (" +
+    (result.state ?? "unknown") +
+    ")"
+  );
 }
 
 function verifyIssue(
@@ -338,6 +698,59 @@ function verifyIssue(
   };
 }
 
+function verifyIssueNote(
+  notes: GitLabNote[],
+  expectedBody: string,
+  noteId: number | undefined,
+): PlanVerification {
+  const matchingNote = noteId === undefined
+    ? notes.find((note) => note.body === expectedBody)
+    : notes.find((note) => note.id === noteId);
+  const actual = matchingNote?.body ?? "";
+  const passed = matchingNote !== undefined && actual === expectedBody;
+  return {
+    passed,
+    checks: [check("note.body", expectedBody, actual)],
+    reasons: passed ? [] : ["GitLab did not report the created note body."],
+  };
+}
+
+function verifyLabel(
+  labels: GitLabLabel[],
+  operation: LabelCreateOperation | LabelUpdateOperation,
+  labelId: number | undefined,
+): PlanVerification {
+  const expectedName = operation.kind === "label.create"
+    ? operation.name
+    : operation.changes.new_name ?? operation.label;
+  const label = labels.find((item) =>
+    labelId !== undefined && item.id === labelId
+  ) ?? labels.find((item) => item.name === expectedName);
+  const checks: PlanVerification["checks"] = [
+    check("label.name", expectedName, label?.name ?? ""),
+  ];
+  const expectedColor = operation.kind === "label.create"
+    ? operation.color
+    : operation.changes.color;
+  if (expectedColor !== undefined) {
+    checks.push(check("label.color", expectedColor, label?.color ?? ""));
+  }
+  const expectedDescription = operation.kind === "label.create"
+    ? operation.description
+    : operation.changes.description;
+  if (expectedDescription !== undefined) {
+    checks.push(check("label.description", expectedDescription, label?.description ?? ""));
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: label !== undefined && failed.length === 0,
+    checks,
+    reasons: label === undefined
+      ? ["GitLab did not report the requested project label."]
+      : failed.map((item) => "GitLab did not report the requested " + item.field + " value."),
+  };
+}
+
 function check(
   field: string,
   expected: string,
@@ -358,6 +771,41 @@ function normalizeLabels(value: string): string[] {
     .map((label) => label.trim())
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right));
+}
+
+function cleanLabelChanges(changes: GitLabLabelUpdate): GitLabLabelUpdate {
+  return Object.fromEntries(
+    Object.entries(changes).filter(([, value]) => value !== undefined),
+  ) as GitLabLabelUpdate;
+}
+
+function requiredText(value: string | undefined, field: string): string {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) {
+    throw new OflowError(field + " cannot be empty.", "MISSING_FLAG_VALUE");
+  }
+  return normalized;
+}
+
+function findLabel(labels: GitLabLabel[], reference: string): GitLabLabel | undefined {
+  const byName = labels.find((label) => label.name === reference);
+  if (byName) {
+    return byName;
+  }
+  const id = Number(reference);
+  return Number.isSafeInteger(id) && id > 0
+    ? labels.find((label) => label.id === id)
+    : undefined;
+}
+
+function formatTarget(operation: PlanOperation): string {
+  if (operation.kind === "issue.update" || operation.kind === "issue.note.create") {
+    return "issue #" + operation.issueIid;
+  }
+  if (operation.kind === "label.create") {
+    return "label " + JSON.stringify(operation.name);
+  }
+  return "label " + JSON.stringify(operation.label);
 }
 
 function namedValue(value: unknown): string | null {
