@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import {
   clearGitLabToken,
@@ -421,8 +422,16 @@ function helpText(): string {
 }
 
 const entryPoint = process.argv[1];
-if (entryPoint && import.meta.url === pathToFileURL(entryPoint).href) {
+if (entryPoint && isCliEntryPoint(entryPoint)) {
   main().then((code) => {
     process.exitCode = code;
   });
+}
+
+function isCliEntryPoint(entryPointPath: string): boolean {
+  try {
+    return realpathSync(entryPointPath) === realpathSync(new URL(import.meta.url));
+  } catch {
+    return import.meta.url === pathToFileURL(entryPointPath).href;
+  }
 }

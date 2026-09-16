@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -40,4 +40,16 @@ test("auth rejects token command-line arguments without echoing the value", () =
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Do not pass GitLab tokens as command-line arguments/);
   assert.ok(!result.stderr.includes("secret-token"));
+});
+
+test("CLI runs through a symlink like an npm global binary", { skip: process.platform === "win32" }, () => {
+  const directory = mkdtempSync(join(tmpdir(), "oflow-bin-"));
+  const linkedCli = join(directory, "oflow");
+  try {
+    symlinkSync(cli, linkedCli);
+    const result = execFileSync(linkedCli, ["help"], { encoding: "utf8" });
+    assert.match(result, /^oflow - GitLab-first workflow/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
