@@ -122,6 +122,16 @@ The package is intentionally dependency-light. GitLab and agent-provider
 adapters can be expanded later without changing the project-local workflow
 contract.
 
+## Scrum and planning roadmap
+
+The next product focus is Scrum/planning: work items, acceptance criteria,
+labels, issue boards, milestones, epics, and group-level iterations/sprints.
+See [`docs/SCRUM-PLANNING.md`](docs/SCRUM-PLANNING.md) for the agent contract
+and [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged implementation plan.
+The planned `oflow sync` command will gather evidence and help an agent assess
+progress; it will remain read-only. Future writes will use explicit
+`plan -> approve -> apply -> verify` transitions.
+
 ## License
 
 MIT

@@ -1,0 +1,150 @@
+# oflow Roadmap
+
+This roadmap expands `oflow` from a small GitLab context helper into a safe,
+agent-friendly planning and delivery assistant. It is deliberately phased:
+Scrum and planning come first; merge requests and other delivery automation
+come later.
+
+## Product direction
+
+An agent should be able to inspect a repository and its GitLab planning state,
+understand progress against user stories and acceptance criteria, recommend the
+next useful work, and—only after an explicit approval—apply a small, auditable
+set of changes.
+
+The product boundary remains:
+
+- GitLab is the only provider in this release.
+- The local `.oflow/` contract is stable and provider-independent.
+- Read, plan, apply, and verify are separate operations.
+- REST and MCP are provider execution mechanisms, not separate workflow rules.
+
+## Status
+
+### Phase 0 — Current foundation
+
+- [x] Project installation and idempotent local scaffolding
+- [x] Claude/Codex instruction detection and managed blocks
+- [x] Host-aware GitLab token storage outside repositories
+- [x] GitLab remote/project detection
+- [x] Read-only work-item listing
+- [x] Story context gathering
+- [x] Acceptance-criteria parsing and verification
+- [x] Acceptance-aware merge-request text generation
+- [x] Pipeline-aware verification
+- [x] Explicit MCP boundary documentation
+
+The current CLI remains read-only against GitLab.
+
+### Phase 1 — Scrum and planning read model
+
+This is the immediate implementation focus.
+
+- [ ] Add `oflow capabilities --json` with supported, planned, and unavailable
+  operations plus required token boundaries/permissions.
+- [ ] Add `oflow sync` as a deterministic, read-only planning snapshot.
+- [ ] Expand the GitLab adapter for project/group planning metadata.
+- [ ] List and inspect project/group boards and board lists.
+- [ ] List and inspect project/group labels.
+- [ ] List and inspect project/group milestones.
+- [ ] List and inspect group epics and parent/child relationships.
+- [ ] List project-visible and group iterations/sprints.
+- [ ] Inspect iteration cadences where the GitLab version supports them.
+- [ ] Add filters for state, label, milestone, iteration, assignee, author, and
+  updated time.
+- [ ] Add pagination, response validation, retries, and useful unsupported
+  endpoint errors for every new collection.
+- [ ] Produce a stable JSON evidence model for agent handoff.
+
+### Phase 2 — Safe Scrum mutations
+
+- [ ] Define a versioned plan artifact schema.
+- [ ] Implement plan creation without remote writes.
+- [ ] Implement explicit approval with plan identity and digest checks.
+- [ ] Implement apply through a GitLab REST adapter.
+- [ ] Implement post-apply verification and an audit trail.
+- [ ] Create/update/close/assign work items.
+- [ ] Add and update work-item comments/notes.
+- [ ] Create/update/apply/remove labels.
+- [ ] Create/update/assign milestones.
+- [ ] Create/update boards and lists.
+- [ ] Create/update epics and relationships at group scope.
+- [ ] Create/update iterations/cadences only after validating the target
+  GitLab version and permission model.
+- [ ] Make safe retries idempotent and refuse ambiguous duplicate operations.
+- [ ] Keep deletion disabled by default; add it only as an explicitly gated
+  capability.
+
+### Phase 3 — Agent progress intelligence
+
+- [ ] Compare acceptance criteria to local code/test evidence.
+- [ ] Classify criteria as satisfied, partial, blocked, or unknown.
+- [ ] Detect stale stories, missing acceptance criteria, conflicting labels, and
+  work items without owners or timeboxes.
+- [ ] Recommend the smallest next implementation or planning action.
+- [ ] Generate an approval-ready plan from those recommendations.
+- [ ] Add local context caching with explicit refresh and no credentials.
+- [ ] Support concise Markdown and machine-readable reports suitable for Claude,
+  Codex, CI jobs, and future agents.
+
+### Phase 4 — Delivery integration (later)
+
+Merge requests and delivery automation are intentionally postponed until the
+Scrum model and mutation safety are stable.
+
+- [ ] Merge-request creation, updates, discussions, and review state
+- [ ] Branch and repository operations
+- [ ] Pipeline inspection and controlled trigger/cancel/retry operations
+- [ ] Release planning and release metadata
+- [ ] Delivery evidence linked back to acceptance criteria
+
+### Phase 5 — Broader GitLab capabilities (later and opt-in)
+
+These resource families are possible future adapters, but they are not part of
+the Scrum token or automatic agent workflow:
+
+- CI/CD settings, jobs, artifacts, runners, variables, deployments, and
+  environments
+- Repository commits, branches, protected branches, and code push
+- Packages, container registries, Terraform state, and dependency proxy
+- Security scans, vulnerabilities, compliance, audit events, and dashboards
+- Monitoring, alerts, on-call schedules, and escalation policies
+- Integrations, webhooks, Jira connections, and external status checks
+- Project/group settings, memberships, access tokens, and namespace changes
+- Pages, wikis, snippets, designs, releases, and analytics
+- GitLab Duo/AI catalog resources and other instance-level features
+
+Each future family requires its own permissions, tests, approval rules, and
+failure handling. “The API supports it” is not sufficient reason to expose it
+to an agent.
+
+## Capability design rules
+
+Every capability must document:
+
+1. The user-facing command and JSON output.
+2. The GitLab resource and endpoint family.
+3. Required project/group/user/global boundary.
+4. Required fine-grained permissions and minimum GitLab role.
+5. Whether it is read-only, plan-only, apply-capable, or destructive.
+6. Idempotency and retry behavior.
+7. Verification evidence and failure states.
+8. REST and MCP support, including unsupported paths.
+9. Unit, integration, CLI, and safety tests.
+
+## Definition of ready for an agent
+
+A capability is agent-ready when a fresh agent can discover it through
+`oflow capabilities`, understand the required access, run a dry/read-only
+operation, produce an explicit plan, obtain approval, apply it, and verify the
+result without reading hidden implementation details or handling raw tokens.
+
+## Definition of done for the roadmap
+
+- Documentation and generated `.oflow` instructions agree.
+- Read-only commands have no remote mutation side effects.
+- Mutations cannot bypass plan and approval gates.
+- All outputs have human and JSON forms.
+- Tests cover parsing, detection, scaffolding, authorization boundaries,
+  request validation, idempotency, and verification.
+- `npm test`, `npm run typecheck`, and `npm pack --dry-run` pass.

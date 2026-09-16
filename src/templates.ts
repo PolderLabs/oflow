@@ -14,7 +14,8 @@ export const WORKFLOW_MARKDOWN = [
   "3. Resolve the active story with oflow start --story <iid> or the branch naming convention.",
   "4. Run oflow context --story <iid> and preserve the story's acceptance criterion IDs.",
   "5. If GitLab access is missing, run oflow auth login; never put tokens in this repository.",
-  "6. State the plan and identify anything ambiguous before making code changes.",
+  "6. When asked to sync or assess progress, run oflow sync when available; until then use oflow context and oflow verify.",
+  "7. State the plan and identify anything ambiguous before making code changes.",
   "",
   "## While working",
   "",
@@ -23,6 +24,7 @@ export const WORKFLOW_MARKDOWN = [
   "- Keep implementation, tests, and documentation aligned.",
   "- Keep secrets and local .oflow/state/ files out of commits.",
   "- Refresh context when the story, MR, pipeline, or user direction changes.",
+  "- Treat oflow sync as evidence collection; do not infer completion without concrete local or GitLab evidence.",
   "",
   "## Before handoff",
   "",
@@ -35,8 +37,9 @@ export const WORKFLOW_MARKDOWN = [
   "## Safety",
   "",
   "Read-only context and verification commands may run automatically. oflow does",
-  "not configure or invoke MCP servers; use a configured GitLab MCP only for",
+  "not configure or invoke MCP servers. Use a configured GitLab MCP only for",
   "explicit approved mutations, which must follow plan -> approve -> apply -> verify.",
+  "Do not use planned commands until oflow capabilities reports them as supported.",
 ].join("\n");
 
 export const OFLOW_README_MARKDOWN = [
@@ -50,6 +53,7 @@ export const OFLOW_README_MARKDOWN = [
   "- GitLab credentials live outside the repository; use oflow auth login.",
   "- oflow reads GitLab through its REST API; it does not configure or invoke MCP servers.",
   "- state/ and cache/ are local and ignored; they may contain active context.",
+  "- Scrum/planning roadmap: work items, acceptance criteria, labels, boards, milestones, epics, and group-level iterations.",
   "",
   "Run oflow doctor --check-api to inspect setup and API access, oflow work",
   "to list open stories, or oflow context --story <iid> for one story.",
@@ -82,9 +86,11 @@ export function agentInstructionBlock(agent: AgentName): string {
     "<!-- oflow instructions for " + name + " -->",
     "This repository is managed by oflow. Read .oflow/WORKFLOW.md before changing code.",
     "Use oflow work to list current stories, then use oflow context --story <iid>",
-    "to load the selected story and acceptance criteria. If API access is missing,",
-    "use oflow auth login; never place a token in the repository. Preserve AC-n",
-    "identifiers, include Evidence: in the merge request, and run oflow verify",
-    "--story <iid> before handoff.",
+    "to load the selected story and acceptance criteria. When asked to sync progress,",
+    "use oflow sync when available, otherwise combine context and verify. If API",
+    "access is missing, use oflow auth login; never place a token in the repository.",
+    "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
+    "in the merge request, and run oflow verify --story <iid> before handoff. Do not",
+    "make remote planning changes without an explicit plan and approval.",
   ].join("\n");
 }
