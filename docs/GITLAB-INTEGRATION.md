@@ -95,7 +95,7 @@ convenient for interactive use, but it creates a second credential store, so
 
 If a future `oflow` `glab` adapter needs to call `glab`, it should:
 
-- detect `glab` and report its version in `oflow doctor`;
+- detect `glab` and report its version in `oflow doctor` (JSON and human output);
 - pass the host explicitly or derive it from the repository remote;
 - let `glab` resolve credentials from its normal environment/keyring;
 - never pass a token in command-line arguments or print child-process

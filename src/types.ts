@@ -1,3 +1,5 @@
+import type { BackendStatus } from "./backends.js";
+
 export type AgentName = "claude" | "codex";
 
 export type AgentMode = AgentName | "both" | "unknown";
@@ -353,6 +355,7 @@ export interface DoctorReport {
   tokenConfigured: boolean;
   tokenSource: "environment" | "stored" | null;
   apiCheck: "not-requested" | "skipped" | "passed" | "failed";
+  backends: BackendStatus;
   requiredFiles: Array<{ path: string; present: boolean }>;
   warnings: string[];
 }

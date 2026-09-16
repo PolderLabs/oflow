@@ -5,6 +5,7 @@ import { exists } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
 import { getGitLabToken, getGitLabTokenSource } from "./auth.js";
 import { GitLabClient } from "./gitlab.js";
+import { detectBackends } from "./backends.js";
 import type { DoctorReport, GitLabRemote } from "./types.js";
 
 export interface DoctorOptions {
@@ -25,6 +26,7 @@ export async function doctor(
 
   const config = await loadConfig(root);
   const agent = await detectAgents(root);
+  const backends = await detectBackends();
   const requiredPaths = [
     ".oflow/config.json",
     ".oflow/WORKFLOW.md",
@@ -81,6 +83,7 @@ export async function doctor(
     tokenConfigured: Boolean(tokenSource),
     tokenSource: tokenSource?.kind ?? null,
     apiCheck,
+    backends,
     requiredFiles,
     warnings,
   };
@@ -99,6 +102,16 @@ export function formatDoctor(report: DoctorReport): string {
         ? "configured (" + report.tokenSource + ")"
         : "missing"),
     "GitLab API check: " + report.apiCheck,
+    "",
+    "Backends:",
+    "- REST: available (core)",
+    "- glab: " +
+      (report.backends.glab.available
+        ? "available" +
+          (report.backends.glab.version ? " (" + report.backends.glab.version + ")" : "") +
+          " (optional fallback)"
+        : "not installed (optional fallback)"),
+    "- MCP: agent-runtime optional (reported by the connected agent, not the CLI)",
     "",
     "Required files:",
     ...report.requiredFiles.map(
