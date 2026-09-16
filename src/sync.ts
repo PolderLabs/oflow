@@ -260,6 +260,7 @@ export async function syncProject(
         options.storyIid,
         branch,
         warnings,
+        pipelines,
       )
     : null;
 
@@ -445,7 +446,18 @@ async function loadStorySummary(
   storyIid: number,
   branch: string | null,
   warnings: string[],
+  knownPipelines?: GitLabPipeline[],
 ): Promise<SyncStory> {
+  const pipelineReadFailed = warnings.some((warning) =>
+    warning.startsWith("Could not read pipelines"),
+  );
+  const storyPipelines = knownPipelines !== undefined && !pipelineReadFailed
+    ? Promise.resolve(knownPipelines)
+    : optionalFetch(
+        () => client.listPipelines(projectPath, branch, 10),
+        "Could not read story pipelines",
+        warnings,
+      );
   const [issue, notes, mergeRequests, pipelines] = await Promise.all([
     client.getIssue(projectPath, storyIid),
     optionalFetch(
@@ -458,11 +470,7 @@ async function loadStorySummary(
       "Could not read story merge requests",
       warnings,
     ),
-    optionalFetch(
-      () => client.listPipelines(projectPath, branch, 10),
-      "Could not read story pipelines",
-      warnings,
-    ),
+    storyPipelines,
   ]);
   const criteria = parseAcceptanceCriteria(issue.description);
   if (criteria.length === 0) {

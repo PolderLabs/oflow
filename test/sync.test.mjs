@@ -15,6 +15,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
   const originalFetch = globalThis.fetch;
   const previousToken = process.env.GITLAB_TOKEN;
   process.env.GITLAB_TOKEN = "sync-test-token";
+  let pipelineRequests = 0;
   try {
     await run("git", ["init", "-q", root]);
     await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
@@ -31,6 +32,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     globalThis.fetch = async (input) => {
       const path = new URL(String(input)).pathname;
       const query = new URL(String(input)).search;
+      if (path.endsWith("/pipelines")) pipelineRequests += 1;
       const responses = new Map([
         ["/api/v4/projects/team%2Fproject", { id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project", default_branch: "main" }],
         ["/api/v4/projects/team%2Fproject/issues", [{ iid: 1, title: "Choose a pod", state: "opened", labels: ["User Story"], description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod", assignees: [], milestone: null, iteration: null, parent: { iid: 9, title: "Reservations", web_url: "https://gitlab.example.test/group/-/epics/9" }, updated_at: "2026-01-01T00:00:00Z", web_url: "https://gitlab.example.test/team/project/-/issues/1" }]],
@@ -77,6 +79,7 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
 
     const storyResult = await syncProject(root, { storyIid: 1 });
     assert.equal(storyResult.workItemsMayBeTruncated, false);
+    assert.equal(pipelineRequests, 2);
     assert.equal(storyResult.story.parent.title, "Reservations");
     assert.equal(storyResult.story.notes[0].body, "Blocked on hardware access");
     assert.equal(storyResult.story.recentNotes, 1);
