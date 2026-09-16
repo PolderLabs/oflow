@@ -1,4 +1,5 @@
 export * from "./agents.js";
+export * from "./auth.js";
 export * from "./config.js";
 export * from "./context.js";
 export * from "./criteria.js";

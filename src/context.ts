@@ -4,11 +4,63 @@ import { parseAcceptanceCriteria } from "./criteria.js";
 import { GitLabClient } from "./gitlab.js";
 import { OflowError } from "./errors.js";
 import type {
+  GitLabIssue,
   GitLabMergeRequest,
   GitLabNote,
   GitLabPipeline,
+  IssueState,
   StoryContext,
 } from "./types.js";
+
+export async function listWorkItems(
+  root: string,
+  state: IssueState = "opened",
+): Promise<GitLabIssue[]> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+
+  const remote = await getGitLabRemote(root);
+  return new GitLabClient(remote.host).listIssues(remote.projectPath, state);
+}
+
+export function formatWorkItemsMarkdown(
+  issues: GitLabIssue[],
+  state: IssueState,
+): string {
+  const lines = [
+    "# oflow work",
+    "",
+    "State: " + state,
+    "Count: " + issues.length,
+    "",
+  ];
+  if (issues.length === 0) {
+    lines.push("_No work items found._");
+  } else {
+    lines.push(
+      ...issues.map((issue) => {
+        const title = issue.web_url
+          ? "[" + oneLine(issue.title) + "](" + issue.web_url + ")"
+          : oneLine(issue.title);
+        const labels = issue.labels && issue.labels.length > 0
+          ? " · " + issue.labels.join(", ")
+          : "";
+        return "- #" + issue.iid + " " + title + labels;
+      }),
+    );
+  }
+  lines.push(
+    "",
+    "Use oflow context --story <iid> for a complete story context.",
+    "",
+  );
+  return lines.join("\n");
+}
 
 export async function loadStoryContext(
   root: string,

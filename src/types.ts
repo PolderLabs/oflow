@@ -2,6 +2,8 @@ export type AgentName = "claude" | "codex";
 
 export type AgentMode = AgentName | "both" | "unknown";
 
+export type IssueState = "opened" | "closed" | "all";
+
 export type FileAction = "created" | "updated" | "unchanged" | "skipped";
 
 export interface AgentDetection {
@@ -150,6 +152,8 @@ export interface DoctorReport {
   configFound: boolean;
   agent: AgentDetection;
   tokenConfigured: boolean;
+  tokenSource: "environment" | "stored" | null;
+  apiCheck: "not-requested" | "passed" | "failed";
   requiredFiles: Array<{ path: string; present: boolean }>;
   warnings: string[];
 }

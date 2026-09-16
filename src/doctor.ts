@@ -3,10 +3,18 @@ import { detectAgents } from "./agents.js";
 import { configPath, loadConfig } from "./config.js";
 import { exists } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
-import { getGitLabToken } from "./gitlab.js";
+import { getGitLabToken, getGitLabTokenSource } from "./auth.js";
+import { GitLabClient } from "./gitlab.js";
 import type { DoctorReport, GitLabRemote } from "./types.js";
 
-export async function doctor(root: string): Promise<DoctorReport> {
+export interface DoctorOptions {
+  checkApi?: boolean;
+}
+
+export async function doctor(
+  root: string,
+  options: DoctorOptions = {},
+): Promise<DoctorReport> {
   const warnings: string[] = [];
   let remote: GitLabRemote | null = null;
   try {
@@ -30,8 +38,11 @@ export async function doctor(root: string): Promise<DoctorReport> {
   if (!config) {
     warnings.push("oflow is not installed in this repository.");
   }
-  if (!getGitLabToken()) {
-    warnings.push("GITLAB_TOKEN is not configured; API-backed commands cannot run.");
+  const tokenSource = getGitLabTokenSource(remote?.host);
+  if (!getGitLabToken(remote?.host)) {
+    warnings.push(
+      "No GitLab token is configured; run oflow auth login or set GITLAB_TOKEN.",
+    );
   }
   if (agent.mode === "unknown") {
     warnings.push("No Claude or Codex signal was detected.");
@@ -42,12 +53,32 @@ export async function doctor(root: string): Promise<DoctorReport> {
     }
   }
 
+  let apiCheck: DoctorReport["apiCheck"] = "not-requested";
+  if (options.checkApi) {
+    if (remote && tokenSource) {
+      try {
+        await new GitLabClient(remote.host).getProject(remote.projectPath);
+        apiCheck = "passed";
+      } catch (error: unknown) {
+        apiCheck = "failed";
+        warnings.push(
+          "GitLab API check failed: " +
+            (error instanceof Error ? error.message : String(error)),
+        );
+      }
+    } else if (remote) {
+      warnings.push("GitLab API check skipped because no token is configured.");
+    }
+  }
+
   return {
     root,
     remote,
     configFound: await exists(configPath(root)),
     agent,
-    tokenConfigured: Boolean(getGitLabToken()),
+    tokenConfigured: Boolean(tokenSource),
+    tokenSource: tokenSource?.kind ?? null,
+    apiCheck,
     requiredFiles,
     warnings,
   };
@@ -61,7 +92,11 @@ export function formatDoctor(report: DoctorReport): string {
     "GitLab remote: " + (report.remote ? report.remote.projectPath : "not detected"),
     "oflow config: " + (report.configFound ? "present" : "missing"),
     "Detected agents: " + report.agent.mode,
-    "GitLab token: " + (report.tokenConfigured ? "configured" : "missing"),
+    "GitLab token: " +
+      (report.tokenConfigured
+        ? "configured (" + report.tokenSource + ")"
+        : "missing"),
+    "GitLab API check: " + report.apiCheck,
     "",
     "Required files:",
     ...report.requiredFiles.map(

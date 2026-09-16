@@ -39,6 +39,14 @@ export function parseGitRemote(remoteUrl: string): GitLabRemote {
 
   const scpLike = value.match(/^(?:[^@]+@)?([^:]+):(.+)$/);
   if (scpLike && !value.includes("://")) {
+    const atIndex = value.indexOf("@");
+    const colonIndex = value.indexOf(":");
+    if (atIndex >= 0 && colonIndex < atIndex) {
+      throw new OflowError(
+        "Git remote URL contains embedded credentials. Remove them and use Git credentials or GITLAB_TOKEN.",
+        "EMBEDDED_REMOTE_CREDENTIALS",
+      );
+    }
     host = scpLike[1];
     projectPath = scpLike[2];
   } else {
@@ -46,18 +54,21 @@ export function parseGitRemote(remoteUrl: string): GitLabRemote {
     try {
       parsed = new URL(value);
     } catch {
-      throw new OflowError("Unsupported git remote URL: " + remoteUrl, "INVALID_REMOTE");
+      throw new OflowError("Unsupported git remote URL.", "INVALID_REMOTE");
     }
-    host = parsed.hostname;
+    if (parsed.username || parsed.password) {
+      throw new OflowError(
+        "Git remote URL contains embedded credentials. Remove them and use Git credentials or GITLAB_TOKEN.",
+        "EMBEDDED_REMOTE_CREDENTIALS",
+      );
+    }
+    host = parsed.host;
     projectPath = parsed.pathname;
   }
 
   projectPath = projectPath.replace(/^\/+/, "").replace(/\.git$/, "");
   if (!host || projectPath.split("/").filter(Boolean).length < 2) {
-    throw new OflowError(
-      "Git remote does not contain a GitLab project path: " + remoteUrl,
-      "INVALID_REMOTE",
-    );
+    throw new OflowError("Git remote does not contain a GitLab project path.", "INVALID_REMOTE");
   }
 
   return {

@@ -33,24 +33,70 @@ It never writes tokens or user-level Claude/Codex settings.
 ```bash
 oflow install                 # scaffold the workflow into the current repo
 oflow install --dry-run       # show the changes without writing them
+oflow auth login              # store a GitLab token outside the repo
+oflow auth set --token-stdin  # store one from a pipe without shell history
+oflow auth status             # inspect auth without displaying the token
+oflow auth clear              # remove the stored token for this host
 oflow doctor                  # check local setup and GitLab access prerequisites
+oflow doctor --check-api      # also make a read-only GitLab API request
+oflow work                    # list open GitLab issues/work items
 oflow start --story 42        # remember the active story locally
 oflow context --story 42     # print story, epic, MRs, pipelines, and notes
 oflow mr --story 42           # print an acceptance-aware MR description
 oflow verify --story 42       # check MR evidence and the latest pipeline
 ```
 
-For API-backed commands, set a project or personal token in the shell:
+For API-backed commands, the easiest interactive setup is:
+
+```bash
+cd my-gitlab-repo
+oflow auth login
+oflow doctor --check-api
+```
+
+The token is entered without echoing and stored outside the repository in the
+user's oflow configuration directory with owner-only file permissions.
+Credentials are stored per GitLab host.
+For automation, prefer an environment variable or pipe the token on stdin:
 
 ```bash
 export GITLAB_TOKEN=glpat-...
+# or: printf '%s' "$GITLAB_TOKEN" | oflow auth set --token-stdin
 ```
+
+Environment variables take precedence over stored credentials. `oflow` also
+accepts `GITLAB_ACCESS_TOKEN` and `GITLAB_PRIVATE_TOKEN`. Never put a token in
+`.oflow/config.json`, `.env` committed to Git, an agent instruction file, or a
+command-line argument. A read-only `read_api` token is sufficient for
+`context` and `verify`; use broader write scopes only for tools that explicitly
+need them.
 
 The current release uses the GitLab REST API for read-only context and
 verification. GitLab's official MCP server remains the preferred optional
-agent-facing interface for interactive changes in Claude or Codex. A future
-release will add an explicit `plan -> approve -> apply -> verify` mutation
-workflow.
+agent-facing interface for interactive changes in Claude or Codex. `oflow`
+does not invoke or configure MCP servers: it complements them. Remote changes
+must be explicit and follow `plan -> approve -> apply -> verify`; `oflow` does
+not create or update GitLab issues, merge requests, comments, labels, or
+branches.
+
+For the NestPod self-managed GitLab instance, configure the MCP server in the
+agent's user-level MCP settings (not in this repository):
+
+```json
+{
+  "mcpServers": {
+    "GitLab": {
+      "type": "http",
+      "url": "https://gitlab.fdmci.hva.nl/api/v4/mcp"
+    }
+  }
+}
+```
+
+The exact settings location depends on the agent. The GitLab MCP client
+handles its own authorization; do not copy the `oflow` token into MCP config.
+The instance administrator must allow MCP access, and the MCP server is
+currently a GitLab beta feature.
 
 ## Workflow contract
 

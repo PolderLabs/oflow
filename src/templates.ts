@@ -10,9 +10,11 @@ export const WORKFLOW_MARKDOWN = [
   "## Before starting",
   "",
   "1. Read this file, the story context, and the relevant local code.",
-  "2. Resolve the active story with oflow start --story <iid> or the branch naming convention.",
-  "3. Run oflow context --story <iid> and preserve the story's acceptance criterion IDs.",
-  "4. State the plan and identify anything ambiguous before making code changes.",
+  "2. If no story is known, run oflow work to inspect open GitLab work items.",
+  "3. Resolve the active story with oflow start --story <iid> or the branch naming convention.",
+  "4. Run oflow context --story <iid> and preserve the story's acceptance criterion IDs.",
+  "5. If GitLab access is missing, run oflow auth login; never put tokens in this repository.",
+  "6. State the plan and identify anything ambiguous before making code changes.",
   "",
   "## While working",
   "",
@@ -32,8 +34,9 @@ export const WORKFLOW_MARKDOWN = [
   "",
   "## Safety",
   "",
-  "Read-only context and verification commands may run automatically. Remote",
-  "mutations must be explicit and follow plan -> approve -> apply -> verify.",
+  "Read-only context and verification commands may run automatically. oflow does",
+  "not configure or invoke MCP servers; use a configured GitLab MCP only for",
+  "explicit approved mutations, which must follow plan -> approve -> apply -> verify.",
 ].join("\n");
 
 export const OFLOW_README_MARKDOWN = [
@@ -44,10 +47,12 @@ export const OFLOW_README_MARKDOWN = [
   "- config.json records the GitLab remote and detected agent mode.",
   "- WORKFLOW.md is the shared agent workflow contract.",
   "- templates/merge-request.md is the acceptance-aware MR template.",
+  "- GitLab credentials live outside the repository; use oflow auth login.",
+  "- oflow reads GitLab through its REST API; it does not configure or invoke MCP servers.",
   "- state/ and cache/ are local and ignored; they may contain active context.",
   "",
-  "Run oflow doctor to inspect setup or oflow context --story <iid> to read",
-  "the current GitLab story.",
+  "Run oflow doctor --check-api to inspect setup and API access, oflow work",
+  "to list open stories, or oflow context --story <iid> for one story.",
 ].join("\n");
 
 export const MERGE_REQUEST_TEMPLATE_MARKDOWN = [
@@ -76,8 +81,10 @@ export function agentInstructionBlock(agent: AgentName): string {
   return [
     "<!-- oflow instructions for " + name + " -->",
     "This repository is managed by oflow. Read .oflow/WORKFLOW.md before changing code.",
-    "Use oflow context --story <iid> to load the current GitLab story and",
-    "acceptance criteria. Preserve AC-n identifiers, include Evidence: in the",
-    "merge request, and run oflow verify --story <iid> before handoff.",
+    "Use oflow work to list current stories, then use oflow context --story <iid>",
+    "to load the selected story and acceptance criteria. If API access is missing,",
+    "use oflow auth login; never place a token in the repository. Preserve AC-n",
+    "identifiers, include Evidence: in the merge request, and run oflow verify",
+    "--story <iid> before handoff.",
   ].join("\n");
 }

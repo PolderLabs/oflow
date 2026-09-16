@@ -1,10 +1,12 @@
 import { OflowError } from "./errors.js";
+import { getGitLabToken, redactGitLabToken } from "./auth.js";
 import type {
   GitLabIssue,
   GitLabMergeRequest,
   GitLabNote,
   GitLabPipeline,
   GitLabProject,
+  IssueState,
 } from "./types.js";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -25,23 +27,16 @@ export class GitLabApiError extends OflowError {
   }
 }
 
-export function getGitLabToken(): string | null {
-  return (
-    process.env.GITLAB_TOKEN ||
-    process.env.GITLAB_ACCESS_TOKEN ||
-    process.env.GITLAB_PRIVATE_TOKEN ||
-    null
-  );
-}
+export { getGitLabToken } from "./auth.js";
 
 export class GitLabClient {
   private readonly baseUrl: string;
   private readonly token: string;
 
-  constructor(host: string, token = getGitLabToken()) {
+  constructor(host: string, token = getGitLabToken(host)) {
     if (!token) {
       throw new OflowError(
-        "No GitLab token found. Set GITLAB_TOKEN for API-backed commands.",
+        "No GitLab token found. Run oflow auth login or set GITLAB_TOKEN for API-backed commands.",
         "MISSING_GITLAB_TOKEN",
       );
     }
@@ -50,9 +45,20 @@ export class GitLabClient {
   }
 
   async getProject(projectPath: string): Promise<GitLabProject> {
-    return this.request<GitLabProject>(
+    const project = await this.request<unknown>(
       "/projects/" + encodeURIComponent(projectPath),
     );
+    if (
+      !isRecord(project) ||
+      typeof project.id !== "number" ||
+      typeof project.path_with_namespace !== "string"
+    ) {
+      throw new OflowError(
+        "GitLab API returned an invalid project response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return project as GitLabProject;
   }
 
   async getIssue(projectPath: string, iid: number): Promise<GitLabIssue> {
@@ -62,6 +68,26 @@ export class GitLabClient {
         "/issues/" +
         String(iid),
     );
+  }
+
+  async listIssues(
+    projectPath: string,
+    state: IssueState = "opened",
+  ): Promise<GitLabIssue[]> {
+    const result = await this.request<unknown>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/issues?state=" +
+        encodeURIComponent(state) +
+        "&per_page=100&order_by=updated_at&sort=desc",
+    );
+    if (!Array.isArray(result)) {
+      throw new OflowError(
+        "GitLab API returned an invalid issue list response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return result as GitLabIssue[];
   }
 
   async getIssueNotes(projectPath: string, iid: number): Promise<GitLabNote[]> {
@@ -142,7 +168,7 @@ export class GitLabClient {
             " for " +
             path +
             ": " +
-            formatApiBody(body),
+            safeApiBody(body, this.token),
           response.status,
           retryAfter,
         );
@@ -157,7 +183,10 @@ export class GitLabClient {
         if (error instanceof GitLabApiError) {
           throw error;
         }
-        const message = error instanceof Error ? error.message : String(error);
+        const message = redactGitLabToken(
+          error instanceof Error ? error.message : String(error),
+          this.token,
+        );
         lastError = new GitLabApiError(
           "GitLab API request failed for " + path + ": " + message,
           0,
@@ -182,13 +211,21 @@ function parseRetryAfter(value: string | null): number | null {
 
 function formatApiBody(body: unknown): string {
   if (typeof body === "string") {
-    return body.slice(0, 300);
+    return body;
   }
   try {
-    return JSON.stringify(body).slice(0, 300);
+    return JSON.stringify(body);
   } catch {
     return "unknown error";
   }
+}
+
+function safeApiBody(body: unknown, token: string): string {
+  return redactGitLabToken(formatApiBody(body), token).slice(0, 300);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 async function delay(milliseconds: number): Promise<void> {
