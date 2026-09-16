@@ -153,7 +153,7 @@ export interface DoctorReport {
   agent: AgentDetection;
   tokenConfigured: boolean;
   tokenSource: "environment" | "stored" | null;
-  apiCheck: "not-requested" | "passed" | "failed";
+  apiCheck: "not-requested" | "skipped" | "passed" | "failed";
   requiredFiles: Array<{ path: string; present: boolean }>;
   warnings: string[];
 }

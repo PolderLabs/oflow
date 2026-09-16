@@ -53,7 +53,9 @@ export async function doctor(
     }
   }
 
-  let apiCheck: DoctorReport["apiCheck"] = "not-requested";
+  let apiCheck: DoctorReport["apiCheck"] = options.checkApi
+    ? "skipped"
+    : "not-requested";
   if (options.checkApi) {
     if (remote && tokenSource) {
       try {
