@@ -14,7 +14,7 @@ export const WORKFLOW_MARKDOWN = [
   "3. Resolve the active story with oflow start --story <iid> or the branch naming convention.",
   "4. Run oflow context --story <iid> and preserve the story's acceptance criterion IDs.",
   "5. If GitLab access is missing, run oflow auth login; never put tokens in this repository.",
-  "6. When asked to sync or assess progress, run oflow sync --json and use oflow capabilities --json to discover supported operations.",
+  "6. When asked to sync project state, run oflow sync --json. When assessing one story, run oflow assess --story <iid> --json and use oflow capabilities --json to discover supported operations.",
   "7. State the plan and identify anything ambiguous before making code changes.",
   "",
   "## While working",
@@ -57,7 +57,8 @@ export const OFLOW_README_MARKDOWN = [
   "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, MRs, and pipelines.",
   "",
   "Run oflow doctor --check-api to inspect setup and API access, oflow sync",
-  "--json for a compact snapshot, or oflow context --story <iid> for one story.",
+  "--json for a compact snapshot, or oflow assess --story <iid> --json for",
+  "compact progress evidence for one story.",
 ].join("\n");
 
 export const MERGE_REQUEST_TEMPLATE_MARKDOWN = [
@@ -88,7 +89,8 @@ export function agentInstructionBlock(agent: AgentName): string {
     "This repository is managed by oflow. Read .oflow/WORKFLOW.md before changing code.",
     "Use oflow work to list current stories, then use oflow context --story <iid>",
     "to load the selected story and acceptance criteria. When asked to sync progress,",
-    "use oflow sync --json and oflow capabilities --json. If API",
+    "use oflow sync --json for project state, oflow assess --story <iid> --json",
+    "for story progress, and oflow capabilities --json. If API",
     "access is missing, use oflow auth login; never place a token in the repository.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
     "in the merge request, and run oflow verify --story <iid> before handoff. Use",

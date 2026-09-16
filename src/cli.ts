@@ -13,6 +13,7 @@ import {
   readTokenFromStdin,
   saveGitLabToken,
 } from "./auth.js";
+import { assessStory, formatAssessmentMarkdown } from "./assess.js";
 import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
 import {
   chooseMergeRequest,
@@ -148,6 +149,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const result = await syncProject(root, { state, storyIid });
         print(options.json, result, formatSyncMarkdown(result));
         return result.warnings.length === 0 ? 0 : 1;
+      }
+      case "assess": {
+        const storyIid = await resolveStoryIid(root, options.story);
+        const result = await assessStory(root, storyIid);
+        print(options.json, result, formatAssessmentMarkdown(result));
+        return result.status === "satisfied" ? 0 : 1;
       }
       case "capabilities": {
         const result = await getCapabilities();
@@ -750,6 +757,7 @@ function helpText(): string {
     "  doctor [--check-api]",
     "  work [--state opened|closed|all]    list current GitLab work items",
     "  sync [--story <iid>] [--json]       compact project and Scrum snapshot",
+    "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue update --story <iid>     prepare an auditable issue update",

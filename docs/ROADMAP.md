@@ -112,13 +112,14 @@ This is the immediate implementation focus.
 ### Phase 3 — Agent progress intelligence
 
 - [ ] Compare acceptance criteria to local code/test evidence.
-- [ ] Classify criteria as satisfied, partial, blocked, or unknown.
+- [x] Collect compact local Git, MR, pipeline, and note evidence for agent reasoning.
+- [x] Classify explicit evidence as satisfied, partial, blocked, or unknown.
 - [ ] Detect stale stories, missing acceptance criteria, conflicting labels, and
   work items without owners or timeboxes.
 - [ ] Recommend the smallest next implementation or planning action.
 - [ ] Generate an approval-ready plan from those recommendations.
 - [ ] Add local context caching with explicit refresh and no credentials.
-- [ ] Support concise Markdown and machine-readable reports suitable for Claude,
+- [x] Support concise Markdown and machine-readable reports suitable for Claude,
   Codex, CI jobs, and future agents.
 
 ### Phase 4 — Delivery integration (later)

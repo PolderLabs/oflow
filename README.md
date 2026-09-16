@@ -41,6 +41,7 @@ oflow doctor                  # check local setup and GitLab access prerequisite
 oflow doctor --check-api      # also make a read-only GitLab API request
 oflow work                    # list open GitLab issues/work items
 oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
+oflow assess --story 42 --json # story progress, acceptance, and local evidence
 oflow capabilities --json      # show implemented, planned, and optional paths
 oflow glab api <endpoint>      # optional read-only glab API fallback
 oflow start --story 42        # remember the active story locally
@@ -49,6 +50,8 @@ oflow mr --story 42           # print an acceptance-aware MR description
 oflow verify --story 42       # check MR evidence and the latest pipeline
 oflow plan issue update --story 42 --labels "Ready,backend"
 oflow plan issue note --story 42 --body "Progress: API contract confirmed."
+oflow plan label update --label "Ready" --color "#36A269"
+oflow plan milestone update --milestone 1 --state closed
 oflow approve .oflow/state/plans/<plan-id>.json
 oflow apply .oflow/state/plans/<plan-id>.json
 oflow verify --plan .oflow/state/plans/<plan-id>.json

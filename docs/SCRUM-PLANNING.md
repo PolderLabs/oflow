@@ -100,6 +100,7 @@ assumed to exist just because the API supports them.
 ```bash
 oflow capabilities --json
 oflow sync [--story <iid>] [--json]
+oflow assess --story <iid> [--json]
 oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
 oflow context --story <iid> [--json]
@@ -156,6 +157,13 @@ comments. Label creation also disables automatic retries because it is a
 non-idempotent POST; label updates use the idempotent PUT endpoint. Milestone
 creation also disables retries for the non-idempotent POST. Board movement,
 iterations, and merge-request writes are not yet apply-capable.
+
+`oflow assess --story <iid>` is the compact progress handoff. It combines the
+story's acceptance criteria, related MR evidence, pipeline status, recent notes,
+and local branch/working-tree evidence. It classifies only explicit evidence;
+it does not claim that local code satisfies a criterion merely because files
+changed. The agent performs the final reasoning and may then create a guarded
+plan.
 
 Project sync can read group-backed iterations. Iteration creation and editing
 remain planned because GitLab documents the project/group REST endpoints as
