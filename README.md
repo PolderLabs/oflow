@@ -83,7 +83,8 @@ command-line argument. A read-only `read_api` token is sufficient for
 need them.
 
 The current release uses the GitLab REST API for deterministic, compact
-planning snapshots and guarded Scrum writes: updating issues/work items,
+planning snapshots and guarded Scrum writes: updating issues/work items (including
+assignment by username),
 adding issue notes, and creating/updating project labels and milestones.
 `oflow sync --json` gathers bounded project, work-item, label, milestone, board,
 iteration, merge-request, and pipeline evidence without descriptions unless a
@@ -96,7 +97,8 @@ and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
 REST adapter as the predictable core and does not silently invoke or configure
 MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
-The current apply-capable operations are `plan issue update`, `plan issue note`,
+The current apply-capable operations are `plan issue update` (including guarded
+assignment), `plan issue note`,
 `plan label create/update`, and `plan milestone create/update`; boards,
 iterations, and
 merge-request writes remain roadmap work. `oflow glab api` only permits an

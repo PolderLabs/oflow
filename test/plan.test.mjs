@@ -31,6 +31,7 @@ test("issue update plans require approval and verify the applied result", async 
     description: "Old description",
     state: "opened",
     labels: ["Old"],
+    assignees: [],
     due_date: null,
     weight: null,
     web_url: "https://gitlab.example.test/team/project/-/issues/42",
@@ -48,6 +49,7 @@ test("issue update plans require approval and verify the applied result", async 
       }),
     );
     globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
       if ((init?.method ?? "GET") === "PUT") {
         const body = new URLSearchParams(String(init.body));
         issue = {
@@ -57,6 +59,18 @@ test("issue update plans require approval and verify the applied result", async 
           state: body.get("state_event") === "close" ? "closed" : issue.state,
           due_date: body.get("due_date") ?? issue.due_date,
           weight: body.has("weight") ? Number(body.get("weight")) : issue.weight,
+          assignees: body.getAll("assignee_ids[]").filter(Boolean).map((id) => ({ id: Number(id), username: Number(id) === 6 ? "alice" : "zakar" })),
+        };
+      }
+      if (url.pathname === "/api/v4/users") {
+        const username = url.searchParams.get("username");
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify(username === "alice"
+            ? [{ id: 6, username: "alice", name: "Alice" }]
+            : [{ id: 5, username: "zakar", name: "Zakar" }]),
         };
       }
       return {
@@ -73,8 +87,9 @@ test("issue update plans require approval and verify the applied result", async 
       due_date: "2027-01-20",
       weight: 3,
       state_event: "close",
-    });
+    }, "zakar,alice");
     assert.equal(created.plan.state, "draft");
+    assert.deepEqual(created.plan.operation.changes.assignee_ids, [5, 6]);
     const approved = await approvePlan(root, created.path);
     assert.equal(approved.plan.state, "approved");
     const applied = await applyPlan(root, created.path);

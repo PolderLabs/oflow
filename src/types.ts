@@ -94,7 +94,17 @@ export interface GitLabIssueUpdate {
   milestone?: string;
   due_date?: string;
   weight?: number;
+  assignee_ids?: number[];
   state_event?: "close" | "reopen";
+}
+
+export interface GitLabUser {
+  id: number;
+  username: string;
+  name?: string;
+  state?: string;
+  web_url?: string;
+  [key: string]: unknown;
 }
 
 export interface GitLabNoteCreate {

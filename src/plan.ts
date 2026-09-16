@@ -128,6 +128,7 @@ export async function createIssueUpdatePlan(
   root: string,
   issueIid: number,
   changes: GitLabIssueUpdate,
+  assignee?: string,
 ): Promise<StoredPlan> {
   const config = await loadConfig(root);
   if (!config) {
@@ -137,17 +138,29 @@ export async function createIssueUpdatePlan(
     );
   }
   validateIssueIid(issueIid);
-  const operationChanges = validateIssueChanges(cleanChanges(changes));
-  if (Object.keys(operationChanges).length === 0) {
+  if (assignee !== undefined && changes.assignee_ids !== undefined) {
     throw new OflowError(
-      "No issue changes were provided. Use --title, --description, --labels, --milestone, --due-date, --weight, or --state.",
-      "EMPTY_PLAN",
+      "Use either --assignee or assignee_ids, not both.",
+      "DUPLICATE_ASSIGNEE_INPUT",
     );
   }
-
   const remote = await getGitLabRemote(root);
   const client = new GitLabClient(remote.host);
   await client.getIssue(remote.projectPath, issueIid);
+  const operationChanges = validateIssueChanges(
+    cleanChanges({
+      ...changes,
+      assignee_ids: assignee === undefined
+        ? changes.assignee_ids
+        : await resolveAssigneeIds(client, assignee),
+    }),
+  );
+  if (Object.keys(operationChanges).length === 0) {
+    throw new OflowError(
+      "No issue changes were provided. Use --title, --description, --labels, --milestone, --due-date, --weight, --assignee, or --state.",
+      "EMPTY_PLAN",
+    );
+  }
 
   const now = new Date().toISOString();
   const plan: PlanArtifact = {
@@ -810,7 +823,50 @@ function validateIssueChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
       "INVALID_ISSUE_WEIGHT",
     );
   }
+  if (changes.assignee_ids !== undefined) {
+    if (
+      !Array.isArray(changes.assignee_ids) ||
+      changes.assignee_ids.some((id) => !Number.isSafeInteger(id) || id < 1)
+    ) {
+      throw new OflowError(
+        "Issue assignee IDs must be positive integers.",
+        "INVALID_ISSUE_ASSIGNEES",
+      );
+    }
+    changes.assignee_ids = [...new Set(changes.assignee_ids)];
+  }
   return changes;
+}
+
+async function resolveAssigneeIds(
+  client: GitLabClient,
+  value: string,
+): Promise<number[]> {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new OflowError(
+      "Assignee cannot be empty. Use --assignee none to clear assignments.",
+      "INVALID_ISSUE_ASSIGNEES",
+    );
+  }
+  if (["none", "null", "unassigned"].includes(normalized.toLowerCase())) {
+    return [];
+  }
+  const usernames = [...new Set(normalized.split(",").map((item) => item.trim()).filter(Boolean))];
+  const users = [];
+  for (const username of usernames) {
+    const matches = await client.listUsersByUsername(username);
+    if (matches.length !== 1) {
+      throw new OflowError(
+        matches.length === 0
+          ? "Could not find GitLab user " + JSON.stringify(username) + "."
+          : "GitLab username " + JSON.stringify(username) + " was not unique.",
+        "ISSUE_ASSIGNEE_NOT_FOUND",
+      );
+    }
+    users.push(matches[0]);
+  }
+  return users.map((user) => user.id);
 }
 
 function compactIssue(issue: GitLabIssue): NonNullable<PlanArtifact["result"]> {
@@ -913,6 +969,15 @@ function verifyIssue(
         issue.weight === null || issue.weight === undefined ? "" : String(issue.weight),
       ),
     );
+  }
+  if (changes.assignee_ids !== undefined) {
+    const expected = [...new Set(changes.assignee_ids)].sort((left, right) => left - right).join(",");
+    const actual = (issue.assignees ?? [])
+      .map((assignee) => assignee.id)
+      .filter((id): id is number => typeof id === "number")
+      .sort((left, right) => left - right)
+      .join(",");
+    checks.push(check("assignees", expected, actual));
   }
   if (changes.state_event !== undefined) {
     const expected = changes.state_event === "close" ? "closed" : "opened";

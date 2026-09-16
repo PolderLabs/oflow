@@ -3,6 +3,7 @@ import { getGitLabToken, redactGitLabToken } from "./auth.js";
 import type {
   GitLabIssue,
   GitLabIssueUpdate,
+  GitLabUser,
   GitLabBoard,
   GitLabBoardList,
   GitLabIteration,
@@ -112,8 +113,27 @@ export class GitLabClient {
         encodeURIComponent(projectPath) +
         "/issues/" +
         String(iid),
-      { method: "PUT", form: changes as Record<string, string | number | boolean | undefined> },
+      {
+        method: "PUT",
+        form: changes as unknown as Record<
+          string,
+          string | number | boolean | Array<string | number | boolean> | undefined
+        >,
+      },
     );
+  }
+
+  async listUsersByUsername(username: string): Promise<GitLabUser[]> {
+    const result = await this.request<unknown>(
+      "/users?username=" + encodeURIComponent(username),
+    );
+    if (!Array.isArray(result)) {
+      throw new OflowError(
+        "GitLab API returned an invalid user search response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return result as GitLabUser[];
   }
 
   async listLabels(projectPath: string, limit = 100): Promise<GitLabLabel[]> {
@@ -395,7 +415,7 @@ export class GitLabClient {
     path: string,
     options: {
       method?: string;
-      form?: Record<string, string | number | boolean | undefined>;
+      form?: Record<string, string | number | boolean | Array<string | number | boolean> | undefined>;
       retryable?: boolean;
     } = {},
   ): Promise<T> {
@@ -469,13 +489,27 @@ export class GitLabClient {
 }
 
 function stringifyForm(
-  form: Record<string, string | number | boolean | undefined>,
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(form)
-      .filter(([, value]) => value !== undefined)
-      .map(([key, value]) => [key, String(value)]),
-  );
+  form: Record<string, string | number | boolean | Array<string | number | boolean> | undefined>,
+): Array<[string, string]> {
+  const entries: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(form)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      const arrayKey = key.endsWith("[]") ? key : key + "[]";
+      if (value.length === 0) {
+        entries.push([arrayKey, ""]);
+      } else {
+        for (const item of value) {
+          entries.push([arrayKey, String(item)]);
+        }
+      }
+      continue;
+    }
+    entries.push([key, String(value)]);
+  }
+  return entries;
 }
 
 function parseRetryAfter(value: string | null): number | null {

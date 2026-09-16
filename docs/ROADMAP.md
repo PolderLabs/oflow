@@ -96,7 +96,8 @@ This is the immediate implementation focus.
 - [x] Implement post-apply verification for issue updates.
 - [ ] Add a durable audit trail beyond the plan artifact.
 - [x] Update issue/work-item fields through the guarded plan path.
-- [ ] Create/close/assign work items.
+- [ ] Create work items.
+- [x] Close/reopen and assign work items through guarded issue updates.
 - [x] Add issue/work-item progress notes through the guarded plan path.
 - [x] Create/update labels through guarded plans; keep deletion disabled.
 - [ ] Apply/remove labels from bulk planning workflows.

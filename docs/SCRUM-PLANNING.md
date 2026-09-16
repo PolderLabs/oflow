@@ -142,6 +142,7 @@ note creation, project label create/update, and project milestone create/update:
 oflow plan issue update --story <iid> \
   --title "Updated title" \
   --labels "Ready,backend" \
+  --assignee zakar \
   --due-date 2027-01-20 \
   --weight 3 \
   --state closed
@@ -155,9 +156,19 @@ oflow plan milestone create --title "Sprint 5" \
 oflow plan milestone update --milestone 1 --state closed
 ```
 
+`--assignee` accepts one or more comma-separated GitLab usernames. Use
+`--assignee none` to clear assignments. oflow resolves usernames while creating
+the draft plan, stores the resulting user IDs in the digest-protected artifact,
+and verifies the assignee IDs after apply. User lookup is read-only; assignment
+still requires the normal `plan -> approve -> apply -> verify` sequence. GitLab
+documents `assignee_ids` on issue updates and username lookup through the Users
+API ([Issues API](https://docs.gitlab.com/api/issues/),
+[Users API](https://docs.gitlab.com/api/users/)).
+
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before
-writing, and re-read GitLab during verification. Note creation disables automatic
+writing, and re-read GitLab during verification. Issue assignment resolves
+usernames before the plan is written. Note creation disables automatic
 request retries because repeating a non-idempotent POST could create duplicate
 comments. Label creation also disables automatic retries because it is a
 non-idempotent POST; label updates use the idempotent PUT endpoint. Milestone

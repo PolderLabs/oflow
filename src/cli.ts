@@ -79,6 +79,7 @@ interface CliOptions {
   weight?: string;
   labels?: string;
   milestone?: string;
+  assignee?: string;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -187,7 +188,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               : parseNonNegativeInteger(options.weight, "issue weight"),
             state_event: normalizeIssueUpdateState(options.state),
           };
-          const stored = await createIssueUpdatePlan(root, storyIid, changes);
+          const stored = await createIssueUpdatePlan(root, storyIid, changes, options.assignee);
           print(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
@@ -456,6 +457,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--weight" ||
       argument === "--labels" ||
       argument === "--milestone" ||
+      argument === "--assignee" ||
       argument === "--plan"
     ) {
       const value = argv[index + 1];
@@ -495,6 +497,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.labels = value;
       } else if (argument === "--milestone") {
         options.milestone = value;
+      } else if (argument === "--assignee") {
+        options.assignee = value;
       } else if (argument === "--plan") {
         options.planPath = value;
       } else {
@@ -538,6 +542,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.labels = argument.slice("--labels=".length);
     } else if (argument.startsWith("--milestone=")) {
       options.milestone = argument.slice("--milestone=".length);
+    } else if (argument.startsWith("--assignee=")) {
+      options.assignee = argument.slice("--assignee=".length);
     } else if (argument.startsWith("--plan=")) {
       const value = argument.slice("--plan=".length);
       if (!value) {
