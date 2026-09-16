@@ -19,8 +19,9 @@ The product boundary remains:
 - Read, plan, apply, and verify are separate operations.
 - REST, `glab`, and MCP are provider execution mechanisms, not separate
   workflow rules.
-- The current usable milestone is compact Scrum/project reads plus one guarded
-  issue update operation; broader writes remain explicitly staged.
+- The current usable milestone is compact Scrum/project reads plus guarded issue,
+  note, label, and milestone operations; board, iteration, and delivery writes
+  remain explicitly staged.
 
 ## Integration strategy
 
@@ -55,7 +56,7 @@ backend selection policy.
 - [x] Explicit MCP boundary documentation
 
 The current CLI is read-mostly against GitLab. `sync`, `work`, `context`, and
-`verify` are read-only; `plan issue update` is the first write path and can only
+`verify` are read-only; issue, note, label, and milestone plan paths can only
 mutate after approval.
 
 ### Phase 1 — Scrum and planning read model
