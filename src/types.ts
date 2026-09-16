@@ -240,6 +240,18 @@ export interface GitLabIteration {
   [key: string]: unknown;
 }
 
+export interface GitLabIterationCadence {
+  id: string;
+  title?: string | null;
+  active?: boolean | null;
+  automatic?: boolean | null;
+  duration_in_weeks?: number | null;
+  iterations_in_advance?: number | null;
+  roll_over?: boolean | null;
+  start_date?: string | null;
+  [key: string]: unknown;
+}
+
 export interface GitLabWorkItemReference {
   id: string | null;
   iid: number | null;

@@ -3,6 +3,7 @@ export * from "./audit.js";
 export * from "./assess.js";
 export * from "./auth.js";
 export * from "./backends.js";
+export * from "./cadences.js";
 export * from "./cache.js";
 export * from "./capabilities.js";
 export * from "./config.js";

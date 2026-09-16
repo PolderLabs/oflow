@@ -72,7 +72,7 @@ export const OFLOW_README_MARKDOWN = [
   "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, group epics, MRs, and pipelines.",
   "",
     "Run oflow doctor --check-api to inspect setup and API access, oflow sync",
-    "--json for a compact snapshot, oflow sync --cached --json for a no-network repeat read, oflow iteration --state current --json for a focused sprint view, or oflow assess --story <iid> --json for",
+    "--json for a compact snapshot, oflow sync --cached --json for a no-network repeat read, oflow iteration --state current --json for a focused sprint view, oflow cadence --json for the optional parent-group cadence, or oflow assess --story <iid> --json for",
   "compact progress evidence for one story.",
 ].join("\n");
 

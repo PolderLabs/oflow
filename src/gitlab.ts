@@ -13,6 +13,7 @@ import type {
   GitLabBoardListCreate,
   GitLabBoardListUpdate,
   GitLabIteration,
+  GitLabIterationCadence,
   GitLabGroupEpic,
   GitLabGroupEpicDetail,
   GitLabWorkItemReference,
@@ -215,6 +216,49 @@ export class GitLabClient {
       children: !isRecord(hierarchy.children) || !Array.isArray(hierarchy.children.nodes)
         ? []
         : hierarchy.children.nodes.map(parseWorkItemReference),
+    };
+  }
+
+  async listIterationCadences(
+    groupPath: string,
+    limit = 20,
+  ): Promise<{ cadences: GitLabIterationCadence[]; mayBeTruncated: boolean }> {
+    const data = await this.requestGraphQL(
+      `query GroupIterationCadences($fullPath: ID!, $first: Int!) {
+        group(fullPath: $fullPath) {
+          iterationCadences(includeAncestorGroups: true, first: $first) {
+            nodes {
+              id title active automatic durationInWeeks iterationsInAdvance rollOver startDate
+            }
+            pageInfo { hasNextPage }
+          }
+        }
+      }`,
+      { fullPath: groupPath, first: limit },
+    );
+    if (!isRecord(data) || data.group === null) {
+      throw new OflowError(
+        "GitLab GraphQL could not access group " + groupPath + ". Check Group: Read and iteration access.",
+        "GITLAB_GROUP_UNAVAILABLE",
+      );
+    }
+    if (!isRecord(data.group) || !isRecord(data.group.iterationCadences)) {
+      throw new OflowError(
+        "GitLab GraphQL returned no iteration-cadence collection for " + groupPath + ".",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    const collection = data.group.iterationCadences;
+    if (!Array.isArray(collection.nodes) || !isRecord(collection.pageInfo) ||
+      typeof collection.pageInfo.hasNextPage !== "boolean") {
+      throw new OflowError(
+        "GitLab GraphQL returned an invalid iteration-cadence list response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return {
+      cadences: collection.nodes.map(parseIterationCadence),
+      mayBeTruncated: collection.pageInfo.hasNextPage,
     };
   }
 
@@ -1075,6 +1119,31 @@ function parseGroupEpic(value: unknown): GitLabGroupEpic {
     state: typeof value.state === "string" ? value.state : null,
     web_url: typeof value.webUrl === "string" ? value.webUrl : null,
   };
+}
+
+function parseIterationCadence(value: unknown): GitLabIterationCadence {
+  if (!isRecord(value) || typeof value.id !== "string" || value.id.trim() === "") {
+    throw new OflowError(
+      "GitLab GraphQL returned an invalid iteration-cadence node.",
+      "INVALID_GITLAB_RESPONSE",
+    );
+  }
+  return {
+    id: value.id,
+    title: typeof value.title === "string" ? value.title : null,
+    active: typeof value.active === "boolean" ? value.active : null,
+    automatic: typeof value.automatic === "boolean" ? value.automatic : null,
+    duration_in_weeks: optionalSafeInteger(value.durationInWeeks),
+    iterations_in_advance: optionalSafeInteger(value.iterationsInAdvance),
+    roll_over: typeof value.rollOver === "boolean" ? value.rollOver : null,
+    start_date: typeof value.startDate === "string" ? value.startDate : null,
+  };
+}
+
+function optionalSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 function parseWorkItemReference(value: unknown): GitLabWorkItemReference {

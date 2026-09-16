@@ -78,7 +78,8 @@ This is the immediate implementation focus.
   reads without adding per-item API calls.
 - [x] List project-visible iterations/sprints and expose an explicit parent-group
   iteration read for focused sprint views.
-- [ ] Inspect iteration cadences where the GitLab version supports them.
+- [x] Inspect iteration cadences where the GitLab version supports them through
+  an explicit, compact parent-group GraphQL read.
 - [x] Add bounded server-side filters for state, label, milestone, assignee,
   search, and updated time; cap work-item results with `--limit`.
 - [x] Add iteration and author filters.

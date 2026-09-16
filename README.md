@@ -63,6 +63,7 @@ oflow epic --limit 20          # list group epics when group access is available
 oflow epic --iid 12            # inspect one epic's parent/child hierarchy
 oflow iteration --state current --json # focused project-visible sprint view
 oflow iteration --group --state current --json # parent-group sprint schedule
+oflow cadence --json                  # parent-group cadence schedule
 oflow sync --json              # compact project, Scrum, MR, and pipeline snapshot
 oflow sync --epics --json      # include a bounded group-epic snapshot (opt-in)
 oflow sync --label "Ready" --limit 20 --json
@@ -153,6 +154,10 @@ parent group and its cadence-backed schedule. Both commands accept
 `--state opened|upcoming|current|closed|all` and `--limit 1..100`; output is
 compact and includes pagination metadata. The project view is the default
 least-privilege path and does not require a separate group lookup.
+
+Use `oflow cadence --json` for the compact parent-group iteration-cadence
+schedule. This is one read-only GraphQL request and is intentionally separate
+from `sync`, so ordinary project handoffs do not pay for group cadence data.
 
 Use `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`, `--search`,
 `--updated-after`, and `--updated-before` with `work` or `sync` to filter issues server-side.

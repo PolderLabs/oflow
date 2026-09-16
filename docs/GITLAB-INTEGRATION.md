@@ -153,6 +153,14 @@ iterations; they list iterations inherited from ancestor groups. See the
 [project iterations API](https://docs.gitlab.com/api/iterations/) and the
 [group iterations API](https://docs.gitlab.com/api/iterations/#list-all-group-iterations).
 
+`oflow cadence` explicitly reads the parent-group iteration-cadence schedule
+through one compact GraphQL request, including automatic scheduling, duration,
+future-iteration count, and rollover. It is read-only and is not part of the
+default `sync` request budget. Because GitLab's GraphQL API is versionless, an
+older self-managed instance may report an unsupported field; oflow keeps that
+failure explicit rather than silently treating a missing cadence as an empty
+schedule.
+
 Board administration follows the same boundary. GitLab's [project issue boards
 API](https://docs.gitlab.com/api/boards/) supports creating/updating boards,
 creating label-backed lists, and reordering lists. oflow exposes those
@@ -237,7 +245,7 @@ Every capability must expose:
 ## Implementation sequence
 
 1. Keep current direct REST reads as the baseline and finish the Scrum read
-   model (iteration cadences remain; group epic reads are now opt-in GraphQL).
+   model (iteration cadences and group epic reads are explicit GraphQL reads).
 2. Add backend-neutral capability metadata and optional `glab` availability
    detection without exposing credentials.
 3. [x] Add a small, opt-in `glab api` bridge for endpoints not yet wrapped by
@@ -259,6 +267,7 @@ cd /home/zakar/projects/09-nestpod-modulaire-priveruimtes
 oflow doctor --check-api
 oflow work --state opened
 oflow iteration --state current --json
+oflow cadence --json
 oflow context --story <iid> --json
 oflow verify --story <iid> --json
 ```

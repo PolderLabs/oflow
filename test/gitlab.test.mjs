@@ -123,6 +123,61 @@ test("lists pipelines through the merge-request-scoped endpoint", async () => {
   }
 });
 
+test("lists iteration cadences through the bounded GraphQL query", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody = "";
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "https://gitlab.example.test/api/graphql");
+    requestBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({
+        data: {
+          group: {
+            iterationCadences: {
+              nodes: [{
+                id: "gid://gitlab/Iterations::Cadence/1",
+                title: "Two-week sprints",
+                active: true,
+                automatic: true,
+                durationInWeeks: 2,
+                iterationsInAdvance: 2,
+                rollOver: false,
+                startDate: "2026-09-14T00:00:00Z",
+              }],
+              pageInfo: { hasNextPage: false },
+            },
+          },
+        },
+      }),
+    };
+  };
+  try {
+    const result = await new GitLabClient("gitlab.example.test", "test-token")
+      .listIterationCadences("team", 5);
+    const body = JSON.parse(requestBody);
+    assert.match(body.query, /iterationCadences\(includeAncestorGroups: true, first: \$first\)/);
+    assert.deepEqual(body.variables, { fullPath: "team", first: 5 });
+    assert.deepEqual(result, {
+      cadences: [{
+        id: "gid://gitlab/Iterations::Cadence/1",
+        title: "Two-week sprints",
+        active: true,
+        automatic: true,
+        duration_in_weeks: 2,
+        iterations_in_advance: 2,
+        roll_over: false,
+        start_date: "2026-09-14T00:00:00Z",
+      }],
+      mayBeTruncated: false,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("lists group epics through the bounded Work Item GraphQL query", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";

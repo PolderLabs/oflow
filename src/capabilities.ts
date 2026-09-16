@@ -79,6 +79,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Project: Read; Group: Read when using --group",
       ),
       capability(
+        "iteration-cadences.read",
+        "implemented",
+        "read",
+        "Parent-group sprint cadence schedule",
+        "GraphQL",
+        "Group: Read; Iteration: Read (tier/version dependent)",
+      ),
+      capability(
         "group-epics.read",
         "implemented",
         "read",

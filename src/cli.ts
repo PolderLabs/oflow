@@ -15,6 +15,7 @@ import {
 } from "./auth.js";
 import { assessStory, formatAssessmentMarkdown } from "./assess.js";
 import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
+import { formatIterationCadenceMarkdown, listIterationCadences } from "./cadences.js";
 import {
   formatGroupEpicListMarkdown,
   formatGroupEpicMarkdown,
@@ -227,6 +228,12 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           options.group ? "group" : "project",
         );
         print(options.json, result, formatIterationListMarkdown(result));
+        return 0;
+      }
+      case "cadence": {
+        const limit = parseIssueLimit(options.limit, 20);
+        const result = await listIterationCadences(root, limit);
+        print(options.json, result, formatIterationCadenceMarkdown(result));
         return 0;
       }
       case "sync": {
@@ -1334,6 +1341,7 @@ function helpText(): string {
     "  work [filters] [--json]             list current GitLab work items",
     "  epic [--iid <iid>] [--limit <n>]    list or inspect group epics",
     "  iteration [--group] [--state <state>] list project or group sprints",
+    "  cadence [--limit <n>]               list parent-group iteration cadences",
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
@@ -1376,6 +1384,7 @@ function helpText(): string {
     "  sync --refresh  explicitly refresh the remote snapshot and local cache",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",
     "  iteration --group  read the parent-group sprint schedule (requires group access)",
+    "  cadence             inspect group sprint scheduling (read-only GraphQL)",
   ].join("\n") + "\n";
 }
 
