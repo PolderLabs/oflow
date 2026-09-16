@@ -182,7 +182,7 @@ oflow verify --plan .oflow/state/plans/<plan-id>.json
 
 The currently implemented plan operations are issue/work-item create and update,
 issue note creation, project label create/update, project milestone create/update,
-and board/board-list administration:
+board/board-list administration, and bounded bulk label and owner/timebox updates:
 
 ```bash
 oflow plan issue create \
@@ -205,6 +205,8 @@ oflow plan issue update --story <iid> \
   --add-labels "Ready" --remove-labels "In Progress"
 oflow plan issues labels --stories <iid>,<iid>,<iid> \
   --add-labels "Ready" --remove-labels "In Progress"
+oflow plan issues update --stories <iid>,<iid>,<iid> \
+  --milestone "Sprint 1" --assignee zakar
 oflow plan issue note --story <iid> \
   --body "Progress: API contract confirmed."
 oflow plan label create --name "Ready" --color "#428BCA" \
@@ -254,6 +256,18 @@ reusable approved plan; repeating an additive/removal update is safe for the
 label operation itself, and verification checks every requested target. It does
 not replace complete label sets or change titles, descriptions, assignees,
 milestones, epics, or other issue fields.
+
+For a shared owner or milestone/timebox change across multiple stories, use
+`plan issues update --stories <iid,...> --assignee <username>` and/or
+`--milestone <title>`. Use `--assignee none` or `--milestone none` to clear the
+corresponding assignment. This command is deliberately limited to those two
+planning fields, validates every target before the plan is written, caps a
+plan at 50 issue IIDs, applies sequentially, and verifies every target. It is
+not atomic: if an apply request fails, already-updated issues remain changed
+and the approved plan identifies the target set for follow-up. Iteration
+assignment is not included because GitLab's current REST issue update endpoint
+does not document `iteration_id` or `iteration_title` as update fields; use
+the read-only iteration view until a version-aware write adapter is added.
 
 Both validate that the target exists while creating the local plan, require an
 unchanged digest for approval and apply, check the current Git remote before

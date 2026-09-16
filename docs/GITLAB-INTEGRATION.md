@@ -31,7 +31,8 @@ agent -> oflow intent/sync/plan/approve/apply/verify
 
 The current release implements the REST path for compact project-scoped read
 commands, the guarded issue-update/note/label/milestone/board/board-list plans,
-including existing epic association through issue `epic_id`, and an explicit
+including existing epic association through issue `epic_id`, bounded bulk
+owner/timebox planning updates, and an explicit
 read-only `oflow glab api` fallback. Group epic listing and hierarchy reads use
 an explicit, bounded Work Item GraphQL path; they are not included in the
 default sync because they require parent-group access and an extra request.
@@ -150,6 +151,17 @@ can use the existing issue update plan and verify the resulting issue state.
 For focused board movement, use GitLab's `add_labels`/`remove_labels` issue
 update fields so unrelated labels are preserved; use full `labels` replacement
 only when the complete set is intentional. See the [Issues API](https://docs.gitlab.com/api/issues/).
+
+The bulk planning command intentionally maps only shared issue owners and
+milestone timeboxes to GitLab's documented issue update fields:
+`assignee_ids`, `milestone`, and `milestone_id`. It resolves usernames while
+creating the local plan, then applies and verifies each target sequentially.
+Iteration assignment is not silently approximated with a milestone: GitLab's
+current `PUT /projects/:id/issues/:issue_iid` documentation does not list
+`iteration_id` or `iteration_title` as update attributes. Keep iteration
+assignment plan-only until a version-aware adapter can prove the supported
+endpoint and permission model. See the [Issues API](https://docs.gitlab.com/api/issues/)
+and [Iterations API](https://docs.gitlab.com/api/iterations/).
 
 GitLab's fine-grained REST permission mapping also gives us an explicit way to
 document each capability. For the current Scrum scope, start with the

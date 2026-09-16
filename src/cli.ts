@@ -43,6 +43,7 @@ import {
   applyPlan,
   approvePlan,
   createBulkIssueLabelsPlan,
+  createBulkIssuePlanningPlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
   createIssueCreatePlan,
@@ -266,6 +267,23 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               add_labels: options.addLabels,
               remove_labels: options.removeLabels,
             },
+          );
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "issues" && options.planOperation === "update") {
+          if (options.stories === undefined) {
+            throw new OflowError(
+              "plan issues update requires --stories <iid,...>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          assertBulkPlanningOptions(options);
+          const stored = await createBulkIssuePlanningPlan(
+            root,
+            parseIssueIids(options.stories),
+            normalizeIssueMilestone(options.milestone),
+            options.assignee,
           );
           print(options.json, stored, formatPlanMarkdown(stored));
           return 0;
@@ -1218,6 +1236,7 @@ function helpText(): string {
     "  plan issue create --title <title>   prepare an auditable issue create",
     "  plan issue update --story <iid>     prepare an auditable issue update",
     "  plan issues labels --stories 1,2    prepare guarded bulk label changes",
+    "  plan issues update --stories 1,2    prepare guarded owner/timebox changes",
     "  plan issue note --story <iid>       prepare an auditable issue note",
     "  plan label create --name --color    prepare an auditable label create",
     "  plan label update --label <name>    prepare an auditable label update",
@@ -1242,12 +1261,51 @@ function helpText(): string {
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
-    "  --stories 1,2 use with plan issues labels for bounded bulk changes",
+    "  --stories 1,2 use with plan issues labels/update for bounded bulk changes",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",
     "  iteration --group  read the parent-group sprint schedule (requires group access)",
   ].join("\n") + "\n";
+}
+
+function assertBulkPlanningOptions(options: CliOptions): void {
+  const unsupported = [
+    ["--title", options.title],
+    ["--description", options.description],
+    ["--body", options.body],
+    ["--name", options.name],
+    ["--color", options.color],
+    ["--new-name", options.newName],
+    ["--label", options.label],
+    ["--iteration", options.iteration],
+    ["--start-date", options.startDate],
+    ["--due-date", options.dueDate],
+    ["--weight", options.weight],
+    ["--labels", options.labels],
+    ["--add-labels", options.addLabels],
+    ["--remove-labels", options.removeLabels],
+    ["--epic", options.epic],
+    ["--state", options.state],
+    ["--author", options.author],
+    ["--search", options.search],
+    ["--updated-after", options.updatedAfter],
+    ["--updated-before", options.updatedBefore],
+    ["--limit", options.limit],
+    ["--board", options.board],
+    ["--list", options.list],
+    ["--position", options.position],
+    ["--iid", options.iid],
+    ["--group", options.group ? "true" : undefined],
+    ["--epics", options.epics ? "true" : undefined],
+    ["--full", options.full ? "true" : undefined],
+  ].filter(([, value]) => value !== undefined);
+  if (unsupported.length > 0) {
+    throw new OflowError(
+      "plan issues update supports only --milestone and --assignee; use plan issue update for other fields.",
+      "UNSUPPORTED_BULK_ISSUE_FIELD",
+    );
+  }
 }
 
 const entryPoint = process.argv[1];

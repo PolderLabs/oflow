@@ -10,6 +10,7 @@ import {
   applyPlan,
   approvePlan,
   createBulkIssueLabelsPlan,
+  createBulkIssuePlanningPlan,
   createIssueCreatePlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
@@ -241,6 +242,96 @@ test("bulk issue label plans update every target and verify the shared state", a
         add_labels: "Ready",
       }),
       { code: "TOO_MANY_ISSUES" },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("bulk planning plans assign owners and milestone timeboxes safely", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-bulk-planning-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "bulk-planning-plan-test-token";
+  const issues = new Map([
+    [17, { iid: 17, title: "Reserve a pod", labels: ["User Story"], state: "opened", milestone: null, assignees: [] }],
+    [18, { iid: 18, title: "Release a pod", labels: ["User Story"], state: "opened", milestone: null, assignees: [] }],
+  ]);
+  const updates = [];
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      if (url.pathname === "/api/v4/users") {
+        return response([{ id: 6, username: "alice", name: "Alice" }]);
+      }
+      const iid = Number(url.pathname.split("/").pop());
+      const issue = issues.get(iid);
+      if (issue === undefined) return response({ message: "not found" });
+      if (method === "PUT") {
+        const body = new URLSearchParams(String(init.body));
+        if (body.has("milestone")) {
+          issue.milestone = { id: 101, title: body.get("milestone") };
+        }
+        if (body.has("milestone_id") && Number(body.get("milestone_id")) === 0) {
+          issue.milestone = null;
+        }
+        issue.assignees = body.getAll("assignee_ids[]")
+          .filter(Boolean)
+          .map((id) => ({ id: Number(id), username: "alice" }));
+        updates.push({
+          iid,
+          milestone: body.get("milestone"),
+          milestoneId: body.get("milestone_id"),
+          assigneeIds: body.getAll("assignee_ids[]"),
+        });
+      }
+      return response(issue);
+    };
+
+    const created = await createBulkIssuePlanningPlan(root, [17, 18], {
+      milestone: "Sprint 1",
+    }, "alice");
+    assert.equal(created.plan.state, "draft");
+    assert.equal(created.plan.operation.kind, "issues.planning.update");
+    assert.deepEqual(created.plan.operation.issueIids, [17, 18]);
+    assert.deepEqual(created.plan.operation.changes, {
+      milestone: "Sprint 1",
+      assignee_ids: [6],
+    });
+    await approvePlan(root, created.path);
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.state, "applied");
+    assert.deepEqual(applied.plan.result.issues, [
+      { iid: 17, milestone: "Sprint 1", assigneeIds: [6] },
+      { iid: 18, milestone: "Sprint 1", assigneeIds: [6] },
+    ]);
+    assert.deepEqual(updates, [
+      { iid: 17, milestone: "Sprint 1", milestoneId: null, assigneeIds: ["6"] },
+      { iid: 18, milestone: "Sprint 1", milestoneId: null, assigneeIds: ["6"] },
+    ]);
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+    assert.equal(verified.plan.verification.checks.length, 4);
+
+    await assert.rejects(
+      () => createBulkIssuePlanningPlan(root, [17], { due_date: "2027-01-20" }),
+      { code: "UNSUPPORTED_BULK_ISSUE_FIELD" },
     );
   } finally {
     globalThis.fetch = originalFetch;

@@ -199,6 +199,17 @@ updates at most 50 issues sequentially, preserves unrelated labels, and
 verifies every target after apply. Bulk operations still require the same
 `approve -> apply -> verify` sequence.
 
+For a shared Scrum owner or milestone/timebox change, use
+`oflow plan issues update --stories 17,18,23 --milestone "Sprint 1"`
+and/or `--assignee <username>` (`--assignee none` clears assignments). This
+planning-only bulk operation validates every target, updates at most 50 issues
+sequentially, and verifies the requested owner/timebox on every issue. It does
+not change titles, descriptions, labels, epics, due dates, weights, or issue
+state; use a single-issue plan for those fields. GitLab's current REST issue
+update API does not expose iteration assignment as a supported update field,
+so this command uses milestones for NestPod's Sprint 1–4 timeboxes; iteration
+assignment remains a separate roadmap item.
+
 GitLab's official `glab` CLI is an optional companion for detection, diagnostics,
 and read-only endpoint fallbacks—not a replacement for GitLab permissions. The
 GitLab MCP server is an optional agent-facing path. `oflow` keeps its own typed
@@ -207,8 +218,9 @@ MCP servers. Every remote write follows `plan -> approve -> apply -> verify`.
 The current apply-capable operations are `plan issue create`, `plan issue update`
 (including guarded assignment and existing epic association), `plan issue note`,
 `plan label create/update`, `plan milestone create/update`, and guarded board/
-board-list administration, plus bounded bulk issue-label updates; board-card
-movement, iterations, and merge-request writes remain roadmap work.
+board-list administration, plus bounded bulk issue-label and owner/timebox
+updates; board-card movement, iteration assignment, and merge-request writes
+remain roadmap work.
 Board-card movement is represented by guarded issue label updates rather than a
 separate unsafe card mutation. `oflow glab api` only permits an explicit GET
 through glab, so it cannot bypass the write gates.

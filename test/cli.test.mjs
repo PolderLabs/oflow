@@ -54,6 +54,7 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /iteration \[--group\] \[--state <state>\]/);
     assert.match(result, /sync --epics/);
     assert.match(result, /plan issues labels --stories 1,2/);
+    assert.match(result, /plan issues update --stories 1,2/);
     assert.match(result, /mr --iid <iid> \[--full\] \[--json\]/);
   } finally {
     rmSync(directory, { recursive: true, force: true });

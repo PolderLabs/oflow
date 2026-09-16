@@ -43,6 +43,14 @@ export interface BulkIssueLabelsUpdateOperation {
   remove_labels?: string;
 }
 
+export interface BulkIssuePlanningUpdateOperation {
+  kind: "issues.planning.update";
+  host: string;
+  projectPath: string;
+  issueIids: number[];
+  changes: Pick<GitLabIssueUpdate, "milestone" | "milestone_id" | "assignee_ids">;
+}
+
 export interface IssueCreateOperation {
   kind: "issue.create";
   host: string;
@@ -131,6 +139,7 @@ export type PlanOperation =
   | IssueCreateOperation
   | IssueUpdateOperation
   | BulkIssueLabelsUpdateOperation
+  | BulkIssuePlanningUpdateOperation
   | IssueNoteCreateOperation
   | LabelCreateOperation
   | LabelUpdateOperation
@@ -167,7 +176,12 @@ export interface PlanArtifact {
     boardId?: number;
     listId?: number;
     position?: number;
-    issues?: Array<{ iid: number; labels: string[] }>;
+    issues?: Array<{
+      iid: number;
+      labels?: string[];
+      milestone?: string | null;
+      assigneeIds?: number[];
+    }>;
   };
   verification?: PlanVerification;
 }
@@ -322,6 +336,46 @@ export async function createBulkIssueLabelsPlan(
     projectPath: remote.projectPath,
     issueIids: normalizedIids,
     ...operationChanges,
+  });
+}
+
+export async function createBulkIssuePlanningPlan(
+  root: string,
+  issueIids: number[],
+  changes: Pick<GitLabIssueUpdate, "milestone" | "milestone_id" | "assignee_ids">,
+  assignee?: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const normalizedIids = validateIssueIids(issueIids);
+  if (assignee !== undefined && changes.assignee_ids !== undefined) {
+    throw new OflowError(
+      "Use either --assignee or assignee_ids, not both.",
+      "DUPLICATE_ASSIGNEE_INPUT",
+    );
+  }
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const operationChanges = validateBulkIssuePlanningChanges(
+    cleanChanges({
+      ...changes,
+      assignee_ids: assignee === undefined
+        ? changes.assignee_ids
+        : await resolveAssigneeIds(client, assignee),
+    }),
+  );
+  await Promise.all(normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)));
+  return writePlan(root, {
+    kind: "issues.planning.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIids: normalizedIids,
+    changes: operationChanges,
   });
 }
 
@@ -812,6 +866,17 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
       results.push({ iid: result.iid, labels: result.labels ?? [] });
     }
     stored.plan.result = { kind: "issues.labels.update", issues: results };
+  } else if (stored.plan.operation.kind === "issues.planning.update") {
+    const results: NonNullable<PlanArtifact["result"]>["issues"] = [];
+    for (const issueIid of stored.plan.operation.issueIids) {
+      const result = await client.updateIssue(
+        stored.plan.operation.projectPath,
+        issueIid,
+        stored.plan.operation.changes,
+      );
+      results.push(compactBulkIssuePlanningIssue(result, stored.plan.operation.changes));
+    }
+    stored.plan.result = { kind: "issues.planning.update", issues: results };
   } else if (stored.plan.operation.kind === "issue.note.create") {
     const result = await client.createIssueNote(
       stored.plan.operation.projectPath,
@@ -936,6 +1001,14 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
           ),
           stored.plan.operation,
         )
+    : stored.plan.operation.kind === "issues.planning.update"
+      ? verifyBulkIssuePlanning(
+          await Promise.all(
+            stored.plan.operation.issueIids.map((issueIid) =>
+              client.getIssue(stored.plan.operation.projectPath, issueIid)),
+          ),
+          stored.plan.operation,
+        )
     : stored.plan.operation.kind === "issue.note.create"
       ? verifyIssueNote(
           await client.getIssueNotes(
@@ -1010,6 +1083,12 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
               ? []
               : ["- remove_labels: " + plan.operation.remove_labels]),
           ].join("\n")
+      : plan.operation.kind === "issues.planning.update"
+        ? [
+            "- issue_iids: " + plan.operation.issueIids.join(", "),
+            ...Object.entries(plan.operation.changes)
+              .map(([key, value]) => "- " + key + ": " + String(value)),
+          ].join("\n")
       : plan.operation.kind === "issue.note.create"
         ? "- body: " + plan.operation.body
         : plan.operation.kind === "label.create"
@@ -1073,6 +1152,8 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       ? "Changes:"
       : plan.operation.kind === "issues.labels.update"
         ? "Bulk label changes:"
+      : plan.operation.kind === "issues.planning.update"
+        ? "Bulk planning changes:"
       : plan.operation.kind === "issue.note.create"
         ? "Note:"
         : plan.operation.kind === "label.create"
@@ -1162,6 +1243,18 @@ function isSupportedOperation(
       addLabelsValid &&
       removeLabelsValid;
   }
+  if (operation.kind === "issues.planning.update") {
+    return Array.isArray(operation.issueIids) &&
+      operation.issueIids.length > 0 &&
+      operation.issueIids.length <= MAX_BULK_ISSUES &&
+      new Set(operation.issueIids).size === operation.issueIids.length &&
+      operation.issueIids.every((issueIid) => Number.isSafeInteger(issueIid) && issueIid > 0) &&
+      Boolean(operation.changes && typeof operation.changes === "object") &&
+      Object.keys(operation.changes).length > 0 &&
+      Object.keys(operation.changes).every((key) =>
+        key === "milestone" || key === "milestone_id" || key === "assignee_ids"
+      );
+  }
   if (operation.kind === "issue.note.create") {
     return validIssueOperation(operation) &&
       typeof operation.body === "string" &&
@@ -1249,11 +1342,39 @@ function validateIssueIids(issueIids: number[]): number[] {
   }
   if (normalized.length > MAX_BULK_ISSUES) {
     throw new OflowError(
-      "Bulk label updates are limited to " + String(MAX_BULK_ISSUES) + " issue IIDs.",
+      "Bulk issue updates are limited to " + String(MAX_BULK_ISSUES) + " issue IIDs.",
       "TOO_MANY_ISSUES",
     );
   }
   return normalized;
+}
+
+function validateBulkIssuePlanningChanges(
+  changes: Pick<GitLabIssueUpdate, "milestone" | "milestone_id" | "assignee_ids">,
+): Pick<GitLabIssueUpdate, "milestone" | "milestone_id" | "assignee_ids"> {
+  const unsupportedFields = Object.keys(changes).filter((key) =>
+    key !== "milestone" && key !== "milestone_id" && key !== "assignee_ids"
+  );
+  if (unsupportedFields.length > 0) {
+    throw new OflowError(
+      "Bulk planning updates support only --milestone and --assignee; use a single issue update for other fields.",
+      "UNSUPPORTED_BULK_ISSUE_FIELD",
+    );
+  }
+  if (changes.milestone !== undefined && !changes.milestone.trim()) {
+    throw new OflowError(
+      "Issue milestone cannot be empty; use none to clear it.",
+      "INVALID_ISSUE_MILESTONE",
+    );
+  }
+  const validated = validateIssueChanges(changes);
+  if (Object.keys(validated).length === 0) {
+    throw new OflowError(
+      "No bulk planning changes were provided. Use --milestone and/or --assignee.",
+      "EMPTY_PLAN",
+    );
+  }
+  return validated;
 }
 
 function validateBulkIssueLabelChanges(
@@ -1515,6 +1636,26 @@ function compactIssue(
   };
 }
 
+function compactBulkIssuePlanningIssue(
+  issue: GitLabIssue,
+  changes: Pick<GitLabIssueUpdate, "milestone" | "milestone_id" | "assignee_ids">,
+): NonNullable<NonNullable<PlanArtifact["result"]>["issues"]>[number] {
+  return {
+    iid: issue.iid,
+    ...(changes.milestone !== undefined || changes.milestone_id !== undefined
+      ? { milestone: namedValue(issue.milestone) }
+      : {}),
+    ...(changes.assignee_ids !== undefined
+      ? {
+          assigneeIds: (issue.assignees ?? [])
+            .map((assignee) => assignee.id)
+            .filter((id): id is number => typeof id === "number")
+            .sort((left, right) => left - right),
+        }
+      : {}),
+  };
+}
+
 function compactNote(
   note: GitLabNote,
   issueIid: number,
@@ -1579,7 +1720,7 @@ function compactBoardList(
 }
 
 function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
-  if (result.kind === "issues.labels.update") {
+  if (result.kind === "issues.labels.update" || result.kind === "issues.planning.update") {
     return String(result.issues?.length ?? 0) + " issues updated";
   }
   if (result.kind === "issue.note.create") {
@@ -1702,6 +1843,34 @@ function verifyBulkIssueLabels(
         actualLabels,
       ));
     }
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: returnedAllTargets && checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: [
+      ...(returnedAllTargets ? [] : ["GitLab did not return every targeted issue."]),
+      ...failed.map(
+        (item) => "GitLab did not report the requested " + item.field + " value.",
+      ),
+    ],
+  };
+}
+
+function verifyBulkIssuePlanning(
+  issues: GitLabIssue[],
+  operation: BulkIssuePlanningUpdateOperation,
+): PlanVerification {
+  const checks: PlanVerification["checks"] = [];
+  const expectedIids = new Set(operation.issueIids);
+  const returnedAllTargets = issues.length === operation.issueIids.length &&
+    issues.every((issue) => expectedIids.has(issue.iid));
+  for (const issue of issues) {
+    const verification = verifyIssue(issue, operation.changes);
+    checks.push(...verification.checks.map((item) => ({
+      ...item,
+      field: "issue #" + String(issue.iid) + "." + item.field,
+    })));
   }
   const failed = checks.filter((item) => !item.passed);
   return {
@@ -2108,6 +2277,9 @@ function formatTarget(operation: PlanOperation): string {
     return "issue #" + operation.issueIid;
   }
   if (operation.kind === "issues.labels.update") {
+    return "issues #" + operation.issueIids.join(", #");
+  }
+  if (operation.kind === "issues.planning.update") {
     return "issues #" + operation.issueIids.join(", #");
   }
   if (operation.kind === "label.create") {

@@ -43,7 +43,8 @@ export const WORKFLOW_MARKDOWN = [
   "oflow does not configure or invoke MCP servers. Use plan issue update (including",
   "--labels for replacement or --add-labels/--remove-labels to preserve unrelated labels,",
   "--assignee username or --epic <id|none>), plan issues labels --stories <iid,...> for",
-  "bounded multi-story label changes, plan issue create/note, or",
+  "bounded multi-story label changes, plan issues update --stories <iid,...> for",
+  "bounded owner/timebox changes, plan issue create/note, or",
   "plan label/milestone/board/board-list create/update, then approve, apply, and verify for supported writes. Do not",
   "use planned commands until oflow capabilities reports them as supported.",
 ].join("\n");
@@ -104,7 +105,7 @@ export function agentInstructionBlock(agent: AgentName): string {
     "access is missing, use oflow auth login; never place a token in the repository.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
     "in the merge request, and run oflow verify --story <iid> before handoff. Use",
-    "oflow epic --iid <iid> for group hierarchy, oflow iteration --group --state current --json when group sprint access is available, and use oflow plan issues labels --stories <iid,...> or plan issue update/note, label/milestone/board/board-list create/update followed by",
+    "oflow epic --iid <iid> for group hierarchy, oflow iteration --group --state current --json when group sprint access is available, and use oflow plan issues labels/update --stories <iid,...> or plan issue update/note, label/milestone/board/board-list create/update followed by",
     "approve/apply/verify for supported writes; do not make other remote planning",
     "changes without an explicit supported plan.",
   ].join("\n");

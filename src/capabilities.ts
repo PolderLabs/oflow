@@ -111,6 +111,14 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Work Item: Update; Label: Read is recommended for planning",
       ),
       capability(
+        "work-items.bulk-planning.update",
+        "implemented",
+        "apply",
+        "Work Item owner and milestone/timebox",
+        "REST",
+        "Work Item: Update; User: Read when resolving usernames",
+      ),
+      capability(
         "notes.write",
         "implemented",
         "apply",
