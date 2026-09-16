@@ -128,13 +128,18 @@ results to stories created by one user. These filters reduce both API response
 size and the context an agent must read.
 Use `--updated-before` to inspect an older slice without making oflow decide
 how many days qualifies as stale.
-`work --json` includes the same `query` and `workItemsMayBeTruncated` metadata
-as `sync`, alongside a compact `issues` array containing state, labels,
+`work --json` includes the same `query`, compact `pagination`, and
+`workItemsMayBeTruncated` metadata as `sync`, alongside a compact `issues` array
+containing state, labels,
 assignees, timebox, dates, weight, task-checklist progress, parent, timestamps,
 and links—not descriptions. Markdown output shows the effective query and
 marks a result as “more may exist” when it reaches the requested limit. Use
 `context --story <iid>` when the description and acceptance criteria are
-needed.
+needed. `sync --json` additionally includes compact pagination metadata for
+work items, merge requests, pipelines, labels, milestones, boards/lists,
+iterations, and opt-in epics; `hasNextPage` means the agent should narrow the
+filter or deliberately request a larger limit rather than assume the snapshot
+is complete.
 
 `mr --iid <iid>` reads one project merge request without changing it. Its
 default JSON/Markdown shape is compact review state (branches, labels,

@@ -2,6 +2,7 @@ import { getCurrentBranch, getGitLabRemote } from "./git.js";
 import { loadConfig } from "./config.js";
 import { parseAcceptanceCriteria } from "./criteria.js";
 import { GitLabClient } from "./gitlab.js";
+import type { GitLabListPage } from "./gitlab.js";
 import { OflowError } from "./errors.js";
 import type {
   GitLabIssue,
@@ -19,6 +20,15 @@ export async function listWorkItems(
   filters: GitLabIssueFilters = {},
   limit = 100,
 ): Promise<GitLabIssue[]> {
+  return (await listWorkItemsPage(root, state, filters, limit)).items;
+}
+
+export async function listWorkItemsPage(
+  root: string,
+  state: IssueState = "opened",
+  filters: GitLabIssueFilters = {},
+  limit = 100,
+): Promise<GitLabListPage<GitLabIssue>> {
   const config = await loadConfig(root);
   if (!config) {
     throw new OflowError(
@@ -28,7 +38,7 @@ export async function listWorkItems(
   }
 
   const remote = await getGitLabRemote(root);
-  return new GitLabClient(remote.host).listIssues(remote.projectPath, state, limit, filters);
+  return new GitLabClient(remote.host).listIssuesPage(remote.projectPath, state, limit, filters);
 }
 
 export async function loadMergeRequest(

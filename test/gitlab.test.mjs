@@ -42,6 +42,43 @@ test("lists project work items by state", async () => {
   }
 });
 
+test("reports GitLab pagination headers without fetching another page", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  globalThis.fetch = async (input) => {
+    requestUrl = String(input);
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({
+        "x-page": "1",
+        "x-next-page": "2",
+        "x-total": "8",
+        "x-total-pages": "3",
+        link: '<https://gitlab.example.test/api/v4/projects/team%2Fproject/issues?page=2>; rel="next"',
+      }),
+      text: async () => JSON.stringify([{ iid: 42, title: "Choose a pod" }]),
+    };
+  };
+  try {
+    const page = await new GitLabClient("gitlab.example.test", "test-token")
+      .listIssuesPage("team/project", "opened", 3);
+    assert.match(requestUrl, /per_page=3/);
+    assert.deepEqual(page.items, [{ iid: 42, title: "Choose a pod" }]);
+    assert.deepEqual(page.pagination, {
+      returned: 1,
+      requested: 3,
+      page: 1,
+      nextPage: 2,
+      total: 8,
+      totalPages: 3,
+      hasNextPage: true,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("reads one merge request by project-local IID", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";

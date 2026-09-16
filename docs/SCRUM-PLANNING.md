@@ -52,8 +52,11 @@ version-sensitive. Use `--limit 1..100` to cap returned work items
 <id|none|any>` filters existing epic association, while `--author <username>`
 filters by creator without a user lookup. This is the preferred way to keep
 agent handoffs small on larger projects.
-The JSON snapshot reports the effective query and `workItemsMayBeTruncated` so
-agents can tell when a follow-up sync with a larger limit is needed.
+The JSON snapshot reports the effective query, a `pagination` object for each
+bounded collection, and `workItemsMayBeTruncated` for compatibility. Each page
+records the requested cap, returned count, available totals, and
+`hasNextPage`, so agents can tell when a follow-up sync with a larger limit is
+needed without fetching another page automatically.
 `work --json` reports the same query metadata alongside a compact `issues`
 array with assignment, timebox, weight, dates, parent, and task-checklist
 progress. Descriptions are intentionally omitted; use `context --story <iid>`

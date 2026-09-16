@@ -63,6 +63,11 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     assert.equal(result.query.issueLimit, 50);
     assert.deepEqual(result.query.issueFilters, {});
     assert.equal(result.workItemsMayBeTruncated, false);
+    assert.equal(result.pagination.workItems.returned, 1);
+    assert.equal(result.pagination.workItems.requested, 50);
+    assert.equal(result.pagination.workItems.hasNextPage, false);
+    assert.equal(result.pagination.mergeRequests.hasNextPage, false);
+    assert.equal(result.pagination.boardLists[0].boardId, 11);
     assert.deepEqual(result.workItems[0].parent, {
       iid: 9,
       title: "Reservations",

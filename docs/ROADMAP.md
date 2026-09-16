@@ -83,8 +83,8 @@ This is the immediate implementation focus.
 - [x] Add iteration and author filters.
 - [x] Add server-side epic association filters; group epic listing is available
   through the explicit GraphQL read path.
-- [ ] Add pagination metadata, response validation, retries, and useful
-  unsupported endpoint errors for every new collection.
+- [x] Add pagination metadata, collection response validation, retries, and
+  useful unsupported endpoint errors for the compact Scrum collections.
 - [x] Produce a compact JSON evidence model for project, Scrum, merge-request,
   and pipeline handoff.
 - [x] Read one project merge request with compact review state and opt-in

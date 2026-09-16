@@ -2,6 +2,7 @@ import { getCurrentBranch, getGitLabRemote } from "./git.js";
 import { loadConfig } from "./config.js";
 import { parseAcceptanceCriteria } from "./criteria.js";
 import { GitLabClient } from "./gitlab.js";
+import type { GitLabListPage, GitLabPagination } from "./gitlab.js";
 import { OflowError } from "./errors.js";
 import type {
   GitLabBoard,
@@ -55,6 +56,17 @@ export interface SyncResult {
     iterations: SyncIteration[];
     epics: SyncEpic[];
     epicsMayBeTruncated: boolean;
+  };
+  pagination: {
+    workItems: GitLabPagination;
+    mergeRequests: GitLabPagination;
+    pipelines: GitLabPagination;
+    labels: GitLabPagination;
+    milestones: GitLabPagination;
+    boards: GitLabPagination;
+    boardLists: Array<{ boardId: number; pagination: GitLabPagination }>;
+    iterations: GitLabPagination;
+    epics: GitLabPagination;
   };
   story: SyncStory | null;
   stats: {
@@ -156,6 +168,12 @@ export interface SyncBoard {
   }>;
 }
 
+interface LoadedBoards {
+  boards: SyncBoard[];
+  pagination: GitLabPagination;
+  boardLists: Array<{ boardId: number; pagination: GitLabPagination }>;
+}
+
 export interface SyncIteration {
   iid: number;
   title: string | null;
@@ -240,10 +258,15 @@ export async function syncProject(
   const project = await client.getProject(remote.projectPath);
   const groupPath = projectNamespacePath(project) ?? parentGroupPath(remote.projectPath);
   const emptyEpicPage = { epics: [] as GitLabGroupEpic[], mayBeTruncated: false };
-  const [issues, mergeRequests, pipelines, labels, milestones, boards, iterations, groupEpics] =
+  const emptyBoardsPage: LoadedBoards = {
+    boards: [],
+    pagination: emptyPagination(100),
+    boardLists: [],
+  };
+  const [issuesPage, mergeRequestsPage, pipelinesPage, labelsPage, milestonesPage, boardsPage, iterationsPage, groupEpics] =
     await Promise.all([
       optionalFetch(
-        () => client.listIssues(
+        () => client.listIssuesPage(
           remote.projectPath,
           state,
           issueLimit,
@@ -251,36 +274,43 @@ export async function syncProject(
         ),
         "Could not read work items",
         warnings,
+        emptyListPage(issueLimit),
       ),
       optionalFetch(
-        () => client.listMergeRequests(remote.projectPath, undefined, "opened", 20),
+        () => client.listMergeRequestsPage(remote.projectPath, undefined, "opened", 20),
         "Could not read merge requests",
         warnings,
+        emptyListPage(20),
       ),
       optionalFetch(
-        () => client.listPipelines(remote.projectPath, branch, 10),
+        () => client.listPipelinesPage(remote.projectPath, branch, 10),
         "Could not read pipelines",
         warnings,
+        emptyListPage(10),
       ),
       optionalFetch(
-        () => client.listLabels(remote.projectPath, 100),
+        () => client.listLabelsPage(remote.projectPath, 100),
         "Could not read project labels",
         warnings,
+        emptyListPage(100),
       ),
       optionalFetch(
-        () => client.listMilestones(remote.projectPath, "active", 100),
+        () => client.listMilestonesPage(remote.projectPath, "active", 100),
         "Could not read project milestones",
         warnings,
+        emptyListPage(100),
       ),
       optionalFetch(
         () => loadBoards(client, remote.projectPath),
         "Could not read project boards",
         warnings,
+        emptyBoardsPage,
       ),
       optionalFetch(
-        () => client.listProjectIterations(remote.projectPath, "all", 100),
+        () => client.listProjectIterationsPage(remote.projectPath, "all", 100),
         "Could not read project iterations",
         warnings,
+        emptyListPage(100),
       ),
       options.includeEpics === true && groupPath
         ? optionalFetch(
@@ -299,16 +329,16 @@ export async function syncProject(
         options.storyIid,
         branch,
         warnings,
-        pipelines,
+        pipelinesPage.items,
       )
-    : null;
+      : null;
 
   const result: SyncResult = {
     generatedAt: new Date().toISOString(),
     project: compactProject(project),
     repository: { branch, groupPath },
-    workItems: issues.map(compactWorkItem),
-    workItemsMayBeTruncated: issues.length === issueLimit &&
+    workItems: issuesPage.items.map(compactWorkItem),
+    workItemsMayBeTruncated: issuesPage.pagination.hasNextPage &&
       !warnings.some((warning) => warning.startsWith("Could not read work items")),
     query: {
       state,
@@ -316,28 +346,39 @@ export async function syncProject(
       issueFilters,
       includeEpics: options.includeEpics === true,
     },
-    mergeRequests: mergeRequests.map(compactMergeRequest),
-    pipelines: pipelines.map(compactPipeline),
+    mergeRequests: mergeRequestsPage.items.map(compactMergeRequest),
+    pipelines: pipelinesPage.items.map(compactPipeline),
     planning: {
-      labels: labels.map(compactLabel),
-      milestones: milestones.map(compactMilestone),
-      boards,
-      iterations: iterations.map(compactIteration),
+      labels: labelsPage.items.map(compactLabel),
+      milestones: milestonesPage.items.map(compactMilestone),
+      boards: boardsPage.boards,
+      iterations: iterationsPage.items.map(compactIteration),
       epics: groupEpics.epics.map(compactEpic),
       epicsMayBeTruncated: groupEpics.mayBeTruncated,
     },
+    pagination: {
+      workItems: issuesPage.pagination,
+      mergeRequests: mergeRequestsPage.pagination,
+      pipelines: pipelinesPage.pagination,
+      labels: labelsPage.pagination,
+      milestones: milestonesPage.pagination,
+      boards: boardsPage.pagination,
+      boardLists: boardsPage.boardLists,
+      iterations: iterationsPage.pagination,
+      epics: paginationForCount(groupEpics.epics.length, 50, groupEpics.mayBeTruncated),
+    },
     story,
     stats: {
-      workItems: issues.length,
-      mergeRequests: mergeRequests.length,
-      pipelines: pipelines.length,
-      labels: labels.length,
-      milestones: milestones.length,
-      boards: boards.length,
-      iterations: iterations.length,
+      workItems: issuesPage.items.length,
+      mergeRequests: mergeRequestsPage.items.length,
+      pipelines: pipelinesPage.items.length,
+      labels: labelsPage.items.length,
+      milestones: milestonesPage.items.length,
+      boards: boardsPage.boards.length,
+      iterations: iterationsPage.items.length,
       epics: groupEpics.epics.length,
     },
-    planningHealth: inspectPlanningHealth(issues, boards),
+    planningHealth: inspectPlanningHealth(issuesPage.items, boardsPage.boards),
     warnings,
   };
   return result;
@@ -357,16 +398,22 @@ export function formatSyncMarkdown(result: SyncResult): string {
     "## Snapshot",
     "",
     "- Work items: " + String(result.stats.workItems) +
-      (result.workItemsMayBeTruncated ? " (more may exist)" : ""),
-    "- Open merge requests: " + String(result.stats.mergeRequests),
-    "- Pipelines: " + String(result.stats.pipelines),
-    "- Labels: " + String(result.stats.labels),
-    "- Active milestones: " + String(result.stats.milestones),
-    "- Boards: " + String(result.stats.boards),
-    "- Project-visible iterations: " + String(result.stats.iterations),
+      paginationSuffix(result.pagination.workItems),
+    "- Open merge requests: " + String(result.stats.mergeRequests) +
+      paginationSuffix(result.pagination.mergeRequests),
+    "- Pipelines: " + String(result.stats.pipelines) +
+      paginationSuffix(result.pagination.pipelines),
+    "- Labels: " + String(result.stats.labels) +
+      paginationSuffix(result.pagination.labels),
+    "- Active milestones: " + String(result.stats.milestones) +
+      paginationSuffix(result.pagination.milestones),
+    "- Boards: " + String(result.stats.boards) +
+      paginationSuffix(result.pagination.boards),
+    "- Project-visible iterations: " + String(result.stats.iterations) +
+      paginationSuffix(result.pagination.iterations),
     ...(result.query.includeEpics
       ? ["- Group epics: " + String(result.stats.epics) +
-        (result.planning.epicsMayBeTruncated ? " (more may exist)" : "")]
+        paginationSuffix(result.pagination.epics)]
       : []),
     "",
     "## Current work items",
@@ -565,21 +612,30 @@ async function loadStorySummary(
 async function loadBoards(
   client: GitLabClient,
   projectPath: string,
-): Promise<SyncBoard[]> {
-  const boards = await client.listBoards(projectPath, 100);
-  return Promise.all(
-    boards.map(async (board) => ({
-      id: board.id,
-      name: oneLine(board.name),
-      lists: (await client.listBoardLists(projectPath, board.id, 100)).map(
-        (list) => ({
-          id: list.id,
-          label: list.label?.name ?? null,
-          position: list.position ?? null,
-        }),
-      ),
-    })),
+): Promise<LoadedBoards> {
+  const boardPage = await client.listBoardsPage(projectPath, 100);
+  const loaded = await Promise.all(
+    boardPage.items.map(async (board) => {
+      const listPage = await client.listBoardListsPage(projectPath, board.id, 100);
+      return {
+        board: {
+          id: board.id,
+          name: oneLine(board.name),
+          lists: listPage.items.map((list) => ({
+            id: list.id,
+            label: list.label?.name ?? null,
+            position: list.position ?? null,
+          })),
+        },
+        boardLists: { boardId: board.id, pagination: listPage.pagination },
+      };
+    }),
   );
+  return {
+    boards: loaded.map((item) => item.board),
+    pagination: boardPage.pagination,
+    boardLists: loaded.map((item) => item.boardLists),
+  };
 }
 
 function compactProject(project: GitLabProject): SyncResult["project"] {
@@ -798,6 +854,37 @@ async function optionalFetch<T>(
     warnings.push(label + ": " + (error instanceof Error ? error.message : String(error)));
     return fallback ?? ([] as unknown as T);
   }
+}
+
+function emptyListPage<T>(requested: number): GitLabListPage<T> {
+  return {
+    items: [],
+    pagination: emptyPagination(requested),
+  };
+}
+
+function emptyPagination(requested: number): GitLabPagination {
+  return paginationForCount(0, requested, false);
+}
+
+function paginationForCount(
+  returned: number,
+  requested: number,
+  hasNextPage: boolean,
+): GitLabPagination {
+  return {
+    returned,
+    requested,
+    page: 1,
+    nextPage: hasNextPage ? 2 : null,
+    total: null,
+    totalPages: null,
+    hasNextPage,
+  };
+}
+
+function paginationSuffix(pagination: GitLabPagination): string {
+  return pagination.hasNextPage ? " (more may exist)" : "";
 }
 
 function parentGroupPath(projectPath: string): string | null {

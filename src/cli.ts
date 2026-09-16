@@ -30,7 +30,7 @@ import {
   formatMergeRequestTemplate,
   formatWorkItemsMarkdown,
   loadMergeRequest,
-  listWorkItems,
+  listWorkItemsPage,
   loadStoryContext,
 } from "./context.js";
 import { OflowError } from "./errors.js";
@@ -170,24 +170,26 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const state = normalizeIssueState(options.state);
         const filters = collectIssueFilters(options);
         const limit = parseIssueLimit(options.limit, 100);
-        const issues = await listWorkItems(
+        const issuePage = await listWorkItemsPage(
           root,
           state,
           filters,
           limit,
         );
+        const issues = issuePage.items;
         print(
           options.json,
           {
             state,
             issues: compactWorkItems(issues),
             query: { state, issueLimit: limit, issueFilters: filters },
-            workItemsMayBeTruncated: issues.length === limit,
+            workItemsMayBeTruncated: issuePage.pagination.hasNextPage,
+            pagination: issuePage.pagination,
           },
           formatWorkItemsMarkdown(issues, state, {
             issueLimit: limit,
             issueFilters: filters,
-            mayBeTruncated: issues.length === limit,
+            mayBeTruncated: issuePage.pagination.hasNextPage,
           }),
         );
         return 0;

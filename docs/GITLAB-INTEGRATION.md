@@ -115,8 +115,10 @@ milestones, epics, iterations, notes, and eventually local implementation
 evidence. A core adapter needs normalized models, stable JSON, pagination,
 response validation, permission diagnostics, and reproducible verification.
 
-Direct REST gives `oflow` control over those invariants. `glab api` can issue
-the same requests and is valuable for gaps, but using shell output as the core
+Direct REST gives `oflow` control over those invariants. `oflow` reads GitLab's
+standard `Link` and `x-*` pagination headers and keeps the existing bounded
+single-page behavior; it never silently downloads an entire project. `glab api`
+can issue the same requests and is valuable for gaps, but using shell output as the core
 contract would make behavior depend on an external binary and its command
 version. The high-level `glab work-items` command is currently documented as
 experimental, which is another reason not to make it the foundation of the
