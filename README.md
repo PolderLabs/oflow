@@ -384,6 +384,7 @@ MR head SHA when GitLab exposes one.
 
 ```bash
 npm install
+npm run check:public
 npm test
 npm run typecheck
 npm pack --dry-run
@@ -391,6 +392,15 @@ npm pack --dry-run
 
 The package is intentionally dependency-light. Provider-specific API behavior
 belongs in adapters, while the local workflow contract remains stable.
+
+## Public repository privacy
+
+This project is published as open source. Do not add private client/company
+details, employee identities, private GitLab hosts or paths, screenshots, raw
+API responses, credentials, or local checkout paths. Use synthetic placeholders
+such as `gitlab.example.com`, `team/project`, and `test-user`. See the
+[`public content policy`](docs/PUBLIC-CONTENT-POLICY.md); CI rejects common
+credential, private-host, email, and local-path indicators.
 
 ## Learn more
 

@@ -1,8 +1,10 @@
 node_modules/
 dist/
+.omx/
 .oflow/state/
 .oflow/context/
 .oflow/cache/
+*.db
 .env
 .env.*
 !.env.example
