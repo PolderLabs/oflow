@@ -9,7 +9,15 @@ import {
   writeText,
 } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
-import { agentInstructionBlock, MERGE_REQUEST_TEMPLATE_MARKDOWN, OFLOW_README_MARKDOWN, WORKFLOW_MARKDOWN, WORKFLOW_MARKER } from "./templates.js";
+import {
+  agentInstructionBlock,
+  CACHE_POLICY_MARKDOWN,
+  CACHE_POLICY_MARKER,
+  MERGE_REQUEST_TEMPLATE_MARKDOWN,
+  OFLOW_README_MARKDOWN,
+  WORKFLOW_MARKDOWN,
+  WORKFLOW_MARKER,
+} from "./templates.js";
 import type {
   AgentDetection,
   FileAction,
@@ -39,7 +47,7 @@ export async function installProject(options: InstallOptions): Promise<InstallRe
 
   files.push(
     await planConfig(root, remote, detection, dryRun, warnings),
-    await planCanonicalFile(root, ".oflow/WORKFLOW.md", WORKFLOW_MARKDOWN, dryRun),
+    await planWorkflowFile(root, dryRun),
     await planCanonicalFile(root, ".oflow/README.md", OFLOW_README_MARKDOWN, dryRun),
     await planCanonicalFile(
       root,
@@ -125,6 +133,31 @@ async function planCanonicalFile(
     await writeText(path, content + "\n");
   }
   return { path: relativePath, action: "created", detail: "oflow scaffold" };
+}
+
+async function planWorkflowFile(root: string, dryRun: boolean): Promise<InstallFileChange> {
+  const path = join(root, ".oflow/WORKFLOW.md");
+  const current = await readText(path);
+  if (current === null) {
+    if (!dryRun) {
+      await writeText(path, WORKFLOW_MARKDOWN + "\n");
+    }
+    return { path: ".oflow/WORKFLOW.md", action: "created", detail: "oflow workflow contract" };
+  }
+
+  const action = await upsertManagedBlock(
+    path,
+    CACHE_POLICY_MARKER,
+    CACHE_POLICY_MARKDOWN,
+    dryRun,
+  );
+  return {
+    path: ".oflow/WORKFLOW.md",
+    action,
+    detail: action === "unchanged"
+      ? "existing workflow preserved"
+      : "mandatory cache policy refreshed; existing workflow preserved",
+  };
 }
 
 async function planConfig(

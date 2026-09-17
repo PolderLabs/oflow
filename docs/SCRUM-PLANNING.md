@@ -84,8 +84,12 @@ needed. Cached evidence is useful for orientation but must not be treated as a
 freshness check before a remote write.
 
 Live `oflow work` reads additionally upsert compact work-item state into the
-schema-migrated local SQLite read model at `.oflow/cache/oflow.db`. Use
-`oflow work --mine --refresh` once to resolve the authenticated GitLab user and
+schema-migrated local SQLite read model at `.oflow/cache/oflow.db`. The mandatory
+agent policy is: refresh `oflow work --mine --refresh` and
+`oflow sync --summary --refresh` at session start, use cached reads during
+exploration, refresh before remote planning or changes, stop remote mutations if
+refresh fails, and refresh again after applying a change. Use
+`oflow work --mine --refresh` to resolve the authenticated GitLab user and
 refresh the assigned-work snapshot, then use `oflow work --mine --cached` for
 fast repeated agent context without a GitLab request. The cache is keyed by
 host, project, state, limit, filters, and query mode; a cache miss or mismatch

@@ -1,6 +1,28 @@
 import type { AgentName } from "./types.js";
 
 export const WORKFLOW_MARKER = "OFLOW MANAGED BLOCK";
+export const CACHE_POLICY_MARKER = "OFLOW CACHE POLICY";
+
+export const CACHE_POLICY_MARKDOWN = [
+  "## Mandatory cache policy",
+  "",
+  "Agents must follow this refresh policy:",
+  "",
+  "1. At the start of a work session, run `oflow work --mine --refresh --json` and `oflow sync --summary --refresh --json`.",
+  "2. During exploration and repeated context reads, use `oflow work --mine --cached --json` and `oflow sync --summary --cached --json`.",
+  "3. Before planning, approving, applying, or verifying a remote GitLab change, refresh current state; never treat cached data as remote truth.",
+  "4. If refresh fails, continue local analysis only and do not apply a remote mutation.",
+  "5. After applying a remote change, refresh the work and project snapshots again.",
+  "6. Use `oflow context --story <iid>` and `oflow assess --story <iid> --json` for detailed story and acceptance-criteria evidence.",
+  "",
+  "Cached reads never contact GitLab. They are a local read model, not a freshness guarantee.",
+].join("\n");
+
+const CACHE_POLICY_MANAGED_BLOCK = [
+  "<!-- BEGIN " + CACHE_POLICY_MARKER + " -->",
+  CACHE_POLICY_MARKDOWN,
+  "<!-- END " + CACHE_POLICY_MARKER + " -->",
+].join("\n");
 
 export const WORKFLOW_MARKDOWN = [
   "# oflow workflow",
@@ -16,6 +38,8 @@ export const WORKFLOW_MARKDOWN = [
   "5. If GitLab access is missing, run oflow auth login; never put tokens in this repository.",
   "6. When asked to sync project state, run oflow sync --summary --json for the token-light overview. Use oflow sync --json only when full bounded planning collections or pagination are needed. Use oflow sync --cached --summary --json for repeated context when the last snapshot is acceptable, and --refresh when current GitLab state is required. For repeated assigned-work context, use oflow work --mine --cached after an initial oflow work --mine --refresh; cached reads never contact GitLab. Add --epics only when group-level epic context is needed; it costs one extra bounded GraphQL read. When assessing one story, run oflow assess --story <iid> --json and use oflow capabilities --json to discover supported operations.",
   "7. State the plan and identify anything ambiguous before making code changes.",
+  "",
+  CACHE_POLICY_MANAGED_BLOCK,
   "",
   "## While working",
   "",
@@ -64,6 +88,7 @@ export const OFLOW_README_MARKDOWN = [
   "- oflow glab api is an explicit GET-only fallback for unwrapped endpoints.",
   "- Use work/sync filters, --limit, and sync --stale-days when an explicit age threshold is useful to keep planning context focused.",
   "- Live sync and work reads write credential-free ignored caches; sync --cached and work --cached never contact GitLab and report snapshot age. Refresh before relying on current state or preparing a remote write.",
+  "- Mandatory cache policy: refresh at session start, use cached reads during exploration, refresh before remote changes, stop remote mutations if refresh fails, and refresh again after applying changes.",
   "- In sync JSON, check pagination.hasNextPage before treating a collection as complete.",
   "- Use oflow audit --json to inspect local plan lifecycle history; it never contacts GitLab or contains tokens.",
   "- Use plan issues labels --stories <iid,...> for bounded multi-story workflow-label changes.",
@@ -102,8 +127,12 @@ export function agentInstructionBlock(agent: AgentName): string {
   return [
     "<!-- oflow instructions for " + name + " -->",
     "This repository is managed by oflow. Read .oflow/WORKFLOW.md before changing code.",
-    "Use oflow work --mine --cached for repeated assigned-work context after an initial",
-    "oflow work --mine --refresh; use oflow work for other current stories, then use oflow context --story <iid>",
+    "Mandatory cache policy: at session start run oflow work --mine --refresh and",
+    "oflow sync --summary --refresh; use --cached reads during exploration; refresh",
+    "before planning/approving/applying/verifying remote changes; if refresh fails,",
+    "do not apply a remote mutation; refresh again after applying changes. Use oflow",
+    "work --mine --cached for repeated assigned-work context; cached data is never",
+    "remote truth. Use oflow work for other current stories, then use oflow context --story <iid>",
     "to load the selected story and acceptance criteria. When asked to sync progress,",
     "use oflow sync --summary --json for project state (use --cached for an acceptable local snapshot, --refresh when current GitLab state is required; use sync --json only for full bounded collections; add --epics for group epics), oflow iteration --state current --json for a focused sprint view, oflow assess --story <iid> --json",
     "for story progress, oflow mr --iid <iid> --json for compact MR status, and",

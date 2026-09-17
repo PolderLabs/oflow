@@ -29,6 +29,13 @@ AGENTS.md       # managed instructions, preserved if it already exists
 CLAUDE.md       # managed instructions when Claude is detected
 ```
 
+The generated workflow contract always carries a mandatory cache policy: refresh
+at session start, use cached reads during exploration, refresh before remote
+planning or changes, stop remote mutations if refresh fails, and refresh again
+after applying a change. Re-running `oflow install` refreshes this managed
+policy block in existing `.oflow/WORKFLOW.md` files without replacing the rest
+of a user-authored workflow.
+
 When using a local checkout of oflow instead of a published npm package, make
 the `bin` entry available as the normal `oflow` command once:
 
