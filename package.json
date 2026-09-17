@@ -1,7 +1,7 @@
 {
-  "name": "oflow",
+  "name": "oflow-workflow",
   "version": "0.1.0",
-  "description": "A small, GitLab-first workflow layer for Claude and Codex agents.",
+  "description": "A small, GitLab-first workflow layer for Claude, Codex, Copilot, and VS Code agents.",
   "type": "module",
   "bin": {
     "oflow": "dist/cli.js"
@@ -21,10 +21,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/PolderLabsVOF/agent-workflow.git"
+    "url": "https://github.com/PolderLabsVOF/oflow.git"
   },
   "bugs": {
-    "url": "https://github.com/PolderLabsVOF/agent-workflow/issues"
+    "url": "https://github.com/PolderLabsVOF/oflow/issues"
   },
   "license": "MIT",
   "engines": {

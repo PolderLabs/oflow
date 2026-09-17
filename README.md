@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/PolderLabsVOF/agent-workflow/main/docs/assets/oflow-hero.png" alt="oflow agent workflow architecture illustration" width="100%" />
+  <img src="https://raw.githubusercontent.com/PolderLabsVOF/oflow/main/docs/assets/oflow-hero.png" alt="oflow agent workflow architecture illustration" width="100%" />
 </p>
 
 <h1 align="center">oflow</h1>
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PolderLabsVOF/agent-workflow"><img src="https://img.shields.io/badge/GitLab--first-18181B?style=flat-square&logo=gitlab&logoColor=FC6D26" alt="GitLab-first" /></a>
+  <a href="https://github.com/PolderLabsVOF/oflow"><img src="https://img.shields.io/badge/GitLab--first-18181B?style=flat-square&logo=gitlab&logoColor=FC6D26" alt="GitLab-first" /></a>
   <img src="https://img.shields.io/badge/Node.js-22.5%2B-18181B?style=flat-square&logo=nodedotjs&logoColor=5FA04E" alt="Node.js 22.5 or newer" />
   <img src="https://img.shields.io/badge/SQLite-local%20read%20model-18181B?style=flat-square&logo=sqlite&logoColor=003B57" alt="SQLite local read model" />
   <img src="https://img.shields.io/badge/license-MIT-18181B?style=flat-square" alt="MIT license" />
@@ -71,7 +71,7 @@ Requires Node.js **22.5 or newer**. SQLite uses Node's built-in `node:sqlite`
 module, so oflow does not add a native database dependency.
 
 ```bash
-npm install -g oflow
+npm install -g oflow-workflow
 
 cd /path/to/your-gitlab-repository
 oflow install
@@ -118,6 +118,33 @@ export GITLAB_TOKEN=glpat-...
 
 `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, and `GITLAB_PRIVATE_TOKEN` are supported;
 environment variables take precedence over stored credentials.
+
+> **Package name note:** the executable is `oflow`, but the npm package is
+> published as `oflow-workflow` because the unscoped `oflow` name belongs to an
+> unrelated package.
+
+### Windows and VS Code
+
+Windows is supported through the normal Node.js/npm distribution. The package
+has no native npm dependencies; SQLite comes from Node's built-in
+`node:sqlite`. In PowerShell:
+
+```powershell
+npm install --global oflow-workflow
+oflow --help
+
+Set-Location C:\path\to\your\gitlab-repository
+oflow install
+oflow doctor --check-api
+```
+
+If VS Code was already open, restart its integrated terminal after the global
+install so the npm global bin directory is on `PATH`. Copilot's Agent window
+and VS Code agents use the generated `.github/copilot-instructions.md` and the
+same `oflow` commands; no editor plugin or repository-local token is needed.
+On Windows, stored credentials use the user's `%APPDATA%\oflow` directory,
+outside the repository. Prefer `oflow auth login` rather than putting a token
+in a PowerShell profile or command history.
 
 ### Choose the smallest useful token scope
 
@@ -521,6 +548,7 @@ credential, private-host, email, and local-path indicators.
 - [`docs/SCRUM-PLANNING.md`](docs/SCRUM-PLANNING.md) — agent planning contract,
   cache policy, Scrum reads, and guarded writes.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged product direction.
+- [`docs/RELEASING.md`](docs/RELEASING.md) — public npm and GitHub release checklist.
 
 ## License
 

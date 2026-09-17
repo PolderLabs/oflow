@@ -1,0 +1,54 @@
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing Git tag to publish (for example, v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-publish:
+    if: github.repository == 'PolderLabsVOF/oflow'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Verify package identity
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            if (packageJson.name !== "oflow-workflow") throw new Error(`Unexpected package name: ${packageJson.name}`);
+            if (`v${packageJson.version}` !== process.env.RELEASE_TAG) throw new Error(`Tag ${process.env.RELEASE_TAG} does not match package version ${packageJson.version}`);
+          '
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release checks
+        run: |
+          npm test
+          npm run typecheck
+          npm pack --dry-run
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

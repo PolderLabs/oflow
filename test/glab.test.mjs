@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { glabApiGet } from "../dist/glab.js";
 
-test("glab fallback performs a read-only JSON API request without a token argument", async () => {
+test("glab fallback performs a read-only JSON API request without a token argument", {
+  // The fake executable is a POSIX shebang script; the real glab binary is a
+  // native executable on Windows and is still covered by the CLI smoke path.
+  skip: process.platform === "win32",
+}, async () => {
   const root = await mkdtemp(join(tmpdir(), "oflow-glab-"));
   const previousBinary = process.env.OFLOW_GLAB_BIN;
   const script = join(root, "fake-glab.mjs");
