@@ -104,6 +104,14 @@ version, file ages, row counts, invalidation marker, and pending refresh
 request. A successful live sync clears an invalidation or refresh request;
 applying a plan marks the model stale until the next explicit refresh.
 
+Use `oflow doctor --check-api --json` to inspect the remote boundary before an
+agent session. It makes bounded read probes for the supported REST and optional
+GraphQL collections. It reports write capabilities without probing them because
+a generic write permission check would require changing GitLab data. A failed
+optional group probe does not invalidate project-scoped reads; the exact reason
+is retained in `apiChecks` for the agent to decide whether to request a
+group-scoped token.
+
 Run `oflow dashboard` to serve the latest local snapshot at a loopback-only
 address. The browser can reload local SQLite data or record a refresh request,
 but it cannot call GitLab. Run `oflow sync --refresh` in the CLI when current

@@ -18,6 +18,12 @@ Agents should use these layers in order:
    `oflow assess --story <iid> --json` only when needed.
 5. Discover support with `oflow capabilities --json` rather than guessing.
 
+At the beginning of a new session, `oflow doctor --check-api --json` is an
+optional setup diagnostic. It checks bounded read access and shows every
+supported write as `not-probed`; it never mutates GitLab. A passing doctor
+result means the representative reads worked, not that the token's exact
+fine-grained configuration can be reconstructed.
+
 The CLI's JSON output is the integration surface. Agents do not need to know
 how GitLab REST, GraphQL, `glab`, SQLite, or optional MCP tools are wired
 behind it.
@@ -73,4 +79,3 @@ When adding Copilot, VS Code, or another host adapter:
 - keep remote writes behind explicit plans and approvals;
 - never pass raw tokens through prompts, browser APIs, or model-visible output;
 - add adapter tests without making the core CLI depend on the host.
-

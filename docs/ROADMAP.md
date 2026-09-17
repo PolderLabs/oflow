@@ -54,6 +54,8 @@ backend selection policy.
 - [x] Acceptance-aware merge-request text generation
 - [x] Pipeline-aware verification
 - [x] Explicit MCP boundary documentation
+- [x] Bounded `doctor --check-api` read capability matrix with explicit
+  non-mutating write diagnostics
 
 The current CLI is read-mostly against GitLab. `sync`, `work`, `context`, and
 `verify` are read-only; issue, note, label, and milestone plan paths can only

@@ -354,6 +354,17 @@ export interface InstallResult {
   warnings: string[];
 }
 
+export type DoctorCheckStatus = "passed" | "failed" | "skipped" | "not-probed";
+
+export interface DoctorCapabilityCheck {
+  id: string;
+  access: "read" | "write";
+  backend: "REST" | "GraphQL" | "REST + GraphQL" | "glab" | "MCP";
+  status: DoctorCheckStatus;
+  required: boolean;
+  detail: string;
+}
+
 export interface DoctorReport {
   root: string;
   remote: GitLabRemote | null;
@@ -362,6 +373,7 @@ export interface DoctorReport {
   tokenConfigured: boolean;
   tokenSource: "environment" | "stored" | null;
   apiCheck: "not-requested" | "skipped" | "passed" | "failed";
+  apiChecks: DoctorCapabilityCheck[];
   backends: BackendStatus;
   requiredFiles: Array<{ path: string; present: boolean }>;
   warnings: string[];

@@ -163,6 +163,48 @@ human user. See GitLab's [access token scopes](https://docs.gitlab.com/security/
 and [REST permission table](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_rest/)
 for the version-specific mapping.
 
+#### Recommended permission profiles
+
+Start with the **read profile**: `Project: Read`, `User: Read`, `Work Item:
+Read`, `Label: Read`, `Merge Request: Read`, and `Pipeline: Read`. Add `Group:
+Read` plus group-level `Work Item: Read` only for group epics, group-visible
+iterations, or iteration cadences.
+
+Add the **planning-write profile** only when agents must change Scrum data:
+`Work Item: Create/Update`, `Label: Create/Update`, and the relevant
+`Project Planning: Create/Update` permissions. Iteration assignment also uses
+the GraphQL mutation path and therefore needs the project-level update access
+shown by GitLab for that operation. Use the permission names and boundaries
+available in your GitLab version; some fine-grained entries vary by GitLab
+release and tier.
+
+Do not give oflow repository push, CI/CD variables, runners, deployments,
+secrets, security administration, webhooks, membership, token-management, or
+delete permissions. A token's scope cannot be read back reliably by oflow, so
+the CLI verifies representative endpoint access rather than claiming to decode
+the token configuration.
+
+#### Understand `doctor --check-api`
+
+```bash
+oflow doctor --check-api
+oflow doctor --check-api --json
+```
+
+This performs a bounded diagnostic: one small read request for each core
+project resource (project, user, work items, merge requests, pipelines, labels,
+milestones, boards/lists, and iterations), plus optional group/GraphQL reads
+when a parent group can be inferred. It never follows pagination and never
+performs a remote mutation. JSON exposes these as `apiChecks` with `passed`,
+`failed`, `skipped`, or `not-probed` status values.
+
+Write capabilities are deliberately reported as `not-probed`. There is no safe
+generic way to prove a create/update permission without changing data, and
+`doctor` must remain side-effect free. Use an approved plan followed by
+`apply` and `verify` when a real write needs to be tested. `glab` availability
+is reported separately, while MCP availability belongs to the connected agent
+runtime and cannot be inspected by the CLI.
+
 ### 3. Give agents the low-token daily flow
 
 The generated workflow contract hands agents this policy automatically:
@@ -199,6 +241,22 @@ If refresh fails, agents may continue local analysis but must not apply a
 remote mutation. Cached data is for orientation, never proof of current remote
 state.
 
+### How the cache works for agents
+
+The cache is a local SQLite read model with WAL mode and schema migrations. A
+live `work` or `sync` command refreshes the model; `--cached` reads only the
+matching local snapshot. Query keys include host, project, state, limit,
+filters, and query mode, so a miss cannot silently return a different query.
+Successful refresh clears the stale marker; applying a plan marks the model
+stale until the next explicit refresh. `oflow cache status --json` reports age,
+schema, row counts, invalidation, and pending refresh state without contacting
+GitLab.
+
+The intended agent rhythm is: refresh once at session start, use cached reads
+while exploring, refresh before planning or applying, stop mutations when
+refresh fails, and refresh again after applying. The browser dashboard follows
+the same model and never receives a GitLab token.
+
 ## GitLab integration architecture
 
 ```mermaid
@@ -227,6 +285,28 @@ The ownership model is deliberate:
 4. **MCP is optional.** A GitLab MCP server can give an agent conversational
    access to GitLab, but oflow does not assume an MCP server exists or silently
    configure one. The workflow contract and safety gates remain authoritative.
+
+### Claude, Codex, GitHub Copilot, and VS Code
+
+`oflow` is intentionally host-neutral. `oflow install` creates the shared
+`.oflow/WORKFLOW.md` contract, managed Claude/Codex instruction blocks when
+those hosts are detected, and a generic `.github/copilot-instructions.md` for
+GitHub Copilot and VS Code agents. Existing user-authored instructions are
+preserved.
+
+Every host uses the same flow from its terminal, task runner, or agent tool:
+
+```text
+host instructions → oflow --json → local SQLite reads → agent reasoning
+                                      ↓
+                         plan → approve → apply → verify
+```
+
+Copilot or a VS Code agent does not need a special npm plugin. It needs a
+terminal-capable environment, the `oflow` command on `PATH`, and the same
+user-level GitLab credential setup. A GitLab MCP server can complement this
+with conversational tools, but it is configured in the agent's user settings,
+not by oflow and not in the repository.
 
 See [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the full
 backend, authentication, security, and MCP decision record.
@@ -310,6 +390,7 @@ oflow assess --story 42 --json       # deterministic progress evidence
 oflow mr --iid 8 --json              # compact MR status
 oflow mr --iid 8 --full              # include MR description
 oflow verify --story 42              # acceptance + pipeline verification
+oflow doctor --check-api --json      # bounded API capability diagnostics
 oflow capabilities --json            # implemented/planned/optional paths
 oflow audit --json                   # local plan lifecycle history
 oflow cache status --json             # local cache age/schema/invalidation
@@ -350,7 +431,7 @@ resumed safely.
 | Capability | Status | Notes |
 | --- | :---: | --- |
 | Project install and agent detection | ✅ | Claude/Codex project contract, idempotent scaffolding |
-| GitLab auth and API doctor | ✅ | Host-aware credentials, safe status, read-only API check |
+| GitLab auth and API doctor | ✅ | Host-aware credentials, bounded read capability matrix, no write probes |
 | Work-item reads and filters | ✅ | Compact REST reads with pagination metadata |
 | Assigned-work cache | ✅ | SQLite, WAL, exact query keys, offline reads |
 | Summary/project sync | ✅ | Low-token planning and delivery snapshot |
@@ -366,6 +447,13 @@ resumed safely.
 | Merge-request writes | ◌ Planned | Deliberately later in the roadmap |
 
 ## Roadmap
+
+**Current position:** the Scrum/planning read model, agent context flow, safe
+planning writes, assessment, SQLite cache, dashboard foundation, and
+Copilot/VS Code handoff are delivered. The next major boundary is delivery
+integration: merge-request writes, richer pipeline controls, and release
+evidence. Those are intentionally not enabled by the current token profile or
+the automatic agent workflow.
 
 ### Delivered — workflow and Scrum foundation
 

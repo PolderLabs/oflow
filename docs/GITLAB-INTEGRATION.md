@@ -241,6 +241,22 @@ for project-only automation, while a personal token is preferable when
 `work --mine` must resolve a human user's assignments. Token permissions never
 exceed the GitLab user's role.
 
+Use two practical profiles when possible:
+
+- **Read profile:** project/user/work-item/label/merge-request/pipeline reads,
+  with group read permissions only for group epics, group iterations, or
+  cadence data.
+- **Planning-write profile:** the read profile plus Work Item create/update,
+  Label create/update, Project Planning create/update, and the project update
+  permission required by the GraphQL iteration-assignment mutation.
+
+Do not grant repository push, CI/CD variables, runners, deployments, secrets,
+security administration, webhooks, memberships, token management, or delete
+permissions to the planning token. Fine-grained permission names and coverage
+are version/tier dependent; use GitLab's [fine-grained REST permission
+table](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_rest/)
+as the final authority.
+
 Connect without putting credentials in a repository:
 
 ```bash
@@ -248,12 +264,20 @@ cd /path/to/your-gitlab-repository
 oflow install
 oflow auth login                         # uses the remote host when detected
 oflow auth login --host gitlab.example.com # explicit host when needed
-oflow doctor --check-api                 # read-only connectivity check
+oflow doctor --check-api                 # bounded read capability matrix
+oflow doctor --check-api --json           # machine-readable checks
 ```
 
 `oflow` stores host-specific credentials outside the repository. For CI or
 other automation, prefer an environment variable or protected stdin input;
 never pass a token as a command-line argument or commit it to a file.
+
+`doctor --check-api` probes one small page for each core REST resource and
+bounded optional group/GraphQL reads. It does not follow pagination, inspect
+the token's hidden scope list, or perform writes. The JSON `apiChecks` array
+shows `passed`, `failed`, `skipped`, and `not-probed` states. Every write
+capability is intentionally `not-probed`; test a real write only through
+`plan -> approve -> apply -> verify`.
 
 ## How MCP fits
 
