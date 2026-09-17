@@ -32,7 +32,11 @@ test("stores host-specific tokens with environment precedence", async () => {
       path: credentialsPath(),
     });
     assert.deepEqual(listStoredGitLabHosts(), ["gitlab.example.test"]);
-    assert.equal((await stat(credentialsPath())).mode & 0o777, 0o600);
+    // Windows enforces file privacy through ACLs and does not expose POSIX
+    // mode bits through fs.stat; the Unix mode check remains useful elsewhere.
+    if (process.platform !== "win32") {
+      assert.equal((await stat(credentialsPath())).mode & 0o777, 0o600);
+    }
 
     await Promise.all([
       saveGitLabToken("gitlab.one.test", "one-token"),
