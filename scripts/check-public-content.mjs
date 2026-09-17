@@ -38,6 +38,7 @@ const safeHosts = new Set([
   "localhost",
   "raw.githubusercontent.com",
   "registry.npmjs.org",
+  "www.npmjs.com",
 ]);
 
 function isSafeHost(host) {

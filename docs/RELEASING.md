@@ -57,8 +57,11 @@ before publishing:
 ```bash
 npm login
 npm whoami
-npm publish --provenance --access public
+npm publish --access public
 ```
+
+The `--provenance` flag is used by the GitHub Actions workflow, where npm can
+verify the CI identity. Local publishing should omit it.
 
 Confirm the result without exposing credentials:
 
