@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { main } from "../dist/cli.js";
+import { readWorkItemsCache } from "../dist/work-cache.js";
 
 const cli = join(process.cwd(), "dist", "cli.js");
 
@@ -50,7 +51,7 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     symlinkSync(cli, linkedCli);
     const result = execFileSync(linkedCli, ["help"], { encoding: "utf8" });
     assert.match(result, /^oflow - GitLab-first workflow/);
-    assert.match(result, /filters: --label, --milestone, --iteration, --epic, --assignee, --author/);
+    assert.match(result, /filters: --label, --milestone, --iteration, --epic, --assignee, --mine, --author/);
     assert.match(result, /epic \[--iid <iid>\] \[--limit <n>\]/);
     assert.match(result, /iteration \[--group\] \[--state <state>\]/);
     assert.match(result, /cadence \[--limit <n>\]/);
@@ -65,9 +66,82 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /sync --summary/);
     assert.match(result, /sync --cached/);
     assert.match(result, /sync --refresh/);
+    assert.match(result, /work --mine --refresh/);
+    assert.match(result, /work --mine --cached/);
     assert.match(result, /mr --iid <iid> \[--full\] \[--json\]/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("work --mine refreshes once and can then be read from SQLite offline", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-work-mine-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "work-mine-cli-test-token";
+  let userRequests = 0;
+  let issueRequests = 0;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/v4/user") {
+        userRequests += 1;
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify({ id: 7, username: "zakar" }),
+        };
+      }
+      if (url.pathname.endsWith("/issues")) {
+        issueRequests += 1;
+        assert.equal(url.searchParams.get("assignee_username[]"), "zakar");
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify([{
+            iid: 23,
+            title: "Verify the supported XLOCK integration path",
+            state: "opened",
+            labels: ["User Story"],
+            assignees: [{ username: "zakar" }],
+            updated_at: "2026-09-17T10:00:00Z",
+            web_url: "https://gitlab.example.test/team/project/-/issues/23",
+          }]),
+        };
+      }
+      throw new Error("unexpected request " + url.pathname);
+    };
+    assert.equal(await main(["work", "--root", root, "--mine", "--refresh", "--json"]), 0);
+    const refreshed = await readWorkItemsCache({
+      root,
+      host: "gitlab.example.test",
+      projectPath: "team/project",
+      query: { state: "opened", issueLimit: 100, issueFilters: {}, mine: true },
+    });
+    assert.equal(refreshed.cache.actorUsername, "zakar");
+    assert.equal(refreshed.items[0].iid, 23);
+
+    globalThis.fetch = async () => {
+      throw new Error("cached work must not contact GitLab");
+    };
+    assert.equal(await main(["work", "--root", root, "--mine", "--cached", "--json"]), 0);
+    assert.equal(userRequests, 1);
+    assert.equal(issueRequests, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

@@ -83,6 +83,15 @@ network. Use `oflow sync --refresh --json` when a fresh remote snapshot is
 needed. Cached evidence is useful for orientation but must not be treated as a
 freshness check before a remote write.
 
+Live `oflow work` reads additionally upsert compact work-item state into the
+schema-migrated local SQLite read model at `.oflow/cache/oflow.db`. Use
+`oflow work --mine --refresh` once to resolve the authenticated GitLab user and
+refresh the assigned-work snapshot, then use `oflow work --mine --cached` for
+fast repeated agent context without a GitLab request. The cache is keyed by
+host, project, state, limit, filters, and query mode; a cache miss or mismatch
+fails rather than silently falling back to the network. It stores no token and
+cached data is never a freshness precondition for a remote write.
+
 It emits human-readable Markdown and a compact `--json` result. Descriptions
 are excluded from the overall snapshot and fetched only for the selected story,
 so the result is suitable for low-token agent handoff. Local implementation and

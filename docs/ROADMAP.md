@@ -151,10 +151,21 @@ This is the immediate implementation focus.
 - [x] Generate an approval-ready owner/timebox plan from those recommendations;
   other recommendations remain explicit agent/user decisions.
 - [x] Add local context caching with explicit cached/refresh modes and no credentials.
+- [x] Add a schema-migrated SQLite read model for compact work-item snapshots,
+  indexed assignees/labels/state, and offline assigned-work reads.
 - [x] Support concise Markdown and machine-readable reports suitable for Claude,
   Codex, CI jobs, and future agents.
 
 ### Phase 4 — Delivery integration (later)
+
+### Phase 4a — Local planning dashboard foundation
+
+- [ ] Extend the SQLite read model to merge-request, pipeline, iteration, and
+  sync-history snapshots.
+- [ ] Add explicit cache status, age, invalidation, and migration diagnostics.
+- [ ] Add a loopback-only read-only dashboard backed by the local SQLite model.
+- [ ] Add explicit refresh controls without exposing GitLab credentials to the
+  dashboard process or browser.
 
 Merge-request writes and delivery automation are intentionally postponed until
 the Scrum model and mutation safety are stable. Merge-request and pipeline

@@ -12,6 +12,9 @@ cd my-gitlab-repo
 oflow install
 ```
 
+The local SQLite read model requires Node.js 22.5 or newer. The package uses
+Node's built-in `node:sqlite` module, so no native SQLite dependency is added.
+
 `oflow install` detects Claude and Codex from the local environment and project
 files, derives the GitLab project from `origin`, and creates only project-local
 files:
@@ -71,6 +74,8 @@ oflow sync --label "Ready" --limit 20 --json
 oflow sync --stale-days 14 --json # flag returned work items with no recent update
 oflow sync --cached --json # reuse the matching local snapshot without GitLab access
 oflow sync --refresh --json # explicitly fetch GitLab and replace the local snapshot
+oflow work --mine --refresh # refresh work items assigned to the authenticated user
+oflow work --mine --cached # read assigned work items from local SQLite
 oflow assess --story 42 --json # story progress, acceptance, and local evidence
 oflow capabilities --json      # show implemented, planned, and optional paths
 oflow audit --json             # read local plan lifecycle history
@@ -137,11 +142,19 @@ iteration, merge-request, and pipeline evidence without descriptions unless a
 specific story is selected. The agent performs the reasoning over that data;
 oflow does not require an embedded model or spend tokens generating a duplicate
 summary. A live sync also stores the credential-free result in the ignored
-`.oflow/cache/sync.json` file. Use `oflow sync --cached --json` for a repeated
+`.oflow/cache/sync.json` file. Live `oflow work` reads also update the local
+SQLite read model at `.oflow/cache/oflow.db`; `oflow work --mine --refresh`
+resolves the authenticated GitLab username and stores a compact assigned-work
+snapshot. Use `oflow work --mine --cached` for repeated assigned-work context
+without a token or network request. Use `oflow sync --cached --json` for a repeated
 read without a token or network request; it only accepts a snapshot with the
 same project and query, and reports its source, age, and original generation
 time. Use `--refresh` when current GitLab state is required. Cached snapshots
 are evidence for orientation, not freshness proof before a remote write.
+The SQLite cache is local, ignored, schema-migrated, and stores compact planning
+fields rather than credentials. The cache query is exact: a different state,
+limit, filter, project, or `--mine` mode fails instead of silently returning a
+different snapshot.
 For the smallest agent handoff, use `oflow sync --summary --json`; it keeps
 story planning fields, counts, planning-health findings, delivery counts, and
 warnings while omitting pagination and full planning collections.

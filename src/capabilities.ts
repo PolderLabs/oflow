@@ -202,8 +202,8 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "planning.cache.read",
         "implemented",
         "read",
-        "Local sync snapshot",
-        "local JSON",
+        "Local sync and work-item snapshots",
+        "local JSON + SQLite",
         "No GitLab permission; use --cached explicitly",
       ),
       capability(

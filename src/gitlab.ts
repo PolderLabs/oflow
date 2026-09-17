@@ -102,6 +102,17 @@ export class GitLabClient {
     return project as GitLabProject;
   }
 
+  async getCurrentUser(): Promise<GitLabUser> {
+    const user = await this.request<unknown>("/user");
+    if (!isRecord(user) || typeof user.id !== "number" || typeof user.username !== "string") {
+      throw new OflowError(
+        "GitLab API returned an invalid current-user response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return user as GitLabUser;
+  }
+
   async getIssue(projectPath: string, iid: number): Promise<GitLabIssue> {
     return this.request<GitLabIssue>(
       "/projects/" +

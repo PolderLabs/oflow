@@ -145,6 +145,13 @@ export interface GitLabUser {
   [key: string]: unknown;
 }
 
+export interface LocalWorkCacheQuery {
+  state: IssueState;
+  issueLimit: number;
+  issueFilters: GitLabIssueFilters;
+  mine: boolean;
+}
+
 export interface GitLabNoteCreate {
   body: string;
 }

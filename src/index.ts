@@ -19,6 +19,8 @@ export * from "./glab.js";
 export * from "./install.js";
 export * from "./plan.js";
 export * from "./sync.js";
+export * from "./sqlite.js";
+export * from "./work-cache.js";
 export * from "./state.js";
 export * from "./templates.js";
 export * from "./types.js";

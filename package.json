@@ -17,9 +17,6 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "prepublishOnly": "npm run build"
   },
-  "engines": {
-    "node": ">=20"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/PolderLabsVOF/agent-workflow.git"
@@ -28,6 +25,9 @@
     "url": "https://github.com/PolderLabsVOF/agent-workflow/issues"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.2"

@@ -42,6 +42,28 @@ test("lists project work items by state", async () => {
   }
 });
 
+test("reads the authenticated GitLab user", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  globalThis.fetch = async (input) => {
+    requestUrl = String(input);
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ id: 7, username: "zakar", name: "Zakar" }),
+    };
+  };
+  try {
+    const user = await new GitLabClient("gitlab.example.test", "test-token")
+      .getCurrentUser();
+    assert.deepEqual(user, { id: 7, username: "zakar", name: "Zakar" });
+    assert.equal(requestUrl, "https://gitlab.example.test/api/v4/user");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("reports GitLab pagination headers without fetching another page", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";

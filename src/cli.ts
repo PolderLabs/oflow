@@ -30,7 +30,8 @@ import {
   formatContextMarkdown,
   formatMergeRequestMarkdown,
   formatMergeRequestTemplate,
-  formatWorkItemsMarkdown,
+  formatWorkItemSummariesMarkdown,
+  getCurrentGitLabUser,
   loadMergeRequest,
   listWorkItemsPage,
   loadStoryContext,
@@ -71,6 +72,7 @@ import {
   syncProject,
 } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
+import { readWorkItemsCache, saveWorkItemsCache } from "./work-cache.js";
 import type {
   GitLabIssueFilters,
   GitLabIssueUpdate,
@@ -132,6 +134,7 @@ interface CliOptions {
   position?: string;
   iid?: string;
   full: boolean;
+  mine: boolean;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -185,29 +188,100 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "work": {
+        if (options.mine && options.assignee !== undefined) {
+          throw new OflowError(
+            "Use either --mine or --assignee, not both.",
+            "CONFLICTING_WORK_ASSIGNEE_FILTERS",
+          );
+        }
         const state = normalizeIssueState(options.state);
         const filters = collectIssueFilters(options);
         const limit = parseIssueLimit(options.limit, 100);
-        const issuePage = await listWorkItemsPage(
-          root,
+        const cacheQuery = {
           state,
-          filters,
-          limit,
-        );
-        const issues = issuePage.items;
+          issueLimit: limit,
+          issueFilters: filters,
+          mine: options.mine,
+        };
+        const remote = await getGitLabRemote(root);
+        if (options.cached) {
+          const cached = await readWorkItemsCache({
+            root,
+            host: remote.host,
+            projectPath: remote.projectPath,
+            query: cacheQuery,
+          });
+          const displayFilters = options.mine && cached.cache.actorUsername
+            ? { ...filters, assignee: cached.cache.actorUsername }
+            : filters;
+          print(
+            options.json,
+            {
+              state,
+              issues: cached.items,
+              query: { state, issueLimit: limit, issueFilters: displayFilters, mine: options.mine },
+              workItemsMayBeTruncated: cached.workItemsMayBeTruncated,
+              pagination: cached.pagination,
+              cache: cached.cache,
+              warnings: [],
+            },
+            formatWorkItemSummariesMarkdown(cached.items, state, {
+              issueLimit: limit,
+              issueFilters: displayFilters,
+              mayBeTruncated: cached.workItemsMayBeTruncated,
+              cache: cached.cache,
+            }),
+          );
+          return 0;
+        }
+
+        let effectiveFilters = filters;
+        let actorUsername: string | null = null;
+        if (options.mine) {
+          actorUsername = (await getCurrentGitLabUser(root)).username;
+          effectiveFilters = { ...filters, assignee: actorUsername };
+        }
+        const issuePage = await listWorkItemsPage(root, state, effectiveFilters, limit);
+        const items = compactWorkItems(issuePage.items);
+        const warnings: string[] = [];
+        let savedAt = new Date().toISOString();
+        try {
+          const saved = await saveWorkItemsCache({
+            root,
+            host: remote.host,
+            projectPath: remote.projectPath,
+            query: cacheQuery,
+            actorUsername,
+            items,
+            pagination: issuePage.pagination,
+          });
+          savedAt = saved.savedAt;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          warnings.push("Could not save local SQLite work cache: " + message);
+        }
+        const cache = {
+          source: "remote" as const,
+          savedAt,
+          ageSeconds: 0,
+          actorUsername,
+        };
         print(
           options.json,
           {
             state,
-            issues: compactWorkItems(issues),
-            query: { state, issueLimit: limit, issueFilters: filters },
+            issues: items,
+            query: { state, issueLimit: limit, issueFilters: effectiveFilters, mine: options.mine },
             workItemsMayBeTruncated: issuePage.pagination.hasNextPage,
             pagination: issuePage.pagination,
+            cache,
+            warnings,
           },
-          formatWorkItemsMarkdown(issues, state, {
+          formatWorkItemSummariesMarkdown(items, state, {
             issueLimit: limit,
-            issueFilters: filters,
+            issueFilters: effectiveFilters,
             mayBeTruncated: issuePage.pagination.hasNextPage,
+            cache,
           }),
         );
         return 0;
@@ -729,6 +803,7 @@ function parseArgs(argv: string[]): CliOptions {
     refresh: false,
     summary: false,
     full: false,
+    mine: false,
   };
 
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
@@ -776,6 +851,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.refresh = true;
     } else if (argument === "--summary") {
       options.summary = true;
+    } else if (argument === "--mine") {
+      options.mine = true;
     } else if (
       argument === "--story" ||
       argument === "--stories" ||
@@ -995,10 +1072,16 @@ function parseArgs(argv: string[]): CliOptions {
       throw new OflowError("Unknown option " + argument + ".", "UNKNOWN_OPTION");
     }
   }
-  if ((options.cached || options.refresh) && options.command !== "sync") {
+  if ((options.cached || options.refresh) && options.command !== "sync" && options.command !== "work") {
     throw new OflowError(
-      "--cached and --refresh are only supported with sync.",
+      "--cached and --refresh are only supported with sync and work.",
       "INVALID_SYNC_CACHE_OPTION",
+    );
+  }
+  if (options.mine && options.command !== "work") {
+    throw new OflowError(
+      "--mine is only supported with work.",
+      "INVALID_MINE_OPTION",
     );
   }
   if (options.cached && options.refresh) {
@@ -1417,10 +1500,12 @@ function helpText(): string {
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
     "  --stories 1,2 use with plan issues labels/update for bounded bulk changes",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
-    "  filters: --label, --milestone, --iteration, --epic, --assignee, --author, --search, --updated-after, --updated-before, --limit 1..100",
+    "  filters: --label, --milestone, --iteration, --epic, --assignee, --mine, --author, --search, --updated-after, --updated-before, --limit 1..100",
     "  sync --stale-days <n>  add an advisory stale-work-item finding without extra API calls",
     "  sync --cached  read the matching local snapshot without GitLab access",
     "  sync --refresh  explicitly refresh the remote snapshot and local cache",
+    "  work --mine --refresh  refresh work items assigned to the authenticated user",
+    "  work --mine --cached   read assigned work items from local SQLite cache",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",
     "  iteration --group  read the parent-group sprint schedule (requires group access)",
     "  cadence             inspect group sprint scheduling (read-only GraphQL)",

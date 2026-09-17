@@ -10,6 +10,7 @@ import type {
   GitLabMergeRequest,
   GitLabNote,
   GitLabPipeline,
+  GitLabUser,
   IssueState,
   StoryContext,
 } from "./types.js";
@@ -39,6 +40,19 @@ export async function listWorkItemsPage(
 
   const remote = await getGitLabRemote(root);
   return new GitLabClient(remote.host).listIssuesPage(remote.projectPath, state, limit, filters);
+}
+
+export async function getCurrentGitLabUser(root: string): Promise<GitLabUser> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+
+  const remote = await getGitLabRemote(root);
+  return new GitLabClient(remote.host).getCurrentUser();
 }
 
 export async function loadMergeRequest(
@@ -184,10 +198,23 @@ export interface WorkItemsDisplayOptions {
   issueLimit: number;
   issueFilters: GitLabIssueFilters;
   mayBeTruncated: boolean;
+  cache?: {
+    source: "remote" | "sqlite";
+    ageSeconds: number;
+    actorUsername: string | null;
+  };
 }
 
 export function formatWorkItemsMarkdown(
   issues: GitLabIssue[],
+  state: IssueState,
+  options?: WorkItemsDisplayOptions,
+): string {
+  return formatWorkItemSummariesMarkdown(compactWorkItems(issues), state, options);
+}
+
+export function formatWorkItemSummariesMarkdown(
+  items: WorkItemSummary[],
   state: IssueState,
   options?: WorkItemsDisplayOptions,
 ): string {
@@ -197,38 +224,41 @@ export function formatWorkItemsMarkdown(
       (formatIssueFilters(options.issueFilters) || "")
     : "";
   const count = options?.mayBeTruncated
-    ? "Count: " + String(issues.length) + " (more may exist)"
-    : "Count: " + String(issues.length);
+    ? "Count: " + String(items.length) + " (more may exist)"
+    : "Count: " + String(items.length);
   const lines = [
     "# oflow work",
     "",
     "State: " + state,
     query,
+    options?.cache
+      ? "Source: " + (options.cache.source === "sqlite" ? "local SQLite cache" : "GitLab REST") +
+        "; age " + formatCacheAge(options.cache.ageSeconds) +
+        (options.cache.actorUsername ? "; user " + options.cache.actorUsername : "")
+      : "",
     count,
     "",
   ];
-  if (issues.length === 0) {
+  if (items.length === 0) {
     lines.push("_No work items found._");
   } else {
     lines.push(
-      ...issues.map((issue) => {
-        const title = issue.web_url
-          ? "[" + oneLine(issue.title) + "](" + issue.web_url + ")"
-          : oneLine(issue.title);
-        const labels = issue.labels && issue.labels.length > 0
-          ? " · " + issue.labels.join(", ")
+      ...items.map((item) => {
+        const title = item.webUrl
+          ? "[" + oneLine(item.title) + "](" + item.webUrl + ")"
+          : oneLine(item.title);
+        const labels = item.labels.length > 0
+          ? " · " + item.labels.join(", ")
           : "";
-        const assignees = usernamesFrom(issue.assignees);
-        const progress = compactTaskCompletion(issue.task_completion_status);
         const details = [
-          issue.labels?.length ? issue.labels.join(", ") : "",
-          assignees.length > 0 ? "assignee: " + assignees.join(", ") : "",
-          namedValue(issue.milestone) ? "milestone: " + namedValue(issue.milestone) : "",
-          namedValue(issue.iteration) ? "iteration: " + namedValue(issue.iteration) : "",
-          progress ? "tasks: " + String(progress.completed) + "/" + String(progress.total) : "",
-          issue.weight !== null && issue.weight !== undefined ? "weight: " + String(issue.weight) : "",
+          labels.trim() ? labels.trim().replace(/^·\s*/, "") : "",
+          item.assignees.length > 0 ? "assignee: " + item.assignees.join(", ") : "",
+          item.milestone ? "milestone: " + item.milestone : "",
+          item.iteration ? "iteration: " + item.iteration : "",
+          item.taskCompletion ? "tasks: " + String(item.taskCompletion.completed) + "/" + String(item.taskCompletion.total) : "",
+          item.weight !== null ? "weight: " + String(item.weight) : "",
         ].filter(Boolean);
-        return "- #" + issue.iid + " " + title +
+        return "- #" + item.iid + " " + title +
           (details.length > 0 ? " · " + details.join(" · ") : "");
       }),
     );
@@ -239,6 +269,19 @@ export function formatWorkItemsMarkdown(
     "",
   );
   return lines.join("\n");
+}
+
+function formatCacheAge(seconds: number): string {
+  if (seconds < 60) {
+    return String(seconds) + "s";
+  }
+  if (seconds < 3600) {
+    return String(Math.floor(seconds / 60)) + "m";
+  }
+  if (seconds < 86400) {
+    return String(Math.floor(seconds / 3600)) + "h";
+  }
+  return String(Math.floor(seconds / 86400)) + "d";
 }
 
 function formatIssueFilters(filters: GitLabIssueFilters): string {
