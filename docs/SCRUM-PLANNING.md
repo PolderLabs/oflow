@@ -223,7 +223,7 @@ oflow plan issue create \
   --title "Reserve a pod" \
   --description "Acceptance criteria:\n- [ ] AC-1: Reservation persists" \
   --labels "User Story,Ready" \
-  --assignee zakar \
+  --assignee developer \
   --milestone "Sprint 5" \
   --due-date 2027-01-20 \
   --weight 3
@@ -231,7 +231,7 @@ oflow plan issue update --story <iid> \
   --title "Updated title" \
   --labels "Ready,backend" \
   --epic 12 \
-  --assignee zakar \
+  --assignee developer \
   --due-date 2027-01-20 \
   --weight 3 \
   --state closed
@@ -241,7 +241,7 @@ oflow plan issue update --story <iid> --iteration "Sprint 2"
 oflow plan issues labels --stories <iid>,<iid>,<iid> \
   --add-labels "Ready" --remove-labels "In Progress"
 oflow plan issues update --stories <iid>,<iid>,<iid> \
-  --milestone "Sprint 1" --assignee zakar
+  --milestone "Sprint 1" --assignee developer
 oflow plan issue note --story <iid> \
   --body "Progress: API contract confirmed."
 oflow plan label create --name "Ready" --color "#428BCA" \
@@ -460,13 +460,18 @@ decision record.
 
 ## Token requirements
 
-For the Scrum planning surface, start with a fine-grained personal token scoped
-to the NestPod project and, when required, its parent group:
+For the Scrum planning surface, prefer a fine-grained personal token scoped to
+the target project and, when required, its parent group:
 
 - `Project`: `Read`
-- `Group`: `Read`
-- `Work Item`: `Read`, `Create`, `Update`
-- `Label`: `Read`, `Create`, `Update`
+- `User`: `Read` for `work --mine`
+- `Work Item`: `Read`; add `Create` and `Update` for guarded planning writes
+- `Label`: `Read`; add `Create` and `Update` for guarded label administration
+- `Merge Request`: `Read` for related MR context
+- `Pipeline`: `Read` for verification evidence
+
+Add `Group: Read` and group-level `Work Item: Read` only when group epics,
+iterations, or cadence data are required.
 
 Group epic reads additionally need access to the parent group and its Work Item
 resources. If `oflow sync --epics` reports that the group is unavailable, the
@@ -475,9 +480,13 @@ project token can still support all project-scoped reads; add the parent-group
 needed.
 
 Do not grant `Delete` until deletion is deliberately implemented and tested.
-Merge requests, pipelines, releases, repository writes, security, CI/CD
-administration, secrets, runners, webhooks, integrations, and user/group
-membership are later roadmap areas, not prerequisites for Scrum planning.
+Repository writes, releases, security, CI/CD administration, secrets, runners,
+webhooks, integrations, and user/group membership are not prerequisites for
+Scrum planning. If fine-grained tokens are unavailable, use legacy `read_api`
+for read-only work and reserve broad `api` for guarded writes; set an expiry
+and rotate it regularly. A project token is suitable for project-only
+automation, but a personal token is preferable when `work --mine` must resolve
+a human user.
 
 Token permissions do not replace the GitLab user's actual group/project role.
 Fine-grained permission mappings are maintained in the [GitLab REST API

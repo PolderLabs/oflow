@@ -115,6 +115,50 @@ export GITLAB_TOKEN=glpat-...
 `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, and `GITLAB_PRIVATE_TOKEN` are supported;
 environment variables take precedence over stored credentials.
 
+### Choose the smallest useful token scope
+
+Prefer a **fine-grained personal access token** when your GitLab installation
+offers it. Limit the token to the project (or group) the agent actually needs,
+set an expiry date, and grant only the resources and permissions below. The
+token can never grant more than the GitLab user's existing project or group
+role.
+
+For the current Scrum/planning features, use this project-level starter set:
+
+| Resource | Permission | Why it is needed |
+| --- | --- | --- |
+| `Project` | `Read` | Resolve the remote project and its metadata. |
+| `User` | `Read` | Resolve the authenticated user for `work --mine`. |
+| `Work Item` | `Read` | Read issues, notes, milestones, iterations, and planning state. |
+| `Work Item` | `Create`, `Update` | Use the guarded issue, note, owner, iteration, and planning writes. |
+| `Label` | `Read` | Read board labels and work-item labels. |
+| `Label` | `Create`, `Update` | Manage labels through an approved plan when needed. |
+| `Merge Request` | `Read` | Include related MR status in story context and verification. |
+| `Pipeline` | `Read` | Check pipeline evidence during story verification. |
+
+Add these only when the workflow needs group-level planning data:
+
+- `Group: Read` at the relevant group boundary.
+- `Work Item: Read` at that group boundary for group epics, iterations, or
+  cadence reads.
+
+Do **not** enable delete permissions, global permissions, repository push,
+variables, runners, deployments, security administration, secrets, webhooks,
+membership management, or unrelated CI/CD resources for oflow. The current
+CLI does not push source code, and all supported remote writes still require
+`plan → approve → apply → verify`.
+
+If fine-grained tokens are unavailable on your GitLab version, use a legacy
+personal access token with `read_api` for read-only usage. `api` enables broad
+read/write API access and should be a fallback for guarded writes only; use a
+short expiry and rotate it. `read_user` alone is not enough for planning data.
+A project access token is appropriate for a project-only automation identity,
+but a personal token is the better choice when `work --mine` must identify a
+human user. See GitLab's [access token scopes](https://docs.gitlab.com/security/tokens/access_token_scopes/),
+[fine-grained token guide](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens/),
+and [REST permission table](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_rest/)
+for the version-specific mapping.
+
 ### 3. Give agents the low-token daily flow
 
 The generated workflow contract hands agents this policy automatically:
@@ -180,25 +224,28 @@ The ownership model is deliberate:
 See [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the full
 backend, authentication, security, and MCP decision record.
 
-### Optional GitLab MCP for NestPod
+### Optional GitLab MCP
 
 MCP configuration belongs in the agent's user-level settings, not in the
-repository. For the NestPod self-managed GitLab instance, the endpoint is:
+repository. A self-managed GitLab instance may expose an endpoint like this:
 
 ```json
 {
   "mcpServers": {
     "GitLab": {
       "type": "http",
-      "url": "https://gitlab.fdmci.hva.nl/api/v4/mcp"
+      "url": "https://gitlab.example.com/api/v4/mcp"
     }
   }
 }
 ```
 
 The MCP client handles its own authorization. Do not copy the oflow token into
-MCP configuration. The instance administrator must allow MCP access, and MCP
-availability does not replace oflow's local contract or write safeguards.
+repository files or commit MCP configuration. MCP availability depends on the
+GitLab instance, administrator settings, and agent runtime; it does not replace
+oflow's local contract or write safeguards. See
+[`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the boundary
+between REST, `glab`, and MCP.
 
 ## The local read model
 

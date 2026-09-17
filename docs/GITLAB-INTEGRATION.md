@@ -1,8 +1,8 @@
 # GitLab integration strategy
 
-This document records how `oflow` should connect to GitLab, especially the
-self-managed NestPod instance at `gitlab.fdmci.hva.nl`. It is the decision
-record for REST, `glab`, and MCP integrations.
+This document records how `oflow` connects to GitLab.com and GitLab
+Self-Managed/Dedicated installations. It is the decision record for REST,
+`glab`, and MCP integrations.
 
 ## Decision
 
@@ -70,7 +70,7 @@ That gives us two valid local setups:
 ### Recommended now: `oflow` owns the PAT
 
 ```bash
-cd /path/to/nestpod-repo
+cd /path/to/your-gitlab-repository
 oflow auth login
 oflow doctor --check-api
 ```
@@ -84,8 +84,8 @@ agent instruction file, `.env` committed to Git, or a command-line argument.
 If a user wants to use `glab` directly, they may authenticate it separately:
 
 ```bash
-glab auth login --hostname gitlab.fdmci.hva.nl --stdin < token.txt
-glab auth status --hostname gitlab.fdmci.hva.nl
+glab auth login --hostname gitlab.example.com --stdin < token.txt
+glab auth status --hostname gitlab.example.com
 ```
 
 The token file should be temporary and protected; never commit it. `glab`
@@ -201,6 +201,54 @@ the [fine-grained token documentation](https://docs.gitlab.com/auth/tokens/fine_
 the [REST permission mapping](https://docs.gitlab.com/auth/tokens/fine_grained_access_tokens_rest/),
 and the [REST authentication documentation](https://docs.gitlab.com/api/rest/authentication/).
 
+## Token setup and least privilege
+
+For an interactive agent working on one project, the preferred setup is a
+fine-grained personal access token with a project boundary and an expiry date.
+Use this starter profile:
+
+| Resource | Permission | Use |
+| --- | --- | --- |
+| `Project` | `Read` | Resolve project identity and metadata. |
+| `User` | `Read` | Resolve the authenticated user for `work --mine`. |
+| `Work Item` | `Read` | Read issues, notes, milestones, iterations, and planning data. |
+| `Work Item` | `Create`, `Update` | Enable oflow's guarded planning writes. |
+| `Label` | `Read` | Read labels and label-backed board state. |
+| `Label` | `Create`, `Update` | Enable guarded label administration when needed. |
+| `Merge Request` | `Read` | Read related merge-request status. |
+| `Pipeline` | `Read` | Read pipeline evidence for verification. |
+
+Use a group boundary only for capabilities that actually need it. Add
+`Group: Read` and group-level `Work Item: Read` for group epics, iterations,
+or cadence reads. Do not enable `Delete`, global permissions, repository push,
+CI/CD administration, secrets, runners, deployments, security administration,
+webhooks, integrations, or membership management for the current oflow
+surface. `oflow` does not push source code, and remote writes remain behind
+`plan -> approve -> apply -> verify`.
+
+If fine-grained tokens are not available on the target GitLab instance, use a
+legacy personal access token with `read_api` for read-only commands. Use the
+broad `api` scope only when guarded writes are required and fine-grained
+permissions cannot be used; set a short expiry and rotate it. `read_user`
+alone cannot read project planning data. A project access token is suitable
+for project-only automation, while a personal token is preferable when
+`work --mine` must resolve a human user's assignments. Token permissions never
+exceed the GitLab user's role.
+
+Connect without putting credentials in a repository:
+
+```bash
+cd /path/to/your-gitlab-repository
+oflow install
+oflow auth login                         # uses the remote host when detected
+oflow auth login --host gitlab.example.com # explicit host when needed
+oflow doctor --check-api                 # read-only connectivity check
+```
+
+`oflow` stores host-specific credentials outside the repository. For CI or
+other automation, prefer an environment variable or protected stdin input;
+never pass a token as a command-line argument or commit it to a file.
+
 ## How MCP fits
 
 MCP is a tool-delivery mechanism for an agent, not a replacement for the
@@ -217,10 +265,10 @@ Either way:
   verify` policy;
 - prompt-injection and untrusted GitLab content remain agent safety concerns.
 
-For NestPod, the hosted server URL is:
+For a self-managed GitLab instance, the hosted server URL follows this pattern:
 
 ```text
-https://gitlab.fdmci.hva.nl/api/v4/mcp
+https://gitlab.example.com/api/v4/mcp
 ```
 
 Whether that URL is available depends on the GitLab instance configuration and
@@ -268,12 +316,12 @@ Every capability must expose:
    request writes, pipelines, releases, security, and other GitLab product
    families later, each with separate permissions and tests.
 
-## Current recommendation for NestPod
+## Current recommendation for a planning-focused project
 
 Use the PAT already configured with `oflow` and the direct REST commands today:
 
 ```bash
-cd /home/zakar/projects/09-nestpod-modulaire-priveruimtes
+cd /path/to/your-gitlab-repository
 oflow doctor --check-api
 oflow work --state opened
 oflow iteration --state current --json

@@ -85,7 +85,7 @@ test("issue update plans require approval and verify the applied result", async 
           epic: body.has("epic_id") && Number(body.get("epic_id")) > 0
             ? { id: Number(body.get("epic_id")), iid: 9, title: "Product epic" }
             : null,
-          assignees: body.getAll("assignee_ids[]").filter(Boolean).map((id) => ({ id: Number(id), username: Number(id) === 6 ? "alice" : "zakar" })),
+          assignees: body.getAll("assignee_ids[]").filter(Boolean).map((id) => ({ id: Number(id), username: Number(id) === 6 ? "alice" : "test-user" })),
         };
       }
       if (url.pathname === "/api/v4/users") {
@@ -96,7 +96,7 @@ test("issue update plans require approval and verify the applied result", async 
           headers: new Headers(),
           text: async () => JSON.stringify(username === "alice"
             ? [{ id: 6, username: "alice", name: "Alice" }]
-            : [{ id: 5, username: "zakar", name: "Zakar" }]),
+            : [{ id: 5, username: "test-user", name: "Test User" }]),
         };
       }
       return {
@@ -114,7 +114,7 @@ test("issue update plans require approval and verify the applied result", async 
       weight: 3,
       epic_id: 12,
       state_event: "close",
-    }, "zakar,alice", {
+    }, "test-user,alice", {
       generatedAt: "2026-01-01T00:00:00.000Z",
       status: "in-progress",
       recommendations: ["Assign an owner or explicitly confirm why the story is unassigned."],
@@ -702,7 +702,7 @@ test("issue create plans stay guarded and verify the created work item", async (
       const url = new URL(String(input));
       const method = init?.method ?? "GET";
       if (url.pathname === "/api/v4/users") {
-        return response([{ id: 5, username: "zakar", name: "Zakar" }]);
+        return response([{ id: 5, username: "test-user", name: "Test User" }]);
       }
       if (url.pathname === "/api/v4/projects/team%2Fproject" && method === "GET") {
         return response({ id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project" });
@@ -720,7 +720,7 @@ test("issue create plans stay guarded and verify the created work item", async (
             : null,
           due_date: body.get("due_date"),
           weight: Number(body.get("weight")),
-          assignees: body.getAll("assignee_ids[]").map((id) => ({ id: Number(id), username: "zakar" })),
+          assignees: body.getAll("assignee_ids[]").map((id) => ({ id: Number(id), username: "test-user" })),
           state: "opened",
           web_url: "https://gitlab.example.test/team/project/-/issues/77",
         };
@@ -740,7 +740,7 @@ test("issue create plans stay guarded and verify the created work item", async (
       epic_id: 12,
       due_date: "2027-01-20",
       weight: 3,
-    }, "zakar");
+    }, "test-user");
     assert.equal(created.plan.state, "draft");
     assert.equal(created.plan.operation.kind, "issue.create");
     assert.deepEqual(created.plan.operation.issue.assignee_ids, [5]);

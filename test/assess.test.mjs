@@ -141,7 +141,7 @@ test("assess does not use an unrelated successful branch pipeline", async () => 
           description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod",
           state: "opened",
           labels: ["User Story"],
-          assignees: [{ username: "zakar" }],
+          assignees: [{ username: "test-user" }],
           milestone: { title: "Sprint 1" },
           sha: undefined,
           web_url: "https://gitlab.example.test/team/project/-/issues/1",

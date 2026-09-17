@@ -98,12 +98,12 @@ test("work --mine refreshes once and can then be read from SQLite offline", asyn
           ok: true,
           status: 200,
           headers: new Headers(),
-          text: async () => JSON.stringify({ id: 7, username: "zakar" }),
+          text: async () => JSON.stringify({ id: 7, username: "test-user" }),
         };
       }
       if (url.pathname.endsWith("/issues")) {
         issueRequests += 1;
-        assert.equal(url.searchParams.get("assignee_username[]"), "zakar");
+        assert.equal(url.searchParams.get("assignee_username[]"), "test-user");
         return {
           ok: true,
           status: 200,
@@ -113,7 +113,7 @@ test("work --mine refreshes once and can then be read from SQLite offline", asyn
             title: "Verify the supported XLOCK integration path",
             state: "opened",
             labels: ["User Story"],
-            assignees: [{ username: "zakar" }],
+            assignees: [{ username: "test-user" }],
             updated_at: "2026-09-17T10:00:00Z",
             web_url: "https://gitlab.example.test/team/project/-/issues/23",
           }]),
@@ -128,7 +128,7 @@ test("work --mine refreshes once and can then be read from SQLite offline", asyn
       projectPath: "team/project",
       query: { state: "opened", issueLimit: 100, issueFilters: {}, mine: true },
     });
-    assert.equal(refreshed.cache.actorUsername, "zakar");
+    assert.equal(refreshed.cache.actorUsername, "test-user");
     assert.equal(refreshed.items[0].iid, 23);
 
     globalThis.fetch = async () => {
@@ -332,7 +332,7 @@ test("plan assess creates a guarded owner/timebox plan from a story assessment",
         ["/api/v4/projects/team%2Fproject/issues/42/notes", []],
         ["/api/v4/projects/team%2Fproject/issues/42/related_merge_requests", []],
         ["/api/v4/projects/team%2Fproject/pipelines", []],
-        ["/api/v4/users", [{ id: 6, username: "zakar", name: "Zakar" }]],
+        ["/api/v4/users", [{ id: 6, username: "test-user", name: "Test User" }]],
       ]);
       const response = responses.get(url.pathname);
       assert.ok(response, "unexpected request " + url.pathname);
@@ -360,7 +360,7 @@ test("plan assess creates a guarded owner/timebox plan from a story assessment",
       "--story",
       "42",
       "--assignee",
-      "zakar",
+      "test-user",
       "--milestone",
       "Sprint 1",
     ]);

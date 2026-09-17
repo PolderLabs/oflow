@@ -51,13 +51,13 @@ test("reads the authenticated GitLab user", async () => {
       ok: true,
       status: 200,
       headers: new Headers(),
-      text: async () => JSON.stringify({ id: 7, username: "zakar", name: "Zakar" }),
+      text: async () => JSON.stringify({ id: 7, username: "test-user", name: "Test User" }),
     };
   };
   try {
     const user = await new GitLabClient("gitlab.example.test", "test-token")
       .getCurrentUser();
-    assert.deepEqual(user, { id: 7, username: "zakar", name: "Zakar" });
+    assert.deepEqual(user, { id: 7, username: "test-user", name: "Test User" });
     assert.equal(requestUrl, "https://gitlab.example.test/api/v4/user");
   } finally {
     globalThis.fetch = originalFetch;
@@ -419,8 +419,8 @@ test("applies server-side work-item filters without downloading descriptions", a
         milestone: "Sprint 1",
         iteration: "none",
         epic: "12",
-        assignee: "zakar,alice",
-        author: "zakar",
+        assignee: "test-user,alice",
+        author: "test-user",
         search: "pod",
         updatedAfter: "2026-01-01T00:00:00Z",
         updatedBefore: "2026-02-01T00:00:00Z",
@@ -434,8 +434,8 @@ test("applies server-side work-item filters without downloading descriptions", a
     assert.equal(query.get("iteration_id"), "None");
     assert.equal(query.get("iteration_title"), null);
     assert.equal(query.get("epic_id"), "12");
-    assert.deepEqual(query.getAll("assignee_username[]"), ["zakar", "alice"]);
-    assert.equal(query.get("author_username"), "zakar");
+    assert.deepEqual(query.getAll("assignee_username[]"), ["test-user", "alice"]);
+    assert.equal(query.get("author_username"), "test-user");
     assert.equal(query.get("search"), "pod");
     assert.equal(query.get("updated_after"), "2026-01-01T00:00:00Z");
     assert.equal(query.get("updated_before"), "2026-02-01T00:00:00Z");

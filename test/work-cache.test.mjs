@@ -25,7 +25,7 @@ const item = {
   labels: ["User Story", "In Progress"],
   milestone: "Sprint 1",
   iteration: "Iteration 1",
-  assignees: ["zakar"],
+  assignees: ["test-user"],
   startDate: null,
   dueDate: null,
   weight: 3,
@@ -49,11 +49,11 @@ test("SQLite work cache preserves compact assigned work offline", async () => {
       host: "gitlab.example.test",
       projectPath: "team/project",
       query,
-      actorUsername: "zakar",
+      actorUsername: "test-user",
       items: [item],
       pagination,
     });
-    assert.equal(saved.actorUsername, "zakar");
+    assert.equal(saved.actorUsername, "test-user");
 
     const cached = await readWorkItemsCache({
       root,
@@ -62,7 +62,7 @@ test("SQLite work cache preserves compact assigned work offline", async () => {
       query,
     });
     assert.equal(cached.cache.source, "sqlite");
-    assert.equal(cached.cache.actorUsername, "zakar");
+    assert.equal(cached.cache.actorUsername, "test-user");
     assert.deepEqual(cached.items, [item]);
     assert.deepEqual(cached.pagination, pagination);
     assert.equal(cached.workItemsMayBeTruncated, false);
@@ -84,7 +84,7 @@ test("SQLite work cache refuses a different query instead of returning stale dat
         issueFilters: {},
         mine: true,
       },
-      actorUsername: "zakar",
+      actorUsername: "test-user",
       items: [item],
       pagination,
     });
