@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { OflowError } from "./errors.js";
 import { exists } from "./fs.js";
 
-export const LOCAL_DATABASE_VERSION = 1;
+export const LOCAL_DATABASE_VERSION = 2;
 export const LOCAL_DATABASE_RELATIVE_PATH = ".oflow/cache/oflow.db";
 
 export interface LocalDatabaseOptions {
@@ -169,6 +169,102 @@ function migrate(database: DatabaseSync): void {
       );
 
       INSERT INTO oflow_meta(key, value) VALUES ('schema_version', '1')
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+    `);
+  }
+
+  if (version < 2) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS merge_requests (
+        project_key TEXT NOT NULL,
+        iid INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        state TEXT,
+        draft INTEGER NOT NULL,
+        source_branch TEXT,
+        target_branch TEXT,
+        updated_at TEXT,
+        web_url TEXT,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(project_key, iid),
+        FOREIGN KEY(project_key) REFERENCES projects(project_key) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS merge_requests_state_idx
+        ON merge_requests(project_key, state, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS pipelines (
+        project_key TEXT NOT NULL,
+        pipeline_id INTEGER NOT NULL,
+        status TEXT,
+        ref TEXT,
+        sha TEXT,
+        updated_at TEXT,
+        web_url TEXT,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(project_key, pipeline_id),
+        FOREIGN KEY(project_key) REFERENCES projects(project_key) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS pipelines_status_idx
+        ON pipelines(project_key, status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS labels (
+        project_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT,
+        open_issues INTEGER,
+        closed_issues INTEGER,
+        open_merge_requests INTEGER,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(project_key, name),
+        FOREIGN KEY(project_key) REFERENCES projects(project_key) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS milestones (
+        project_key TEXT NOT NULL,
+        iid INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        state TEXT,
+        start_date TEXT,
+        due_date TEXT,
+        web_url TEXT,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(project_key, iid),
+        FOREIGN KEY(project_key) REFERENCES projects(project_key) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS iterations (
+        project_key TEXT NOT NULL,
+        iid INTEGER NOT NULL,
+        title TEXT,
+        state TEXT,
+        start_date TEXT,
+        due_date TEXT,
+        web_url TEXT,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY(project_key, iid),
+        FOREIGN KEY(project_key) REFERENCES projects(project_key) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS iterations_state_idx
+        ON iterations(project_key, state, start_date, due_date);
+
+      CREATE TABLE IF NOT EXISTS sync_snapshots (
+        snapshot_id TEXT PRIMARY KEY,
+        project_key TEXT NOT NULL,
+        generated_at TEXT NOT NULL,
+        saved_at TEXT NOT NULL,
+        source TEXT NOT NULL,
+        branch TEXT,
+        query_json TEXT NOT NULL,
+        stats_json TEXT NOT NULL,
+        planning_health_json TEXT NOT NULL,
+        warnings_json TEXT NOT NULL,
+        snapshot_json TEXT NOT NULL,
+        FOREIGN KEY(project_key) REFERENCES projects(project_key) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS sync_snapshots_project_idx
+        ON sync_snapshots(project_key, generated_at DESC);
+
+      INSERT INTO oflow_meta(key, value) VALUES ('schema_version', '2')
         ON CONFLICT(key) DO UPDATE SET value = excluded.value;
     `);
   }

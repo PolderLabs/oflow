@@ -60,6 +60,8 @@ remote changes follow plan → approve → apply → verify
 | **Safe writes** | Issues, notes, labels, milestones, boards, board lists, and bounded owner/timebox/iteration changes. |
 | **Evidence verification** | MR acceptance evidence and matching successful pipeline checks, including head-SHA validation when available. |
 | **Auditability** | Local plan artifacts and lifecycle audit records without storing tokens or full sensitive payloads. |
+| **Local cockpit** | Loopback-only read-only dashboard over SQLite, with sync history and explicit refresh requests. |
+| **Agent portability** | Shared CLI JSON contract plus optional GitHub Copilot/VS Code instructions. |
 
 ## Quick start
 
@@ -84,6 +86,8 @@ project from `origin`, and creates or updates only the project-local contract:
   WORKFLOW.md                 # shared agent contract
   README.md                   # local operating notes
   templates/merge-request.md  # acceptance-aware MR template
+.github/
+  copilot-instructions.md     # GitHub Copilot / VS Code handoff
 AGENTS.md                     # managed Codex instructions
 CLAUDE.md                     # managed Claude instructions
 ```
@@ -186,6 +190,9 @@ oflow verify --plan .oflow/state/plans/<plan-id>.json
 # After applying: converge the local read model again.
 oflow work --mine --refresh --json
 oflow sync --summary --refresh --json
+
+# Optional human view; this never contacts GitLab from the browser.
+oflow dashboard
 ```
 
 If refresh fails, agents may continue local analysis but must not apply a
@@ -265,6 +272,23 @@ truth:
 This gives agents a useful split: refresh deliberately at session boundaries
 and mutation boundaries, then use cheap local reads while exploring and coding.
 
+### Local planning dashboard
+
+After a successful sync, run:
+
+```bash
+oflow dashboard
+# open http://127.0.0.1:4173/
+```
+
+The dashboard displays the latest SQLite snapshot, work items, merge requests,
+pipelines, iterations, planning collections, and recent sync history. It binds
+to `127.0.0.1` only, exposes no GitLab API or credentials, and has no write
+controls for GitLab. **Reload local view** only re-reads SQLite. **Request
+sync** records a local request and tells you to run `oflow sync --refresh`; the
+CLI remains the explicit network boundary. Use `--port 0` in integrations that
+need an available ephemeral port.
+
 ## Command map
 
 ### Read and understand
@@ -288,6 +312,8 @@ oflow mr --iid 8 --full              # include MR description
 oflow verify --story 42              # acceptance + pipeline verification
 oflow capabilities --json            # implemented/planned/optional paths
 oflow audit --json                   # local plan lifecycle history
+oflow cache status --json             # local cache age/schema/invalidation
+oflow dashboard                     # local read-only planning cockpit
 ```
 
 Use server-side filters to keep responses small:
@@ -335,8 +361,9 @@ resumed safely.
 | Merge-request and pipeline reads | ✅ | Compact status and verification evidence |
 | `glab` fallback | ◐ Optional | Explicit GET-only diagnostics and unwrapped reads |
 | GitLab MCP | ◐ Optional | Agent-facing companion; not required by oflow |
+| Local planning dashboard | ✅ | SQLite-backed, loopback-only, credential-free browser view |
+| Copilot / VS Code handoff | ✅ | `.github/copilot-instructions.md` plus shared CLI JSON contract |
 | Merge-request writes | ◌ Planned | Deliberately later in the roadmap |
-| Local planning dashboard | ◌ Next | Loopback-only UI over the SQLite read model |
 
 ## Roadmap
 
@@ -346,20 +373,15 @@ resumed safely.
 - Host-aware token storage outside repositories.
 - Compact project sync for stories, labels, boards, milestones, iterations,
   merge requests, pipelines, and optional epics.
-- SQLite read model for assigned work and future local dashboard queries.
+- Versioned SQLite read model for assigned work, planning/delivery snapshots,
+  sync history, and future dashboard queries.
+- Loopback-only read-only planning dashboard with explicit CLI refresh boundary.
+- Provider-neutral agent handoff for Claude, Codex, GitHub Copilot, VS Code
+  agents, and other terminal-capable hosts.
 - Acceptance-aware story context, assessment, and verification.
 - Guarded issue, planning, label, milestone, board, and bounded bulk writes.
 
-### Next — local planning dashboard
-
-- Extend the SQLite model with merge-request, pipeline, iteration, and
-  sync-history snapshots.
-- Add cache status, age, invalidation, and migration diagnostics.
-- Build a loopback-only read-only dashboard for local project visibility.
-- Add explicit refresh controls without exposing GitLab credentials to the
-  dashboard or browser.
-
-### Later — delivery integration
+### Next — delivery integration
 
 - Merge-request lifecycle reads and writes with the same safety gates.
 - Richer pipeline and deployment evidence.
@@ -368,6 +390,8 @@ resumed safely.
 
 The detailed staged plan lives in [`docs/ROADMAP.md`](docs/ROADMAP.md), and the
 Scrum/planning contract lives in [`docs/SCRUM-PLANNING.md`](docs/SCRUM-PLANNING.md).
+The cross-agent boundary is documented in
+[`docs/AGENT-INTEGRATION.md`](docs/AGENT-INTEGRATION.md).
 
 ## Workflow contract
 

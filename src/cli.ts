@@ -38,6 +38,7 @@ import {
   selectVerificationEvidence,
 } from "./context.js";
 import { OflowError } from "./errors.js";
+import { startDashboard } from "./dashboard.js";
 import { formatDoctor, doctor } from "./doctor.js";
 import { getGitLabRemote, getRepoRoot } from "./git.js";
 import { glabApiGet } from "./glab.js";
@@ -72,6 +73,12 @@ import {
   syncProject,
 } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
+import {
+  formatReadModelStatusMarkdown,
+  markReadModelStale,
+  readReadModelStatus,
+  requestReadModelRefresh,
+} from "./read-model.js";
 import { readWorkItemsCache, saveWorkItemsCache } from "./work-cache.js";
 import type {
   GitLabIssueFilters,
@@ -86,6 +93,7 @@ import type {
 interface CliOptions {
   command: string;
   authAction?: string;
+  cacheAction?: string;
   glabAction?: string;
   glabEndpoint?: string;
   root: string;
@@ -133,6 +141,7 @@ interface CliOptions {
   list?: string;
   position?: string;
   iid?: string;
+  port?: string;
   full: boolean;
   mine: boolean;
 }
@@ -661,8 +670,54 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           );
         }
         const stored = await applyPlan(root, options.planPath);
+        await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
         print(options.json, stored, formatPlanMarkdown(stored));
         return 0;
+      }
+      case "dashboard": {
+        if (options.cached || options.refresh) {
+          throw new OflowError(
+            "dashboard is local-only; use `oflow sync --refresh` in the CLI to refresh GitLab data.",
+            "INVALID_DASHBOARD_OPTION",
+          );
+        }
+        const dashboard = await startDashboard(root, {
+          port: options.port === undefined ? undefined : parseDashboardPort(options.port),
+        });
+        process.stdout.write(
+          "oflow dashboard listening at " + dashboard.url + "\n" +
+          "Local-only read model; press Ctrl-C to stop.\n",
+        );
+        await waitForDashboardShutdown(dashboard.close);
+        return 0;
+      }
+      case "cache": {
+        const action = options.cacheAction ?? "status";
+        if (action === "status") {
+          const result = await readReadModelStatus(root);
+          print(options.json, result, formatReadModelStatusMarkdown(result));
+          return result.state === "invalid" || result.state === "unsupported" ||
+            result.state === "migration-required" ? 1 : 0;
+        }
+        if (action === "request-refresh") {
+          const accepted = await requestReadModelRefresh(root, "cli");
+          print(
+            options.json,
+            {
+              accepted,
+              command: accepted ? "oflow sync --refresh" : null,
+              credentialsExposed: false,
+            },
+            accepted
+              ? "Refresh requested locally. Run `oflow sync --refresh` to contact GitLab.\n"
+              : "No local read model exists. Run `oflow sync --refresh` first.\n",
+          );
+          return 0;
+        }
+        throw new OflowError(
+          "Unknown cache action. Use status or request-refresh.",
+          "UNKNOWN_CACHE_ACTION",
+        );
       }
       case "doctor": {
         const result = await doctor(root, { checkApi: options.checkApi });
@@ -809,6 +864,9 @@ function parseArgs(argv: string[]): CliOptions {
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
     options.authAction = argv[1];
     firstOptionIndex = 2;
+  } else if (command === "cache" && argv[1] && !argv[1].startsWith("-")) {
+    options.cacheAction = argv[1];
+    firstOptionIndex = 2;
   } else if (command === "plan") {
     options.planResource = argv[1];
     if (argv[2] && !argv[2].startsWith("-")) {
@@ -887,6 +945,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--list" ||
       argument === "--position" ||
       argument === "--iid" ||
+      argument === "--port" ||
       argument === "--plan"
     ) {
       const value = argv[index + 1];
@@ -958,6 +1017,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.position = value;
       } else if (argument === "--iid") {
         options.iid = value;
+      } else if (argument === "--port") {
+        options.port = value;
       } else if (argument === "--plan") {
         options.planPath = value;
       } else {
@@ -1049,6 +1110,12 @@ function parseArgs(argv: string[]): CliOptions {
         throw new OflowError("--iid requires a value.", "MISSING_FLAG_VALUE");
       }
       options.iid = value;
+    } else if (argument.startsWith("--port=")) {
+      const value = argument.slice("--port=".length);
+      if (!value) {
+        throw new OflowError("--port requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.port = value;
     } else if (argument === "--full") {
       options.full = true;
     } else if (argument.startsWith("--plan=")) {
@@ -1090,11 +1157,46 @@ function parseArgs(argv: string[]): CliOptions {
       "CONFLICTING_SYNC_CACHE_OPTIONS",
     );
   }
+  if (options.port !== undefined && options.command !== "dashboard") {
+    throw new OflowError("--port is only supported with dashboard.", "INVALID_DASHBOARD_OPTION");
+  }
   return options;
 }
 
 function print(json: boolean, value: unknown, markdown: string): void {
   process.stdout.write(json ? JSON.stringify(value, null, 2) + "\n" : markdown);
+}
+
+function parseDashboardPort(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new OflowError(
+      "Dashboard port must be an integer between 0 and 65535.",
+      "INVALID_DASHBOARD_PORT",
+    );
+  }
+  const port = Number(value);
+  if (!Number.isSafeInteger(port) || port < 0 || port > 65535) {
+    throw new OflowError(
+      "Dashboard port must be an integer between 0 and 65535.",
+      "INVALID_DASHBOARD_PORT",
+    );
+  }
+  return port;
+}
+
+async function waitForDashboardShutdown(close: () => Promise<void>): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let stopping = false;
+    const shutdown = () => {
+      if (stopping) {
+        return;
+      }
+      stopping = true;
+      void close().finally(resolve);
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+  });
 }
 
 function normalizeIssueState(value: string | undefined): IssueState {
@@ -1466,6 +1568,9 @@ function helpText(): string {
     "  assess --story <iid> [--json]       compact story progress and local evidence",
     "  capabilities [--json]               show supported and planned operations",
     "  audit [--limit <n>] [--json]         read local plan lifecycle history",
+    "  cache status [--json]                inspect local cache age/schema/invalidation",
+    "  cache request-refresh                record a local refresh request (no network)",
+    "  dashboard [--port <n>]               serve the local read-only planning dashboard",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue create --title <title>   prepare an auditable issue create",
     "  plan issue update --story <iid>     prepare an auditable issue update",
@@ -1504,6 +1609,7 @@ function helpText(): string {
     "  sync --stale-days <n>  add an advisory stale-work-item finding without extra API calls",
     "  sync --cached  read the matching local snapshot without GitLab access",
     "  sync --refresh  explicitly refresh the remote snapshot and local cache",
+    "  dashboard       binds only to 127.0.0.1 and never receives GitLab credentials",
     "  work --mine --refresh  refresh work items assigned to the authenticated user",
     "  work --mine --cached   read assigned work items from local SQLite cache",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",

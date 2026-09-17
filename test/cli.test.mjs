@@ -62,6 +62,8 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /plan assess --story <iid>/);
     assert.match(result, /plan issue update --story <iid> --iteration <title\|iid\|none>/);
     assert.match(result, /audit \[--limit <n>\] \[--json\]/);
+    assert.match(result, /cache status \[--json\]/);
+    assert.match(result, /dashboard \[--port <n>\]/);
     assert.match(result, /sync --stale-days <n>/);
     assert.match(result, /sync --summary/);
     assert.match(result, /sync --cached/);
@@ -71,6 +73,24 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
     assert.match(result, /mr --iid <iid> \[--full\] \[--json\]/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("cache diagnostics stay local and report a missing read model without a token", () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-cache-status-cli-"));
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    const status = execFileSync(process.execPath, [cli, "cache", "status", "--root", root, "--json"], {
+      encoding: "utf8",
+      env: { ...process.env, GITLAB_TOKEN: "must-not-be-used" },
+    });
+    assert.match(status, /"state": "missing"/);
+    const refresh = execFileSync(process.execPath, [cli, "cache", "request-refresh", "--root", root, "--json"], {
+      encoding: "utf8",
+    });
+    assert.match(refresh, /"accepted": false/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

@@ -160,12 +160,17 @@ This is the immediate implementation focus.
 
 ### Phase 4a — Local planning dashboard foundation
 
-- [ ] Extend the SQLite read model to merge-request, pipeline, iteration, and
+- [x] Extend the SQLite read model to merge-request, pipeline, iteration, and
   sync-history snapshots.
-- [ ] Add explicit cache status, age, invalidation, and migration diagnostics.
-- [ ] Add a loopback-only read-only dashboard backed by the local SQLite model.
-- [ ] Add explicit refresh controls without exposing GitLab credentials to the
+- [x] Add explicit cache status, age, invalidation, and migration diagnostics.
+- [x] Add a loopback-only read-only dashboard backed by the local SQLite model.
+- [x] Add explicit refresh controls without exposing GitLab credentials to the
   dashboard process or browser.
+
+The foundation is exposed through `oflow dashboard`, `oflow sync --refresh`,
+`oflow capabilities --json`, and the stable CLI JSON contract. The dashboard
+only reads the local database; its refresh button records a local request and
+shows the explicit CLI command required to contact GitLab.
 
 Merge-request writes and delivery automation are intentionally postponed until
 the Scrum model and mutation safety are stable. Merge-request and pipeline

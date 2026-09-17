@@ -26,10 +26,12 @@ function trackedFiles() {
 const safeHosts = new Set([
   "127.0.0.1",
   "docs.gitlab.com",
+  "docs.github.com",
   "example.com",
   "example.net",
   "example.org",
   "github.com",
+  "code.visualstudio.com",
   "gitlab.com",
   "gitlab.example.com",
   "img.shields.io",

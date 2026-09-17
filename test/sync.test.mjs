@@ -12,6 +12,7 @@ import {
   formatSyncSummaryMarkdown,
   syncProject,
 } from "../dist/sync.js";
+import { readReadModelStatus } from "../dist/read-model.js";
 
 const run = promisify(execFile);
 
@@ -64,6 +65,12 @@ test("sync returns a compact Scrum and delivery snapshot", async () => {
     };
 
     const result = await syncProject(root);
+    const readModelStatus = await readReadModelStatus(root);
+    assert.equal(readModelStatus.state, "ready");
+    assert.equal(readModelStatus.counts.mergeRequests, 1);
+    assert.equal(readModelStatus.counts.pipelines, 1);
+    assert.equal(readModelStatus.counts.iterations, 0);
+    assert.equal(readModelStatus.counts.syncSnapshots, 1);
     assert.equal(result.cache.source, "remote");
     assert.equal(result.cache.ageSeconds, 0);
     const cacheText = await readFile(join(root, ".oflow", "cache", "sync.json"), "utf8");

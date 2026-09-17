@@ -13,6 +13,7 @@ import {
   agentInstructionBlock,
   CACHE_POLICY_MARKDOWN,
   CACHE_POLICY_MARKER,
+  COPILOT_INSTRUCTIONS_MARKDOWN,
   MERGE_REQUEST_TEMPLATE_MARKDOWN,
   OFLOW_README_MARKDOWN,
   WORKFLOW_MARKDOWN,
@@ -53,6 +54,12 @@ export async function installProject(options: InstallOptions): Promise<InstallRe
       root,
       ".oflow/templates/merge-request.md",
       MERGE_REQUEST_TEMPLATE_MARKDOWN,
+      dryRun,
+    ),
+    await planCanonicalFile(
+      root,
+      ".github/copilot-instructions.md",
+      COPILOT_INSTRUCTIONS_MARKDOWN,
       dryRun,
     ),
   );

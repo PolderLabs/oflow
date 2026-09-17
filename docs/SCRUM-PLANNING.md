@@ -96,6 +96,25 @@ host, project, state, limit, filters, and query mode; a cache miss or mismatch
 fails rather than silently falling back to the network. It stores no token and
 cached data is never a freshness precondition for a remote write.
 
+Live `oflow sync` also persists the bounded planning/delivery snapshot in the
+same SQLite database. The schema tracks work items, merge requests, pipelines,
+labels, milestones, project-visible iterations, and up to 50 recent sync
+snapshots. Run `oflow cache status --json` for the local database state, schema
+version, file ages, row counts, invalidation marker, and pending refresh
+request. A successful live sync clears an invalidation or refresh request;
+applying a plan marks the model stale until the next explicit refresh.
+
+Run `oflow dashboard` to serve the latest local snapshot at a loopback-only
+address. The browser can reload local SQLite data or record a refresh request,
+but it cannot call GitLab. Run `oflow sync --refresh` in the CLI when current
+remote state is required. The dashboard process never loads a GitLab token.
+
+GitHub Copilot, VS Code agents, Claude, and Codex consume the same CLI JSON
+contract. `oflow install` preserves existing `.github/copilot-instructions.md`
+content and creates a generic file when it is absent; host-specific MCP or
+editor configuration remains optional. See
+[`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md).
+
 It emits human-readable Markdown and a compact `--json` result. Descriptions
 are excluded from the overall snapshot and fetched only for the selected story,
 so the result is suitable for low-token agent handoff. Local implementation and
@@ -172,6 +191,9 @@ oflow iteration [--state opened|upcoming|current|closed|all] [--limit <n>] [--js
 oflow iteration --group [--state opened|upcoming|current|closed|all] [--limit <n>] [--json]
 oflow assess --story <iid> [--json]
 oflow audit [--limit <n>] [--json]
+oflow cache status [--json]
+oflow cache request-refresh
+oflow dashboard [--port <n>]
 oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
 oflow mr --iid <iid> [--full] [--json]

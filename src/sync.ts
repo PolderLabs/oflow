@@ -11,6 +11,7 @@ import { parseAcceptanceCriteria } from "./criteria.js";
 import { GitLabClient } from "./gitlab.js";
 import type { GitLabListPage, GitLabPagination } from "./gitlab.js";
 import { OflowError } from "./errors.js";
+import { saveSyncReadModel } from "./read-model.js";
 import type {
   GitLabBoard,
   GitLabBoardList,
@@ -490,6 +491,17 @@ export async function syncProject(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     result.warnings.push("Could not save local sync cache: " + message);
+  }
+  try {
+    await saveSyncReadModel({
+      root,
+      host: remote.host,
+      projectPath: remote.projectPath,
+      result,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.warnings.push("Could not save local SQLite read model: " + message);
   }
   return result;
 }

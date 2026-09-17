@@ -29,6 +29,12 @@ agent -> oflow intent/sync/plan/approve/apply/verify
                     +-- MCP adapter (optional agent/runtime path)
 ```
 
+The local SQLite read model and dashboard sit outside that credentialed
+network boundary. `oflow sync --refresh` is the explicit refresh operation;
+`oflow dashboard` reads SQLite on `127.0.0.1` and never receives a GitLab
+token. Its refresh control records a local request for the CLI rather than
+calling GitLab from a browser.
+
 The current release implements the REST path for compact project-scoped read
 commands, the guarded issue-update/note/label/milestone/board/board-list plans,
 including existing epic association through issue `epic_id`, bounded bulk

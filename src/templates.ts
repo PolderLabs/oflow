@@ -14,6 +14,7 @@ export const CACHE_POLICY_MARKDOWN = [
   "4. If refresh fails, continue local analysis only and do not apply a remote mutation.",
   "5. After applying a remote change, refresh the work and project snapshots again.",
   "6. Use `oflow context --story <iid>` and `oflow assess --story <iid> --json` for detailed story and acceptance-criteria evidence.",
+  "7. Use `oflow dashboard` for a local read-only view; it binds to 127.0.0.1 and never receives GitLab credentials.",
   "",
   "Cached reads never contact GitLab. They are a local read model, not a freshness guarantee.",
 ].join("\n");
@@ -37,7 +38,7 @@ export const WORKFLOW_MARKDOWN = [
   "4. Run oflow context --story <iid> and preserve the story's acceptance criterion IDs.",
   "5. If GitLab access is missing, run oflow auth login; never put tokens in this repository.",
   "6. When asked to sync project state, run oflow sync --summary --json for the token-light overview. Use oflow sync --json only when full bounded planning collections or pagination are needed. Use oflow sync --cached --summary --json for repeated context when the last snapshot is acceptable, and --refresh when current GitLab state is required. For repeated assigned-work context, use oflow work --mine --cached after an initial oflow work --mine --refresh; cached reads never contact GitLab. Add --epics only when group-level epic context is needed; it costs one extra bounded GraphQL read. When assessing one story, run oflow assess --story <iid> --json and use oflow capabilities --json to discover supported operations.",
-  "7. State the plan and identify anything ambiguous before making code changes.",
+  "8. State the plan and identify anything ambiguous before making code changes.",
   "",
   CACHE_POLICY_MANAGED_BLOCK,
   "",
@@ -51,6 +52,7 @@ export const WORKFLOW_MARKDOWN = [
   "- Treat oflow sync as evidence collection; do not infer completion without concrete local or GitLab evidence.",
   "- In assess JSON, localReferences are advisory pointers only; inspect the referenced code/test and never treat an ID match as acceptance proof.",
   "- Verify pipeline evidence belongs to the selected MR and matches its head SHA when GitLab provides one; a branch pipeline alone is not enough.",
+  "- The dashboard is local-only. Its refresh control records a request; run `oflow sync --refresh` explicitly to contact GitLab.",
   "",
   "## Before handoff",
   "",
@@ -95,6 +97,8 @@ export const OFLOW_README_MARKDOWN = [
   "- Use oflow audit --json to review local plan lifecycle history without contacting GitLab.",
   "- state/ and cache/ are local and ignored; cache/oflow.db is the local SQLite read model and may contain project context but never credentials.",
   "- Scrum/planning: work items, acceptance criteria, labels, boards, milestones, iterations, group epics, MRs, and pipelines.",
+  "- GitHub Copilot and VS Code agents can use .github/copilot-instructions.md and this same CLI JSON contract.",
+  "- Run oflow cache status --json for local cache age/schema/invalidation diagnostics, and oflow dashboard for the loopback-only browser view.",
   "",
     "Run oflow doctor --check-api to inspect setup and API access, oflow sync",
     "--summary --json for a token-light overview, oflow sync --json for the full bounded snapshot, oflow sync --cached --json for a no-network repeat read, oflow iteration --state current --json for a focused sprint view, oflow cadence --json for the optional parent-group cadence, or oflow assess --story <iid> --json for",
@@ -122,6 +126,31 @@ export const MERGE_REQUEST_TEMPLATE_MARKDOWN = [
   "- What remains or needs follow-up?",
 ].join("\n");
 
+export const COPILOT_INSTRUCTIONS_MARKDOWN = [
+  "# oflow instructions for GitHub Copilot and VS Code agents",
+  "",
+  "This repository uses oflow as its GitLab-first planning contract.",
+  "Read `.oflow/WORKFLOW.md` before changing code and use the oflow CLI for",
+  "planning context. The same contract is usable from GitHub Copilot, VS Code",
+  "agents, Claude, Codex, CI jobs, and other terminal-capable agents.",
+  "",
+  "## Low-token context flow",
+  "",
+  "- Start with `oflow work --mine --refresh --json` and `oflow sync --summary --refresh --json`.",
+  "- Use `oflow work --mine --cached --json` and `oflow sync --summary --cached --json` during exploration.",
+  "- Use `oflow context --story <iid> --json` and `oflow assess --story <iid> --json` for focused evidence.",
+  "- Refresh before any remote change; cached data is not remote truth.",
+  "",
+  "## Safety",
+  "",
+  "Remote planning writes must follow `plan -> approve -> apply -> verify`.",
+  "Never put GitLab tokens in this repository, editor settings, prompts, or",
+  "command-line arguments. Use `oflow auth login` or `--token-stdin`.",
+  "",
+  "The local dashboard is read-only and binds to 127.0.0.1. It never receives",
+  "GitLab credentials. Run `oflow dashboard` for the local SQLite view.",
+].join("\n") + "\n";
+
 export function agentInstructionBlock(agent: AgentName): string {
   const name = agent === "claude" ? "Claude" : "Codex";
   return [
@@ -138,6 +167,8 @@ export function agentInstructionBlock(agent: AgentName): string {
     "for story progress, oflow mr --iid <iid> --json for compact MR status, and",
     "oflow capabilities --json. If API",
     "access is missing, use oflow auth login; never place a token in the repository.",
+    "The local dashboard is read-only; use oflow dashboard for the SQLite view and",
+    "run oflow sync --refresh explicitly when a remote refresh is required.",
     "Preserve AC-n identifiers, classify evidence conservatively, include Evidence:",
     "in the merge request, and run oflow verify --story <iid> before handoff. Use",
     "oflow epic --iid <iid> for group hierarchy, oflow iteration --group --state current --json when group sprint access is available, and use oflow plan assess --story <iid> or plan issues labels/update --stories <iid,...> or plan issue update --iteration <title|iid|none> or plan issues update --stories <iid,...> --iteration <title|iid|none>, plan issue update/note, label/milestone/board/board-list create/update followed by",

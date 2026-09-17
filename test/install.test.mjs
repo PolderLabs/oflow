@@ -18,6 +18,7 @@ test("install is idempotent and preserves the managed marker", async () => {
     const first = await installProject({ root, agentMode: "both" });
     assert.equal(first.remote.projectPath, "team/product");
     assert.ok(first.files.some((file) => file.path === ".oflow/config.json" && file.action === "created"));
+    assert.ok(first.files.some((file) => file.path === ".github/copilot-instructions.md" && file.action === "created"));
 
     const second = await installProject({ root, agentMode: "both" });
     assert.ok(second.files.every((file) => file.action === "unchanged"));
@@ -25,6 +26,9 @@ test("install is idempotent and preserves the managed marker", async () => {
     const agents = await readFile(join(root, "AGENTS.md"), "utf8");
     assert.equal((agents.match(/BEGIN OFLOW MANAGED BLOCK/g) ?? []).length, 1);
     assert.ok(agents.includes("Read .oflow/WORKFLOW.md"));
+
+    const copilot = await readFile(join(root, ".github", "copilot-instructions.md"), "utf8");
+    assert.ok(copilot.includes("oflow sync --summary --refresh --json"));
 
     const workflow = await readFile(join(root, ".oflow", "WORKFLOW.md"), "utf8");
     assert.ok(workflow.includes("oflow sync --summary --json"));
