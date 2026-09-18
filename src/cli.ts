@@ -13,6 +13,7 @@ import {
   readTokenFromStdin,
   saveGitLabToken,
 } from "./auth.js";
+import { checkStory, formatCheckMarkdown, formatStartMarkdown, startWork } from "./lifecycle.js";
 import { assessStory, formatAssessmentMarkdown } from "./assess.js";
 import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
 import { formatIterationCadenceMarkdown, listIterationCadences } from "./cadences.js";
@@ -369,6 +370,22 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         // A completed assessment is a successful read even when its findings
         // are unknown, in-progress, or blocked. The status is in the report;
         // a non-zero exit code is reserved for an operational failure.
+        return 0;
+      }
+      case "start": {
+        const result = await startWork({
+          root,
+          story: options.story === undefined ? undefined : await resolveStoryIid(root, options.story),
+        });
+        print(options.json, result, formatStartMarkdown(result));
+        return 0;
+      }
+      case "check": {
+        const result = await checkStory({
+          root,
+          story: options.story === undefined ? undefined : await resolveStoryIid(root, options.story),
+        });
+        print(options.json, result, formatCheckMarkdown(result));
         return 0;
       }
       case "capabilities": {
@@ -1602,6 +1619,8 @@ function helpText(): string {
     "  auth clear [--host <host>]          remove a stored token",
     "  install [--agent auto|claude|codex|omp|both] [--dry-run] [--with-gitlab-mcp]",
     "  doctor [--check-api]",
+    "  start [--story <iid>] [--json]         one compact work context for agents",
+    "  check [--story <iid>] [--json]         unified story, evidence, and policy check",
     "  work [filters] [--json]             list current GitLab work items",
     "  epic [--iid <iid>] [--limit <n>]    list or inspect group epics",
     "  iteration [--group] [--state <state>] list project or group sprints",
