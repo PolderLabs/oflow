@@ -56,6 +56,64 @@ export async function glabApiGet(options: GlabApiGetOptions): Promise<unknown> {
   }
 }
 
+export interface GlabApiMutationOptions extends GlabApiGetOptions {
+  method: "POST" | "PUT" | "PATCH" | "DELETE";
+  /** Payload fields sent as repeated --field flags; values must be strings. */
+  fields?: Record<string, string>;
+}
+
+/**
+ * Authenticated mutation transport behind the existing plan/approval gates.
+ * glab is execution, not policy: callers must have an approved plan before
+ * invoking this. Values travel as separate argv entries — never a shell
+ * string — and glab owns the credential.
+ */
+export async function glabApiMutation(options: GlabApiMutationOptions): Promise<unknown> {
+  const endpoint = normalizeEndpoint(options.endpoint);
+  const binary = process.env.OFLOW_GLAB_BIN?.trim() || "glab";
+  const args = [
+    "api",
+    "--hostname",
+    options.host,
+    "--method",
+    options.method,
+    endpoint,
+    "--output",
+    "json",
+  ];
+  for (const [key, value] of Object.entries(options.fields ?? {})) {
+    args.push("--field", key + "=" + value);
+  }
+
+  let result: { stdout: string; stderr: string };
+  try {
+    result = await execFile(binary, args, {
+      cwd: options.root,
+      encoding: "utf8",
+      timeout: 20_000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new OflowError(
+      "glab mutation failed: " + redact(detail),
+      "GLAB_API_ERROR",
+    );
+  }
+
+  if (!result.stdout.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    throw new OflowError(
+      "glab returned a non-JSON response for " + endpoint + ".",
+      "INVALID_GLAB_RESPONSE",
+    );
+  }
+}
+
 function normalizeEndpoint(value: string): string {
   const endpoint = value.trim().replace(/^\/+/, "");
   if (
@@ -66,15 +124,16 @@ function normalizeEndpoint(value: string): string {
     /[\r\n\0]/.test(endpoint)
   ) {
     throw new OflowError(
-      "glab endpoints must be relative GitLab API paths and read-only.",
+      "glab endpoints must be relative API paths such as projects/:id/issues.",
       "UNSAFE_GLAB_ENDPOINT",
     );
   }
   return endpoint;
 }
 
-function redact(value: string): string {
-  return value
-    .replace(/glpat-[A-Za-z0-9_-]+/g, "[REDACTED]")
-    .replace(/(PRIVATE-TOKEN|Authorization):?\s*[^\s]+/gi, "$1: [REDACTED]");
+function redact(message: string): string {
+  return message
+    .replace(/glpat-[A-Za-z0-9_-]{8,}/g, "[REDACTED]")
+    .replace(/glcbt-[A-Za-z0-9_-]{8,}/g, "[REDACTED]")
+    .replace(/gho_[A-Za-z0-9]{20,}/g, "[REDACTED]");
 }

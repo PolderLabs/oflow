@@ -378,3 +378,19 @@ export interface DoctorReport {
   requiredFiles: Array<{ path: string; present: boolean }>;
   warnings: string[];
 }
+
+/** One discovered credential source for a GitLab host; never token material. */
+export interface GitLabAuthCandidate {
+  host: string;
+  source:
+    | "mcp-runtime"
+    | "glab"
+    | "environment"
+    | "oflow-store"
+    | "ci-job-token";
+  authenticated: boolean | "runtime-owned";
+  interactive: boolean;
+  backendCompatibility: string[];
+  user?: string;
+  notes?: string[];
+}

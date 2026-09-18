@@ -43,6 +43,7 @@ import { formatDoctor, doctor } from "./doctor.js";
 import { getGitLabRemote, getRepoRoot } from "./git.js";
 import { glabApiGet } from "./glab.js";
 import { formatInstallResult, installProject } from "./install.js";
+import { resolveAuth, type AuthResolution } from "./auth-resolver.js";
 import {
   applyPlan,
   approvePlan,
@@ -832,8 +833,13 @@ async function runAuth(
     return 0;
   }
   if (action === "status") {
+    const resolution = await resolveAuth({ host, root: root ?? undefined });
     const status = authStatus(host);
-    print(options.json, status, formatAuthStatus(status));
+    print(
+      options.json,
+      { ...status, resolution },
+      formatAuthStatus(status, resolution),
+    );
     return 0;
   }
   throw new OflowError(
@@ -1503,20 +1509,53 @@ function authStatus(host: string): AuthStatus {
   };
 }
 
-function formatAuthStatus(status: AuthStatus): string {
-  const active = status.activeSource === "environment"
-    ? "environment (" + status.environmentVariable + ")"
-    : status.activeSource === "stored"
-      ? "stored credentials"
-      : "missing";
+function formatAuthStatus(status: AuthStatus, resolution?: AuthResolution): string {
   const lines = [
     "# oflow auth",
     "",
     "GitLab host: " + status.host,
-    "Active token: " + active,
+  ];
+  if (resolution) {
+    lines.push(
+      "Selected CLI backend: " + resolution.readBackend,
+      "Selected agent execution preference: " +
+        (resolution.mutationBackend === "none" ? "unavailable" : resolution.mutationBackend),
+      "",
+      "AUTH SOURCES",
+    );
+    if (resolution.sources.length === 0) {
+      lines.push("  - none detected");
+    }
+    for (const source of resolution.sources) {
+      const state = source.authenticated === true
+        ? "authenticated"
+        : source.authenticated === "runtime-owned"
+          ? "runtime-owned OAuth (agent runtime)"
+          : "not authenticated";
+      lines.push("  " + source.source + ": " + state);
+      for (const note of source.notes ?? []) {
+        lines.push("    " + note);
+      }
+    }
+    lines.push(
+      "",
+      "Stored hosts: " +
+        (status.storedHosts.length > 0 ? status.storedHosts.join(", ") : "none"),
+      "Credentials file: " + status.credentialsFile,
+    );
+    if (!resolution.authenticated) {
+      lines.push(
+        "",
+        "No CLI-authenticated transport. Run `glab auth login` or set GITLAB_TOKEN.",
+      );
+    }
+    return lines.join("\n") + "\n";
+  }
+  lines.push(
+    "Active token: " + (status.activeSource ?? "missing"),
     "Stored token for host: " + (status.storedForHost ? "yes" : "no"),
     "Credentials file: " + status.credentialsFile,
-  ];
+  );
   if (status.storedHosts.length > 0) {
     lines.push("Stored hosts: " + status.storedHosts.join(", "));
   }
@@ -1554,8 +1593,7 @@ function helpText(): string {
     "",
     "Commands:",
     "  auth login [--host <host>]          store a GitLab token outside the repo",
-    "  auth set --token-stdin [--host]     store a token from stdin",
-    "  auth status [--host <host>]         inspect token configuration",
+    "  auth status [--host <host>]         inspect auth sources, backends, and tokens",
     "  auth clear [--host <host>]          remove a stored token",
     "  install [--agent auto|claude|codex|both] [--dry-run]",
     "  doctor [--check-api]",
