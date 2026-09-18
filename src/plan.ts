@@ -6,6 +6,7 @@ import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
 import { GitLabClient } from "./gitlab.js";
+import { executeIssueUpdate } from "./executor.js";
 import type {
   GitLabIssue,
   GitLabIssueCreate,
@@ -226,6 +227,9 @@ export interface PlanArtifact {
       iterationIid?: number | null;
       iterationTitle?: string | null;
     }>;
+  };
+  execution?: {
+    backend: "rest" | "glab";
   };
   verification?: PlanVerification;
   applyError?: {
@@ -986,18 +990,17 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
     stored.plan.result = compactIssue(result, "issue.create");
   } else if (stored.plan.operation.kind === "issue.update") {
-    await assertIssueFresh(
-      client,
-      stored.plan.operation.projectPath,
-      stored.plan.operation.issueIid,
-      stored.plan.operation.expectedUpdatedAt,
-    );
-    const result = await client.updateIssue(
-      stored.plan.operation.projectPath,
-      stored.plan.operation.issueIid,
-      stored.plan.operation.changes,
-    );
-    stored.plan.result = compactIssue(result);
+    const outcome = await executeIssueUpdate({
+      root,
+      host: stored.plan.operation.host,
+      projectPath: stored.plan.operation.projectPath,
+      issueIid: stored.plan.operation.issueIid,
+      changes: stored.plan.operation.changes,
+      expectedUpdatedAt: stored.plan.operation.expectedUpdatedAt,
+      createRestClient: () => client,
+    });
+    stored.plan.result = compactIssue(outcome.issue);
+    stored.plan.execution = { backend: outcome.backend };
   } else if (stored.plan.operation.kind === "issue.iteration.update") {
     await assertIssueFresh(
       client,
