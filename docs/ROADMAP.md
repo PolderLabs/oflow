@@ -5,6 +5,11 @@ agent-friendly planning and delivery assistant. It is deliberately phased:
 Scrum and planning come first; merge requests and other delivery automation
 come later.
 
+The next major milestone — backend-neutral actions, smart authentication,
+OMP support, and the `start`/`check`/`finish` agent lifecycle — is specified
+in [`VNEXT-ARCHITECTURE.md`](VNEXT-ARCHITECTURE.md) and tracked here as
+Phase 4.
+
 ## Product direction
 
 An agent should be able to inspect a repository and its GitLab planning state,
@@ -158,9 +163,16 @@ This is the immediate implementation focus.
 - [x] Support concise Markdown and machine-readable reports suitable for Claude,
   Codex, CI jobs, and future agents.
 
-### Phase 4 — Delivery integration (later)
+### Phase 4 — Agent execution layer (current focus)
 
-### Phase 4a — Local planning dashboard foundation
+The vNext direction is documented in
+[`VNEXT-ARCHITECTURE.md`](VNEXT-ARCHITECTURE.md): oflow owns workflow
+semantics, evidence, policy, approval, and verification; GitLab MCP, `glab`,
+REST, and GraphQL are interchangeable execution mechanisms resolved at
+runtime. Phase 4 replaces "wrap more delivery endpoints" with an
+agent-execution milestone.
+
+### Phase 4a — Local planning dashboard foundation (done)
 
 - [x] Extend the SQLite read model to merge-request, pipeline, iteration, and
   sync-history snapshots.
@@ -174,14 +186,87 @@ The foundation is exposed through `oflow dashboard`, `oflow sync --refresh`,
 only reads the local database; its refresh button records a local request and
 shows the explicit CLI command required to contact GitLab.
 
-Merge-request writes and delivery automation are intentionally postponed until
-the Scrum model and mutation safety are stable. Merge-request and pipeline
-reads are already included in the compact sync/context evidence.
+### Phase 4b — Backend-neutral action schema
+
+- [ ] Versioned canonical action schema
+- [ ] Transport-independent plan artifacts (no backend, token, or transport
+  command inside the plan)
+- [ ] Capability requirements on plans
+- [ ] Remote preconditions (stale `updated_at` guard)
+- [ ] Execution receipts
+- [ ] Generic postcondition verification interface
+- [ ] Migrate one existing action (for example `work_item.update`) to the
+  generic executor while keeping old plan artifacts readable
+
+### Phase 4c — Smart authentication
+
+- [ ] GitLab host resolver (`--host`, config, git remote, `GITLAB_HOST`,
+  authenticated glab hosts)
+- [ ] Environment auth detection (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`,
+  `OAUTH_TOKEN`)
+- [ ] glab auth detection and reuse as an authenticated transport without a
+  duplicate oflow login
+- [ ] oflow credential store with per-host isolation
+- [ ] CI job-token detection with capability-limited use
+- [ ] Runtime-owned MCP auth state (configured vs authenticated, never
+  scraping agent OAuth caches)
+- [ ] `oflow auth status` (text and `--json`, metadata only, no credentials)
+- [ ] Backend/auth selection diagnostics
+
+### Phase 4d — glab execution adapter
+
+- [ ] Authenticated reads without duplicate oflow login
+- [ ] Action execution behind the existing plan/approval gates
+- [ ] Strict structured output with argument-array invocation and error
+  redaction
+- [ ] Verification remains owned by oflow
+
+### Phase 4e — OMP host adapter
+
+- [ ] Detect OMP (binary, `.omp/` directory, `OMP_PROFILE`)
+- [ ] Managed `.omp/AGENTS.md` bridge with user-content preservation
+- [ ] OMP slash-command bridges (`/oflow-start`, `/oflow-status`,
+  `/oflow-verify`, `/oflow-handoff`)
+- [ ] Detect `.omp/mcp.json`
+- [ ] Detect the GitLab MCP URL for the resolved host
+- [ ] Optional safe project-local GitLab MCP setup without secrets
+  (`oflow install --with-gitlab-mcp`, `--no-mcp`)
+- [ ] OMP profile diagnostics without touching global OMP config
+- [ ] Tests for the OMP install matrix
+
+### Phase 4f — Delegated GitLab MCP actions
+
+- [ ] Detect runtime-configured GitLab MCP
+- [ ] Emit delegated action descriptors (`oflow apply <plan> --delegate`)
+- [ ] Ingest execution receipts from agent-executed MCP calls
+- [ ] Independent verification through a read transport
+- [ ] Clear reduced-mode reporting when no independent read transport exists
+
+### Phase 4g — Agent lifecycle commands
+
+- [ ] `oflow start` — one compact, actionable working context
+- [ ] `oflow check` — unified assessment of local Git, story, evidence, MR,
+  pipeline, and policy state with the next required action
+- [ ] `oflow finish` — gated story completion
+- [ ] `oflow handoff` — compact context for the next agent
+- [ ] Compact JSON contracts for the above
+- [ ] Claude validation
+- [ ] Codex validation
+- [ ] OMP validation
+- [ ] Copilot/VS Code validation
+
+### Phase 4h — Deferred delivery capabilities
+
+Merge-request writes and delivery automation stay postponed until the Scrum
+model, mutation safety, and the agent execution layer are stable.
+Merge-request and pipeline reads are already included in the compact
+sync/context evidence. When delivery actions arrive, they enter as
+backend-neutral actions under the same plan -> approve -> apply -> verify
+gates:
 
 - [ ] Merge-request creation, updates, discussions, and review state
-- [ ] Branch and repository operations
+- [ ] Branch and repository operations (optional; local Git preferred)
 - [ ] Pipeline inspection and controlled trigger/cancel/retry operations
-- [ ] Release planning and release metadata
 - [ ] Delivery evidence linked back to acceptance criteria
 
 ### Phase 5 — Broader GitLab capabilities (later and opt-in)

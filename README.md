@@ -555,6 +555,9 @@ credential, private-host, email, and local-path indicators.
 
 ## Learn more
 
+- [`docs/VNEXT-ARCHITECTURE.md`](docs/VNEXT-ARCHITECTURE.md) — vNext
+  architecture: backend-neutral actions, smart authentication, OMP support,
+  and the agent execution layer.
 - [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) — REST, GraphQL,
   `glab`, MCP, auth, and security boundaries.
 - [`docs/SCRUM-PLANNING.md`](docs/SCRUM-PLANNING.md) — agent planning contract,
