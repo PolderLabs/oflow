@@ -16,8 +16,10 @@ import {
   COPILOT_INSTRUCTIONS_MARKDOWN,
   MERGE_REQUEST_TEMPLATE_MARKDOWN,
   OFLOW_README_MARKDOWN,
+  OMP_AGENTS_BRIDGE_MARKDOWN,
   WORKFLOW_MARKDOWN,
   WORKFLOW_MARKER,
+  ompCommandMarkdown,
 } from "./templates.js";
 import type {
   AgentDetection,
@@ -26,11 +28,14 @@ import type {
   InstallResult,
   OflowConfig,
 } from "./types.js";
+import { setupOmpGitLabMcp } from "./omp-mcp.js";
 
 export interface InstallOptions {
   root: string;
   agentMode?: string;
   dryRun?: boolean;
+  /** Explicitly opt in to writing project-local GitLab MCP config for OMP. */
+  withGitLabMcp?: boolean;
 }
 
 export async function installProject(options: InstallOptions): Promise<InstallResult> {
@@ -87,6 +92,49 @@ export async function installProject(options: InstallOptions): Promise<InstallRe
       ),
       detail: "Claude project instructions",
     });
+  }
+
+  if (detection.omp || installBoth) {
+    files.push({
+      path: ".omp/AGENTS.md",
+      action: await upsertManagedBlock(
+        join(root, ".omp", "AGENTS.md"),
+        WORKFLOW_MARKER,
+        OMP_AGENTS_BRIDGE_MARKDOWN,
+        dryRun,
+      ),
+      detail: "OMP native project instructions bridge",
+    });
+    const ompCommands: Array<["start" | "status" | "verify" | "handoff", string]> = [
+      ["start", "oflow-start slash command"],
+      ["status", "oflow-status slash command"],
+      ["verify", "oflow-verify slash command"],
+      ["handoff", "oflow-handoff slash command"],
+    ];
+    for (const [command, detail] of ompCommands) {
+      files.push({
+        path: ".omp/commands/oflow-" + command + ".md",
+        action: await upsertManagedBlock(
+          join(root, ".omp", "commands", "oflow-" + command + ".md"),
+          WORKFLOW_MARKER,
+          ompCommandMarkdown(command),
+          dryRun,
+        ),
+        detail,
+      });
+    }
+  }
+
+  if ((detection.omp || installBoth) && options.withGitLabMcp) {
+    const mcp = await setupOmpGitLabMcp(root, remote, dryRun);
+    files.push({
+      path: mcp.path,
+      action: mcp.action === "conflict" ? "skipped" : mcp.action,
+      detail: mcp.detail,
+    });
+    if (mcp.action === "conflict") {
+      warnings.push(mcp.detail);
+    }
   }
 
   files.push({

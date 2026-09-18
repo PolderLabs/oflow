@@ -140,7 +140,7 @@ export async function doctor(
     );
   }
   if (agent.mode === "unknown") {
-    warnings.push("No Claude or Codex signal was detected.");
+    warnings.push("No Claude, Codex, or OMP signal was detected.");
   }
   for (const file of requiredFiles) {
     if (!file.present) {

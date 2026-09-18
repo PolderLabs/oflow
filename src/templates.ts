@@ -153,7 +153,7 @@ export const COPILOT_INSTRUCTIONS_MARKDOWN = [
 ].join("\n") + "\n";
 
 export function agentInstructionBlock(agent: AgentName): string {
-  const name = agent === "claude" ? "Claude" : "Codex";
+  const name = agent === "claude" ? "Claude" : agent === "omp" ? "OMP" : "Codex";
   return [
     "<!-- oflow instructions for " + name + " -->",
     "This repository is managed by oflow. Read .oflow/WORKFLOW.md before changing code.",
@@ -176,4 +176,86 @@ export function agentInstructionBlock(agent: AgentName): string {
     "approve/apply/verify for supported writes; do not make other remote planning",
     "changes without an explicit supported plan.",
   ].join("\n");
+}
+
+/**
+ * Managed bridge for OMP's native project context path. Small by design:
+ * `.oflow/WORKFLOW.md` stays the single source of truth; everything else is
+ * a bridge to it.
+ */
+export const OMP_AGENTS_BRIDGE_MARKDOWN = [
+  "# oflow project workflow",
+  "",
+  "This repository uses oflow.",
+  "",
+  "Before choosing or changing GitLab work:",
+  "1. Read `.oflow/WORKFLOW.md`.",
+  "2. Run `oflow start --json` or the smallest relevant oflow command.",
+  "3. Prefer cached oflow context during repeated exploration.",
+  "4. Refresh before remote mutations.",
+  "5. Do not bypass oflow approval/policy gates for workflow-changing GitLab actions.",
+  "6. After remote actions, run the required oflow verification/refresh step.",
+  "",
+  "GitLab MCP, glab, REST, and GraphQL are execution transports.",
+  "`.oflow/WORKFLOW.md` is the workflow authority.",
+].join("\n") + "\n";
+
+export function ompCommandMarkdown(command: "start" | "status" | "verify" | "handoff"): string {
+  const bodies: Record<typeof command, string[]> = {
+    start: [
+      "---",
+      "description: Start or continue the correct oflow-managed work",
+      "---",
+      "",
+      "Read `.oflow/WORKFLOW.md`.",
+      "",
+      "Run:",
+      "",
+      "`oflow start --json`",
+      "",
+      "Use the returned work item, constraints, acceptance criteria, evidence,",
+      "and policy as the authoritative workflow context.",
+      "",
+      "Use available GitLab MCP tools only when the action is allowed by the",
+      "returned policy. Do not bypass an oflow approval requirement.",
+    ],
+    status: [
+      "---",
+      "description: Summarize the current oflow project and story state",
+      "---",
+      "",
+      "Run:",
+      "",
+      "`oflow sync --summary --cached --json`",
+      "",
+      "If the snapshot is stale or missing, run `oflow sync --summary --refresh --json`.",
+      "Report project, iteration, and story progress concisely.",
+    ],
+    verify: [
+      "---",
+      "description: Verify acceptance evidence and delivery state for the active story",
+      "---",
+      "",
+      "Run:",
+      "",
+      "`oflow assess --story <iid> --json`",
+      "",
+      "For remote delivery verification, run `oflow verify --story <iid>`.",
+      "Do not report a criterion as satisfied without explicit evidence.",
+    ],
+    handoff: [
+      "---",
+      "description: Produce a compact handoff for the next agent session",
+      "---",
+      "",
+      "Run:",
+      "",
+      "`oflow sync --summary --refresh --json`",
+      "",
+      "Summarize the active story, acceptance criteria status, evidence, MR and",
+      "pipeline state, and the next required action so the next agent can",
+      "continue without reconstructing history.",
+    ],
+  };
+  return bodies[command].join("\n") + "\n";
 }

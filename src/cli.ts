@@ -145,6 +145,7 @@ interface CliOptions {
   port?: string;
   full: boolean;
   mine: boolean;
+  withGitLabMcp: boolean;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -193,6 +194,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           root,
           agentMode: options.agent,
           dryRun: options.dryRun,
+          withGitLabMcp: options.withGitLabMcp,
         });
         print(options.json, result, formatInstallResult(result));
         return 0;
@@ -865,6 +867,7 @@ function parseArgs(argv: string[]): CliOptions {
     summary: false,
     full: false,
     mine: false,
+    withGitLabMcp: false,
   };
 
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
@@ -917,6 +920,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.summary = true;
     } else if (argument === "--mine") {
       options.mine = true;
+    } else if (argument === "--with-gitlab-mcp") {
+      options.withGitLabMcp = true;
     } else if (
       argument === "--story" ||
       argument === "--stories" ||
@@ -1595,7 +1600,7 @@ function helpText(): string {
     "  auth login [--host <host>]          store a GitLab token outside the repo",
     "  auth status [--host <host>]         inspect auth sources, backends, and tokens",
     "  auth clear [--host <host>]          remove a stored token",
-    "  install [--agent auto|claude|codex|both] [--dry-run]",
+    "  install [--agent auto|claude|codex|omp|both] [--dry-run] [--with-gitlab-mcp]",
     "  doctor [--check-api]",
     "  work [filters] [--json]             list current GitLab work items",
     "  epic [--iid <iid>] [--limit <n>]    list or inspect group epics",

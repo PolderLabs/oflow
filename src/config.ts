@@ -28,6 +28,7 @@ export function makeConfig(
       mode: detection.mode,
       claude: detection.claude,
       codex: detection.codex,
+      omp: detection.omp,
     },
     workflow: {
       storyType: "issue",

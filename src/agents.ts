@@ -4,7 +4,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { OflowError } from "./errors.js";
 import { readText } from "./fs.js";
-import type { AgentDetection, AgentMode } from "./types.js";
+import type { AgentDetection, AgentMode, AgentName } from "./types.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -26,13 +26,14 @@ export function normalizeAgentMode(value: string | undefined): AgentMode | undef
   if (
     normalized === "claude" ||
     normalized === "codex" ||
+    normalized === "omp" ||
     normalized === "both" ||
     normalized === "unknown"
   ) {
     return normalized;
   }
   throw new OflowError(
-    "Unknown agent mode \"" + value + "\". Use auto, claude, codex, or both.",
+    "Unknown agent mode \"" + value + "\". Use auto, claude, codex, omp, or both.",
     "INVALID_AGENT_MODE",
   );
 }
@@ -42,9 +43,10 @@ export async function detectAgents(
   requestedMode?: string,
 ): Promise<AgentDetection> {
   const explicit = normalizeAgentMode(requestedMode);
-  const signals: Record<"claude" | "codex", string[]> = {
+  const signals: Record<"claude" | "codex" | "omp", string[]> = {
     claude: [],
     codex: [],
+    omp: [],
   };
 
   if (explicit) {
@@ -54,19 +56,26 @@ export async function detectAgents(
     if (explicit === "codex" || explicit === "both") {
       signals.codex.push("explicit --agent selection");
     }
+    if (explicit === "omp" || explicit === "both") {
+      signals.omp.push("explicit --agent selection");
+    }
     return {
       mode: explicit,
       claude: explicit === "claude" || explicit === "both",
       codex: explicit === "codex" || explicit === "both",
+      omp: explicit === "omp" || explicit === "both",
       signals,
     };
   }
 
-  const markerChecks: Array<[string, "claude" | "codex", string]> = [
+  const markerChecks: Array<[string, AgentName, string]> = [
     ["CLAUDE.md", "claude", "CLAUDE.md"],
     [".claude", "claude", ".claude directory"],
     ["AGENTS.md", "codex", "AGENTS.md"],
     [".codex", "codex", ".codex directory"],
+    [".omp/AGENTS.md", "omp", ".omp/AGENTS.md"],
+    [".omp/commands", "omp", ".omp/commands directory"],
+    [".omp/skills", "omp", ".omp/skills directory"],
   ];
   for (const [relativePath, agent, signal] of markerChecks) {
     try {
@@ -77,13 +86,14 @@ export async function detectAgents(
     }
   }
 
-  const envSignals: Array<[string, "claude" | "codex", string]> = [
+  const envSignals: Array<[string, AgentName, string]> = [
     ["CLAUDE_CODE", "claude", "CLAUDE_CODE environment"],
     ["CLAUDE_PROJECT_DIR", "claude", "CLAUDE_PROJECT_DIR environment"],
     ["CLAUDE_SESSION_ID", "claude", "CLAUDE_SESSION_ID environment"],
     ["CODEX_HOME", "codex", "CODEX_HOME environment"],
     ["CODEX_SESSION_ID", "codex", "CODEX_SESSION_ID environment"],
     ["CODEX_THREAD_ID", "codex", "CODEX_THREAD_ID environment"],
+    ["OMP_PROFILE", "omp", "OMP_PROFILE environment"],
   ];
   for (const [name, agent, signal] of envSignals) {
     if (process.env[name]) {
@@ -103,16 +113,22 @@ export async function detectAgents(
   if (await commandAvailable("codex")) {
     signals.codex.push("codex command");
   }
+  if (await commandAvailable("omp")) {
+    signals.omp.push("omp command");
+  }
 
   const claude = signals.claude.length > 0;
   const codex = signals.codex.length > 0;
-  const mode: AgentMode = claude && codex
+  const omp = signals.omp.length > 0;
+  const mode: AgentMode = claude && codex && omp
     ? "both"
     : claude
       ? "claude"
       : codex
         ? "codex"
-        : "unknown";
+        : omp
+          ? "omp"
+          : "unknown";
 
-  return { mode, claude, codex, signals };
+  return { mode, claude, codex, omp, signals };
 }

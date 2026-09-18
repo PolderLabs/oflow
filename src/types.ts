@@ -1,6 +1,6 @@
 import type { BackendStatus } from "./backends.js";
 
-export type AgentName = "claude" | "codex";
+export type AgentName = "claude" | "codex" | "omp";
 
 export type AgentMode = AgentName | "both" | "unknown";
 
@@ -26,6 +26,7 @@ export interface AgentDetection {
   mode: AgentMode;
   claude: boolean;
   codex: boolean;
+  omp: boolean;
   signals: Record<AgentName, string[]>;
 }
 
@@ -42,11 +43,7 @@ export interface OflowConfig {
     host: string;
     path: string;
   };
-  agent: {
-    mode: AgentMode;
-    claude: boolean;
-    codex: boolean;
-  };
+  agent: OflowConfigAgentSection;
   workflow: {
     storyType: "issue";
     acceptanceCriteriaRequired: true;
@@ -59,6 +56,13 @@ export interface AcceptanceCriterion {
   id: string;
   text: string;
   checked: boolean;
+}
+
+export interface OflowConfigAgentSection {
+  mode: AgentMode;
+  claude: boolean;
+  codex: boolean;
+  omp: boolean;
 }
 
 export interface CriterionCheck extends AcceptanceCriterion {
