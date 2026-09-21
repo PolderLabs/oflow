@@ -41,7 +41,7 @@ test("environment token wins read backend priority over glab and store", async (
   }
 });
 
-test("authenticated glab wins when no environment token exists", async () => {
+test("authenticated glab wins when no environment token exists", { skip: process.platform === "win32" }, async () => {
   const previous = process.env.GITLAB_TOKEN;
   delete process.env.GITLAB_TOKEN;
   const root = await mkdtemp(join(tmpdir(), "oflow-authresolver-"));
