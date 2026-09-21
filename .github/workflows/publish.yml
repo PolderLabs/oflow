@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   verify-and-publish:
-    if: github.repository == 'PolderLabsVOF/oflow'
+    if: github.repository == 'PolderLabs/oflow'
     runs-on: ubuntu-latest
     steps:
       - name: Check out release tag
