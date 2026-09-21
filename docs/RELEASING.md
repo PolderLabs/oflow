@@ -39,15 +39,20 @@ unrelated package, so release commands must use `oflow-workflow`.
 
 The manual [`publish` workflow](../.github/workflows/publish.yml) checks out
 an existing tag, reruns all release checks, verifies that the tag matches the
-package version, and publishes the package with npm provenance.
+package version, and publishes the package through npm Trusted Publishing.
 
-Before running it, configure an npm publishing token as the repository secret
-`NPM_TOKEN`. Never commit the token, place it in an issue, or pass it as a
-command-line argument. Then run the workflow with the exact tag, for example
-`v0.1.0`.
+Before running it, configure an npm Trusted Publisher for the package:
 
-The workflow is intentionally manual. Creating a GitHub release does not
-silently publish to npm, and ordinary CI never receives npm credentials.
+- Provider: GitHub Actions
+- Organization or user: `PolderLabs`
+- Repository: `oflow`
+- Workflow filename: `publish.yml`
+- Allow direct `npm publish`
+
+The workflow uses GitHub OIDC with `id-token: write`; it does not need an npm
+publishing token. The workflow is intentionally manual. Creating a GitHub
+release does not silently publish to npm, and ordinary CI never receives npm
+credentials.
 
 ## Publishing locally
 
