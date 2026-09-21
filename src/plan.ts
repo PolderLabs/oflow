@@ -1005,6 +1005,12 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
   const stored = await loadPlan(root, input);
   assertState(stored.plan, "approved", "apply");
   assertDigest(stored.plan);
+  if ((DELEGATED_ONLY_OPERATIONS as readonly string[]).includes(stored.plan.operation.kind)) {
+    throw new OflowError(
+      stored.plan.operation.kind + " is delegated-only. Run: oflow apply <plan> --delegate, execute the returned action through the agent runtime's GitLab MCP tool, then oflow apply <plan> --receipt <file> and oflow verify <plan>.",
+      "DELEGATED_ONLY_ACTION",
+    );
+  }
 
   const remote = await getGitLabRemote(root);
   if (
@@ -1218,12 +1224,6 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
     stored.plan.result = compactBoardList(result, "board-list.update");
   } else {
-    if (stored.plan.operation.kind === "merge_request.create") {
-      throw new OflowError(
-        "merge_request.create is delegated-only. Run: oflow apply <plan> --delegate, execute the returned action through the agent runtime's GitLab MCP tool, then oflow verify <plan>.",
-        "DELEGATED_ONLY_ACTION",
-      );
-    }
     if (stored.plan.operation.kind === "label.update") {
       const result = await client.updateLabel(
         stored.plan.operation.projectPath,
@@ -1253,7 +1253,7 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
         },
       );
       stored.plan.result = compactMilestone(result, "milestone.create", reused);
-    } else {
+    } else if (stored.plan.operation.kind === "milestone.update") {
       const result = await client.updateMilestone(
         stored.plan.operation.projectPath,
         stored.plan.operation.milestoneIid,
@@ -1445,6 +1445,7 @@ export async function ingestExecutionReceipt(
     await recordPlanEvent(root, stored.plan, "apply-failed", failure);
     throw new OflowError(failure.message, failure.code);
   }
+  stored.plan.applyError = undefined;
   stored.plan.execution = { backend: "gitlab-mcp" };
   stored.plan.result = {
     kind: operation.kind,
@@ -1755,6 +1756,11 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
           check.actual,
       ),
       ...plan.verification.reasons.map((reason) => "- " + reason),
+      ...(plan.execution?.backend === "gitlab-mcp"
+        ? [
+            "- Transport split: the agent runtime executed this action through GitLab MCP; oflow verified the resulting remote state independently through its own REST read transport.",
+          ]
+        : []),
     );
   }
   lines.push("");

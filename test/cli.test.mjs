@@ -203,6 +203,98 @@ test("CLI routes merge-request create flags into a guarded MR plan", async () =>
   }
 });
 
+test("CLI runs the full delegated flow: delegate, receipt, verify", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-mr-delegated-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "mr-delegated-cli-token";
+  const mergeRequests = [];
+  const planRelative = (name) => join(".oflow", "state", "plans", name);
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/v4/projects/team%2Fproject") {
+        return jsonResponse({ id: 7, path_with_namespace: "team/project", default_branch: "main" });
+      }
+      if (url.pathname === "/api/v4/projects/team%2Fproject/issues/42") {
+        return jsonResponse({ iid: 42, title: "Pick a pod" });
+      }
+      if (url.pathname === "/api/v4/projects/team%2Fproject/merge_requests" && url.searchParams.get("state") === "all") {
+        return jsonResponse(mergeRequests);
+      }
+      throw new Error("unexpected fetch: " + url.pathname);
+    };
+
+    assert.equal(await main([
+      "plan", "merge-request", "create", "--root", root,
+      "--story", "42", "--source-branch", "feature/pick-a-pod",
+      "--target-branch", "main", "--title", "Pick a pod",
+      "--description", "Implements story #42.", "--json",
+    ]), 0);
+    const planName = readdirSync(join(root, ".oflow", "state", "plans"))[0];
+    const planPath = join(root, planRelative(planName));
+
+    assert.equal(await main(["approve", planPath, "--root", root, "--json"]), 0);
+
+    // Direct apply must refuse delegated-only plans (exit 1, stderr message).
+    assert.equal(await main(["apply", planPath, "--root", root, "--json"]), 1);
+
+    assert.equal(await main(["apply", planPath, "--root", root, "--delegate", "--json"]), 0);
+    const delegated = JSON.parse(readFileSync(planPath, "utf8"));
+    assert.equal(delegated.state, "approved");
+
+    // Verify before a receipt is refused: the plan is not applied yet.
+    assert.equal(await main(["verify", planPath, "--root", root, "--json"]), 1);
+
+    const receiptPath = join(root, "receipt.json");
+    writeFileSync(receiptPath, JSON.stringify({
+      backend: "gitlab-mcp",
+      action: "merge_request.create",
+      executedAt: "2026-09-21T12:30:00Z",
+      success: true,
+      result: { iid: 9, web_url: "https://gitlab.example.test/team/project/-/merge_requests/9" },
+    }));
+    assert.equal(await main(["apply", planPath, "--root", root, "--receipt", receiptPath, "--json"]), 0);
+    let applied = JSON.parse(readFileSync(planPath, "utf8"));
+    assert.equal(applied.state, "applied");
+    assert.equal(applied.execution.backend, "gitlab-mcp");
+
+    mergeRequests.push({
+      iid: 9,
+      source_branch: "feature/pick-a-pod",
+      target_branch: "main",
+      title: "Pick a pod",
+      description: "Implements story #42.",
+    });
+    assert.equal(await main(["verify", planPath, "--root", root, "--json"]), 0);
+    const verified = JSON.parse(readFileSync(planPath, "utf8"));
+    assert.equal(verified.state, "verified");
+    assert.equal(verified.verification.passed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function jsonResponse(value) {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers(),
+    text: async () => JSON.stringify(value),
+  };
+}
+
 test("cache diagnostics stay local and report a missing read model without a token", () => {
   const root = mkdtempSync(join(tmpdir(), "oflow-cache-status-cli-"));
   try {

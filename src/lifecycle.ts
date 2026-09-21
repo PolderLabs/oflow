@@ -354,9 +354,9 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
     },
     {
       id: "merge-request",
-      passed: mergeRequest !== null,
+      passed: mergeRequest !== null && mergeRequest.state === "merged",
       detail: mergeRequest
-        ? "!" + mergeRequest.iid + " (" + mergeRequest.state + (mergeRequest.draft ? ", draft" : "") + ")."
+        ? "!" + mergeRequest.iid + " (" + mergeRequest.state + (mergeRequest.draft ? ", draft" : "") + "); finish requires merged."
         : "No merge request references this story yet.",
     },
     {
