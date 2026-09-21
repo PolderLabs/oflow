@@ -466,6 +466,7 @@ test("updates an issue with a form-encoded write request", async () => {
         add_labels: "backend",
         remove_labels: "stale",
         state_event: "close",
+        issue_type: "task",
       });
     assert.equal(issue.title, "Updated story");
     assert.equal(requestMethod, "PUT");
@@ -476,6 +477,7 @@ test("updates an issue with a form-encoded write request", async () => {
     assert.equal(body.get("add_labels"), "backend");
     assert.equal(body.get("remove_labels"), "stale");
     assert.equal(body.get("state_event"), "close");
+    assert.equal(body.get("issue_type"), "task");
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -50,7 +50,7 @@ test("issue update executes through glab when no direct token exists", {
       host: "gitlab.example.test",
       projectPath: "team/project",
       issueIid: 42,
-      changes: { add_labels: "In Progress" },
+      changes: { add_labels: "In Progress", issue_type: "task" },
       expectedUpdatedAt: "2026-09-17T10:00:00Z",
       createRestClient: () => {
         throw new Error("REST client must not be constructed without a token");
@@ -68,6 +68,7 @@ test("issue update executes through glab when no direct token exists", {
     assert.equal(apiCalls[1][4], "PUT");
     assert.ok(apiCalls[1].includes("projects/team%2Fproject/issues/42"));
     assert.ok(apiCalls[1].includes("--field") && apiCalls[1].includes("add_labels=In Progress"));
+    assert.ok(apiCalls[1].includes("issue_type=task"));
     // No token ever appears in any subprocess argv.
     for (const entry of logged) {
       assert.equal(entry.some((arg) => /token/i.test(arg)), false);

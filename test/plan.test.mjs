@@ -759,6 +759,93 @@ test("issue create plans stay guarded and verify the created work item", async (
   }
 });
 
+test("task work-item types survive guarded create and update plans", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-task-plan-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "task-plan-test-token";
+  let issue = {
+    iid: 77,
+    title: "Existing work item",
+    description: "Existing description",
+    state: "opened",
+    issue_type: "issue",
+    updated_at: "2027-01-01T00:00:00.000Z",
+    web_url: "https://gitlab.example.test/team/project/-/work_items/77",
+  };
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? "GET";
+      if (url.pathname === "/api/v4/projects/team%2Fproject" && method === "GET") {
+        return response({ id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project" });
+      }
+      if (url.pathname.endsWith("/issues/77") && method === "GET") {
+        return response(issue);
+      }
+      if (url.pathname.endsWith("/issues") && method === "POST") {
+        const body = new URLSearchParams(String(init.body));
+        assert.equal(body.get("issue_type"), "task");
+        issue = {
+          ...issue,
+          title: body.get("title"),
+          description: body.get("description"),
+          issue_type: body.get("issue_type"),
+          updated_at: "2027-01-01T00:00:01.000Z",
+        };
+        return response(issue);
+      }
+      if (url.pathname.endsWith("/issues/77") && method === "PUT") {
+        const body = new URLSearchParams(String(init.body));
+        assert.equal(body.get("issue_type"), "task");
+        issue = {
+          ...issue,
+          issue_type: body.get("issue_type"),
+          updated_at: "2027-01-01T00:00:02.000Z",
+        };
+        return response(issue);
+      }
+      throw new Error("unexpected request " + method + " " + url.pathname);
+    };
+
+    const created = await createIssueCreatePlan(root, {
+      title: "Create a real task",
+      description: "Acceptance criteria:\n- [ ] AC-1: Type is task",
+      issue_type: "task",
+    });
+    assert.equal(created.plan.operation.issue.issue_type, "task");
+    await approvePlan(root, created.path);
+    const appliedCreate = await applyPlan(root, created.path);
+    assert.equal(appliedCreate.plan.result.issueType, "task");
+    assert.equal((await verifyPlan(root, created.path)).plan.verification.passed, true);
+
+    issue = { ...issue, issue_type: "issue", updated_at: "2027-01-01T00:00:03.000Z" };
+    const updated = await createIssueUpdatePlan(root, 77, { issue_type: "task" });
+    assert.equal(updated.plan.operation.changes.issue_type, "task");
+    await approvePlan(root, updated.path);
+    await applyPlan(root, updated.path);
+    const verifiedUpdate = await verifyPlan(root, updated.path);
+    assert.equal(verifiedUpdate.plan.verification.passed, true);
+    assert.equal(verifiedUpdate.plan.verification.checks[0].field, "issue_type");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("plan paths cannot escape the repository plan directory", async () => {
   const root = await mkdtemp(join(tmpdir(), "oflow-plan-path-"));
   try {

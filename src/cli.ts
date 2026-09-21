@@ -88,9 +88,11 @@ import type {
   GitLabBoardUpdate,
   GitLabLabelUpdate,
   GitLabMilestoneUpdate,
+  IssueType,
   IssueState,
   IterationState,
 } from "./types.js";
+import { isIssueType } from "./types.js";
 
 interface CliOptions {
   command: string;
@@ -118,6 +120,7 @@ interface CliOptions {
   planPath?: string;
   title?: string;
   description?: string;
+  issueType?: string;
   body?: string;
   name?: string;
   color?: string;
@@ -488,6 +491,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             epic_id: options.epic === undefined
               ? undefined
               : parseEpicId(options.epic, false),
+            issue_type: normalizeIssueType(options.issueType),
             due_date: options.dueDate,
             weight: options.weight === undefined
               ? undefined
@@ -530,6 +534,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             epic_id: options.epic === undefined
               ? undefined
               : parseEpicId(options.epic, true),
+            issue_type: normalizeIssueType(options.issueType),
             due_date: options.dueDate,
             weight: options.weight === undefined
               ? undefined
@@ -948,6 +953,8 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--host" ||
       argument === "--title" ||
       argument === "--description" ||
+      argument === "--issue-type" ||
+      argument === "--type" ||
       argument === "--body" ||
       argument === "--name" ||
       argument === "--color" ||
@@ -995,6 +1002,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.title = value;
       } else if (argument === "--description") {
         options.description = value;
+      } else if (argument === "--issue-type" || argument === "--type") {
+        options.issueType = value;
       } else if (argument === "--body") {
         options.body = value;
       } else if (argument === "--name") {
@@ -1076,6 +1085,18 @@ function parseArgs(argv: string[]): CliOptions {
       options.title = argument.slice("--title=".length);
     } else if (argument.startsWith("--description=")) {
       options.description = argument.slice("--description=".length);
+    } else if (argument.startsWith("--issue-type=")) {
+      const value = argument.slice("--issue-type=".length);
+      if (!value) {
+        throw new OflowError("--issue-type requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.issueType = value;
+    } else if (argument.startsWith("--type=")) {
+      const value = argument.slice("--type=".length);
+      if (!value) {
+        throw new OflowError("--type requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.issueType = value;
     } else if (argument.startsWith("--body=")) {
       options.body = argument.slice("--body=".length);
     } else if (argument.startsWith("--name=")) {
@@ -1235,6 +1256,20 @@ function normalizeIssueState(value: string | undefined): IssueState {
   throw new OflowError(
     "Unknown issue state \"" + value + "\". Use opened, closed, or all.",
     "INVALID_ISSUE_STATE",
+  );
+}
+
+function normalizeIssueType(value: string | undefined): IssueType | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (isIssueType(normalized)) {
+    return normalized;
+  }
+  throw new OflowError(
+    "Unknown issue type \"" + value + "\". Use issue, incident, test_case, or task.",
+    "INVALID_ISSUE_TYPE",
   );
 }
 
@@ -1634,8 +1669,8 @@ function helpText(): string {
     "  cache request-refresh                record a local refresh request (no network)",
     "  dashboard [--port <n>]               serve the local read-only planning dashboard",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
-    "  plan issue create --title <title>   prepare an auditable issue create",
-    "  plan issue update --story <iid>     prepare an auditable issue update",
+    "  plan issue create --title <title> [--type <type>] prepare an auditable work-item create",
+    "  plan issue update --story <iid> [--type <type>] prepare an auditable work-item update",
     "  plan issue update --story <iid> --iteration <title|iid|none>",
     "  plan issues labels --stories 1,2    prepare guarded bulk label changes",
     "  plan issues update --stories 1,2    prepare guarded owner/timebox changes",
@@ -1665,6 +1700,7 @@ function helpText(): string {
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
+    "  --type/--issue-type issue|incident|test_case|task set the GitLab work-item type",
     "  --stories 1,2 use with plan issues labels/update for bounded bulk changes",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --mine, --author, --search, --updated-after, --updated-before, --limit 1..100",
@@ -1684,6 +1720,7 @@ function assertBulkPlanningOptions(options: CliOptions): void {
   const unsupported = [
     ["--title", options.title],
     ["--description", options.description],
+    ["--issue-type", options.issueType],
     ["--body", options.body],
     ["--name", options.name],
     ["--color", options.color],
@@ -1724,6 +1761,7 @@ function assertBulkIterationPlanOptions(options: CliOptions): void {
   const unsupported = [
     ["--title", options.title],
     ["--description", options.description],
+    ["--issue-type", options.issueType],
     ["--body", options.body],
     ["--name", options.name],
     ["--color", options.color],
@@ -1767,6 +1805,7 @@ function assertIssueIterationPlanOptions(options: CliOptions): void {
   const unsupported = [
     ["--title", options.title],
     ["--description", options.description],
+    ["--issue-type", options.issueType],
     ["--body", options.body],
     ["--name", options.name],
     ["--color", options.color],
@@ -1811,6 +1850,7 @@ function assertAssessmentPlanOptions(options: CliOptions): void {
   const unsupported = [
     ["--title", options.title],
     ["--description", options.description],
+    ["--issue-type", options.issueType],
     ["--body", options.body],
     ["--name", options.name],
     ["--color", options.color],

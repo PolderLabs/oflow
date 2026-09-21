@@ -8,6 +8,15 @@ export type IssueState = "opened" | "closed" | "all";
 
 export type IterationState = "opened" | "upcoming" | "current" | "closed" | "all";
 
+export const issueTypes = ["issue", "incident", "test_case", "task"] as const;
+
+export type IssueType = (typeof issueTypes)[number];
+
+export function isIssueType(value: unknown): value is IssueType {
+  return typeof value === "string" &&
+    (issueTypes as readonly string[]).includes(value);
+}
+
 export interface GitLabIssueFilters {
   label?: string;
   milestone?: string;
@@ -101,6 +110,7 @@ export interface GitLabIssue {
   iteration?: Record<string, unknown> | null;
   epic?: Record<string, unknown> | null;
   parent?: Record<string, unknown> | null;
+  issue_type?: string;
   references?: Record<string, unknown> | null;
   updated_at?: string;
   created_at?: string;
@@ -123,6 +133,7 @@ export interface GitLabIssueUpdate {
   milestone?: string;
   milestone_id?: number;
   epic_id?: number;
+  issue_type?: IssueType;
   due_date?: string;
   weight?: number;
   assignee_ids?: number[];
@@ -135,6 +146,7 @@ export interface GitLabIssueCreate {
   labels?: string;
   milestone?: string;
   epic_id?: number;
+  issue_type?: IssueType;
   due_date?: string;
   weight?: number;
   assignee_ids?: number[];

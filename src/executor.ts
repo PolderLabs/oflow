@@ -34,6 +34,7 @@ function changesToFields(changes: GitLabIssueUpdate): Record<string, string> {
   if (changes.title !== undefined) fields.title = changes.title;
   if (changes.description !== undefined) fields.description = changes.description;
   if (changes.state_event !== undefined) fields.state_event = changes.state_event;
+  if (changes.issue_type !== undefined) fields.issue_type = changes.issue_type;
   if (changes.add_labels !== undefined) {
     fields.add_labels = Array.isArray(changes.add_labels)
       ? changes.add_labels.join(",")

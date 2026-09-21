@@ -76,6 +76,58 @@ test("CLI runs through a symlink like an npm global binary", { skip: process.pla
   }
 });
 
+test("CLI routes --type task into a guarded work-item create plan", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-task-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "task-cli-test-token";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      assert.equal(url.pathname, "/api/v4/projects/team%2Fproject");
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify({
+          id: 7,
+          path_with_namespace: "team/project",
+          web_url: "https://gitlab.example.test/team/project",
+        }),
+      };
+    };
+    assert.equal(await main([
+      "plan",
+      "issue",
+      "create",
+      "--root",
+      root,
+      "--title",
+      "Create a real task",
+      "--type",
+      "task",
+      "--json",
+    ]), 0);
+    const planFiles = readdirSync(join(root, ".oflow", "state", "plans"));
+    assert.equal(planFiles.length, 1);
+    const plan = JSON.parse(readFileSync(join(root, ".oflow", "state", "plans", planFiles[0]), "utf8"));
+    assert.equal(plan.operation.issue.issue_type, "task");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("cache diagnostics stay local and report a missing read model without a token", () => {
   const root = mkdtempSync(join(tmpdir(), "oflow-cache-status-cli-"));
   try {

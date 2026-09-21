@@ -7,10 +7,12 @@ import { readJson, writeJson } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
 import { GitLabClient } from "./gitlab.js";
 import { executeIssueUpdate } from "./executor.js";
+import { isIssueType } from "./types.js";
 import type {
   GitLabIssue,
   GitLabIssueCreate,
   GitLabIssueUpdate,
+  IssueType,
   GitLabBoard,
   GitLabBoardList,
   GitLabBoardUpdate,
@@ -202,6 +204,7 @@ export interface PlanArtifact {
     title?: string;
     body?: string;
     state?: string | null;
+    issueType?: string | null;
     webUrl?: string | null;
     iterationId?: string | null;
     iterationIid?: number | null;
@@ -340,7 +343,7 @@ export async function createIssueUpdatePlan(
   );
   if (Object.keys(operationChanges).length === 0) {
     throw new OflowError(
-      "No issue changes were provided. Use --title, --description, --labels, --add-labels, --remove-labels, --milestone, --epic, --due-date, --weight, --assignee, or --state.",
+      "No issue changes were provided. Use --title, --description, --type, --labels, --add-labels, --remove-labels, --milestone, --epic, --due-date, --weight, --assignee, or --state.",
       "EMPTY_PLAN",
     );
   }
@@ -1459,7 +1462,7 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       : []),
     "",
     plan.operation.kind === "issue.create"
-      ? "Create issue:"
+      ? "Create " + (plan.operation.issue.issue_type ?? "issue") + ":"
       : plan.operation.kind === "issue.update"
       ? "Changes:"
       : plan.operation.kind === "issue.iteration.update"
@@ -1553,6 +1556,7 @@ function isSupportedOperation(
   if (operation.kind === "issue.update") {
     return validIssueOperation(operation) &&
       Boolean(operation.changes && typeof operation.changes === "object") &&
+      (operation.changes.issue_type === undefined || isIssueType(operation.changes.issue_type)) &&
       validExpectedUpdatedAt(operation.expectedUpdatedAt);
   }
   if (operation.kind === "issue.iteration.update") {
@@ -1679,7 +1683,8 @@ function validIssueCreateOperation(
   return operation.kind === "issue.create" &&
     Boolean(operation.issue && typeof operation.issue === "object") &&
     typeof operation.issue.title === "string" &&
-    operation.issue.title.trim().length > 0;
+    operation.issue.title.trim().length > 0 &&
+    (operation.issue.issue_type === undefined || isIssueType(operation.issue.issue_type));
 }
 
 function validateIssueIid(issueIid: number): void {
@@ -2013,6 +2018,9 @@ function validateIssueChanges(changes: GitLabIssueUpdate): GitLabIssueUpdate {
   if (changes.assignee_ids !== undefined) {
     changes.assignee_ids = validateAssigneeIds(changes.assignee_ids);
   }
+  if (changes.issue_type !== undefined) {
+    changes.issue_type = validateIssueType(changes.issue_type);
+  }
   return changes;
 }
 
@@ -2045,6 +2053,7 @@ function validateIssueCreate(issue: GitLabIssueCreate): GitLabIssueCreate {
     labels: issue.labels,
     milestone: issue.milestone,
     epic_id: issue.epic_id,
+    issue_type: validateIssueType(issue.issue_type),
     due_date: issue.due_date,
     weight: issue.weight,
     assignee_ids: validateAssigneeIds(issue.assignee_ids),
@@ -2052,6 +2061,19 @@ function validateIssueCreate(issue: GitLabIssueCreate): GitLabIssueCreate {
   return Object.fromEntries(
     Object.entries(result).filter(([, value]) => value !== undefined),
   ) as GitLabIssueCreate;
+}
+
+function validateIssueType(value: IssueType | undefined): IssueType | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (isIssueType(value)) {
+    return value;
+  }
+  throw new OflowError(
+    "Issue type must be issue, incident, test_case, or task.",
+    "INVALID_ISSUE_TYPE",
+  );
 }
 
 function validateAssigneeIds(ids: number[] | undefined): number[] | undefined {
@@ -2107,6 +2129,7 @@ function compactIssue(
     iid: issue.iid,
     title: issue.title,
     state: issue.state ?? null,
+    issueType: issue.issue_type ?? null,
     webUrl: issue.web_url ?? null,
   };
 }
@@ -2318,6 +2341,9 @@ function verifyIssue(
   if (changes.state_event !== undefined) {
     const expected = changes.state_event === "close" ? "closed" : "opened";
     checks.push(check("state", expected, issue.state ?? ""));
+  }
+  if (changes.issue_type !== undefined) {
+    checks.push(check("issue_type", changes.issue_type, issue.issue_type ?? ""));
   }
   const failed = checks.filter((item) => !item.passed);
   return {
@@ -2955,7 +2981,7 @@ function optionalText(value: string | null | undefined): string {
 
 function formatTarget(operation: PlanOperation): string {
   if (operation.kind === "issue.create") {
-    return "new issue " + JSON.stringify(operation.issue.title);
+    return "new " + (operation.issue.issue_type ?? "issue") + " " + JSON.stringify(operation.issue.title);
   }
   if (
     operation.kind === "issue.update" ||

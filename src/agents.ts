@@ -120,7 +120,7 @@ export async function detectAgents(
   const claude = signals.claude.length > 0;
   const codex = signals.codex.length > 0;
   const omp = signals.omp.length > 0;
-  const mode: AgentMode = claude && codex && omp
+  const mode: AgentMode = claude && codex
     ? "both"
     : claude
       ? "claude"

@@ -251,6 +251,7 @@ administration, and bounded bulk label and owner/timebox updates:
 ```bash
 oflow plan issue create \
   --title "Reserve a pod" \
+  --type task \
   --description "Acceptance criteria:\n- [ ] AC-1: Reservation persists" \
   --labels "User Story,Ready" \
   --assignee developer \
@@ -258,6 +259,7 @@ oflow plan issue create \
   --due-date 2027-01-20 \
   --weight 3
 oflow plan issue update --story <iid> \
+  --type task \
   --title "Updated title" \
   --labels "Ready,backend" \
   --epic 12 \
@@ -294,6 +296,10 @@ still requires the normal `plan -> approve -> apply -> verify` sequence. GitLab
 documents `assignee_ids` on issue updates and username lookup through the Users
 API ([Issues API](https://docs.gitlab.com/api/issues/),
 [Users API](https://docs.gitlab.com/api/users/)).
+
+Use `--type task` (or `--issue-type task`) to create or convert a real GitLab
+Task work item. The type is carried in the approved plan and verified after
+apply; the `Task` label remains independent from the GitLab work-item type.
 
 For a single story, assign or clear a sprint with
 `oflow plan issue update --story <iid> --iteration <title|iid|none>`. oflow
