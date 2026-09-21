@@ -6,6 +6,8 @@ import { getGitLabRemote } from "./git.js";
 import { getGitLabToken, getGitLabTokenSource } from "./auth.js";
 import { GitLabClient } from "./gitlab.js";
 import { detectBackends } from "./backends.js";
+import { dim, statusMarker } from "./presentation.js";
+import type { PresentationOptions } from "./presentation.js";
 import type {
   DoctorCapabilityCheck,
   DoctorReport,
@@ -260,6 +262,25 @@ async function checkApiCapabilities(
     iterationsProbe.check,
   );
 
+  if (userProbe.check.status === "passed") {
+    const tokenProbe = await runProbe(
+      { id: "token.scopes", access: "read", backend: "REST", required: false },
+      () => client.getPersonalAccessTokenSelf(),
+      "Token scopes reported by the personal access token self endpoint.",
+    );
+    if (tokenProbe.check.status === "failed" && tokenScopesUnsupported(tokenProbe.check.detail)) {
+      checks.push({
+        ...tokenProbe.check,
+        status: "skipped",
+        detail: "Personal access token self endpoint unavailable on this GitLab version or token kind; scopes cannot be reported.",
+      });
+    } else {
+      checks.push(tokenProbe.check.status === "passed" && tokenProbe.value
+        ? { ...tokenProbe.check, detail: formatTokenScopes(tokenProbe.value) }
+        : tokenProbe.check);
+    }
+  }
+
   const firstBoard = boardsProbe.value?.items[0];
   if (boardsProbe.check.status === "passed" && firstBoard && typeof firstBoard.id === "number") {
     const boardListsProbe = await runProbe(
@@ -412,17 +433,41 @@ async function runProbe<T>(
   operation: () => Promise<T>,
   successDetail: string,
 ): Promise<ProbeResult<T>> {
+  const startedAt = performance.now();
   try {
+    const value = await operation();
     return {
-      check: { ...definition, status: "passed", detail: successDetail },
-      value: await operation(),
+      check: { ...definition, status: "passed", detail: successDetail, latencyMs: Math.round(performance.now() - startedAt) },
+      value,
     };
   } catch (error: unknown) {
     return {
-      check: { ...definition, status: "failed", detail: formatProbeError(error) },
+      check: {
+        ...definition,
+        status: "failed",
+        detail: formatProbeError(error),
+        latencyMs: Math.round(performance.now() - startedAt),
+      },
       value: null,
     };
   }
+}
+
+function formatTokenScopes(
+  token: { scopes: string[]; expiresAt: string | null; revoked: boolean; active: boolean },
+): string {
+  const scopes = token.scopes.length > 0 ? token.scopes.join(", ") : "none reported";
+  const state = token.revoked
+    ? "revoked"
+    : token.active
+      ? "active"
+      : "inactive";
+  return "Token " + state + " with scopes: " + scopes +
+    (token.expiresAt ? " (expires " + token.expiresAt + ")" : "") + ".";
+}
+
+function tokenScopesUnsupported(detail: string): boolean {
+  return /GitLab API (403|404)/.test(detail);
 }
 
 function skippedCheck(
@@ -454,9 +499,9 @@ function inferGroupPath(project: GitLabProject | null, projectPath: string): str
   return parts.length > 1 ? parts.slice(0, -1).join("/") : null;
 }
 
-export function formatDoctor(report: DoctorReport): string {
+export function formatDoctor(report: DoctorReport, presentation: PresentationOptions = { color: false }): string {
   const lines = [
-    "# oflow doctor",
+    dim("# oflow doctor", presentation),
     "",
     "Repository: " + report.root,
     "GitLab remote: " + (report.remote ? report.remote.projectPath : "not detected"),
@@ -484,12 +529,12 @@ export function formatDoctor(report: DoctorReport): string {
       "API capability checks (read probes only; no remote writes):",
       ...report.apiChecks
         .filter((check) => check.access === "read")
-        .map(formatCapabilityCheck),
+        .map((check) => formatCapabilityCheck(check, presentation)),
       "",
       "Write capability checks:",
       ...report.apiChecks
         .filter((check) => check.access === "write")
-        .map(formatCapabilityCheck),
+        .map((check) => formatCapabilityCheck(check, presentation)),
       "",
       "Write check policy: doctor never tests a mutation. Use an approved plan and verify the result.",
     );
@@ -509,13 +554,15 @@ export function formatDoctor(report: DoctorReport): string {
   return lines.join("\n") + "\n";
 }
 
-function formatCapabilityCheck(check: DoctorCapabilityCheck): string {
+function formatCapabilityCheck(check: DoctorCapabilityCheck, presentation: PresentationOptions): string {
   const marker: Record<DoctorCheckStatus, string> = {
     passed: "PASS",
     failed: "FAIL",
     skipped: "SKIP",
     "not-probed": "N/A",
   };
-  return "- [" + marker[check.status] + "] " +
-    check.backend + " " + check.id + " — " + check.detail;
+  return "- [" + statusMarker(marker[check.status], presentation) + "] " +
+    check.backend + " " + check.id +
+    (check.latencyMs === undefined ? "" : dim(" (" + String(check.latencyMs) + "ms)", presentation)) +
+    " — " + check.detail;
 }

@@ -4,10 +4,11 @@ import { recordPlanEvent } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
-import { getGitLabRemote } from "./git.js";
+import { getCurrentBranch, getGitLabRemote } from "./git.js";
 import { GitLabClient } from "./gitlab.js";
 import { executeIssueUpdate } from "./executor.js";
 import { isIssueType } from "./types.js";
+import type { DelegatedActionRequest, ExecutionReceipt } from "./actions.js";
 import type {
   GitLabIssue,
   GitLabIssueCreate,
@@ -171,6 +172,25 @@ export interface BoardListUpdateOperation {
   position: number;
 }
 
+/**
+ * Delegated-only delivery action (vNext PR 10): the plan describes the MR
+ * intent; an agent runtime executes it through its GitLab MCP tool and
+ * oflow independently verifies the postconditions. There is no direct
+ * oflow-side execution path for this operation.
+ */
+export interface MergeRequestCreateOperation {
+  kind: "merge_request.create";
+  host: string;
+  projectPath: string;
+  storyIid: number;
+  sourceBranch: string;
+  targetBranch: string;
+  title: string;
+  description: string;
+  removeSourceBranch?: boolean;
+  squash?: boolean;
+}
+
 export type PlanOperation =
   | IssueCreateOperation
   | IssueUpdateOperation
@@ -186,7 +206,10 @@ export type PlanOperation =
   | BoardCreateOperation
   | BoardUpdateOperation
   | BoardListCreateOperation
-  | BoardListUpdateOperation;
+  | BoardListUpdateOperation
+  | MergeRequestCreateOperation;
+
+export const DELEGATED_ONLY_OPERATIONS = ["merge_request.create"] as const;
 
 export interface PlanArtifact {
   managedBy: "oflow";
@@ -232,7 +255,15 @@ export interface PlanArtifact {
     }>;
   };
   execution?: {
-    backend: "rest" | "glab";
+    backend: "rest" | "glab" | "gitlab-mcp";
+  };
+  delegatedReceipt?: {
+    backend: "gitlab-mcp";
+    action: string;
+    executedAt: string;
+    resultIid?: number;
+    resultUrl?: string;
+    error?: string;
   };
   verification?: PlanVerification;
   applyError?: {
@@ -1187,6 +1218,12 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
     );
     stored.plan.result = compactBoardList(result, "board-list.update");
   } else {
+    if (stored.plan.operation.kind === "merge_request.create") {
+      throw new OflowError(
+        "merge_request.create is delegated-only. Run: oflow apply <plan> --delegate, execute the returned action through the agent runtime's GitLab MCP tool, then oflow verify <plan>.",
+        "DELEGATED_ONLY_ACTION",
+      );
+    }
     if (stored.plan.operation.kind === "label.update") {
       const result = await client.updateLabel(
         stored.plan.operation.projectPath,
@@ -1229,6 +1266,195 @@ export async function applyPlan(root: string, input: string): Promise<StoredPlan
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
   await recordPlanEvent(root, stored.plan, "applied");
+  return stored;
+}
+
+export interface MergeRequestCreatePlanInput {
+  root: string;
+  storyIid: number;
+  sourceBranch?: string;
+  targetBranch?: string;
+  title?: string;
+  description?: string;
+}
+
+/**
+ * Plan a delegated merge_request.create from live story context. The MR
+ * description embeds the story linkage ("Closes #iid") so GitLab closes
+ * the story on merge, mirroring the local template generator.
+ */
+export async function createMergeRequestCreatePlan(
+  input: MergeRequestCreatePlanInput,
+): Promise<StoredPlan> {
+  const config = await loadConfig(input.root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateIssueIid(input.storyIid);
+  const remote = await getGitLabRemote(input.root);
+  const client = new GitLabClient(remote.host);
+  const story = await client.getIssue(remote.projectPath, input.storyIid);
+  const sourceBranch =
+    input.sourceBranch ?? (await getCurrentBranch(input.root)) ?? undefined;
+  if (!sourceBranch) {
+    throw new OflowError(
+      "No source branch detected. Check out the story branch or pass --source-branch.",
+      "MISSING_SOURCE_BRANCH",
+    );
+  }
+  const project = await client.getProject(remote.projectPath);
+  const targetBranch = input.targetBranch ?? project.default_branch ?? "main";
+
+  return writePlan(input.root, {
+    kind: "merge_request.create",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    storyIid: input.storyIid,
+    sourceBranch,
+    targetBranch,
+    title: input.title ?? story.title,
+    description:
+      input.description ??
+      [
+        "Implements story #" + input.storyIid + ": " + story.title,
+        "",
+        "## Acceptance criteria verification",
+        "",
+        "- [ ] AC-1: Add the story's acceptance criteria before opening this MR.",
+        "  Evidence: TBD",
+        "",
+        "Closes #" + input.storyIid,
+      ].join("\n"),
+  });
+}
+
+export interface DelegatedApplyResult {
+  stored: StoredPlan;
+  descriptor: DelegatedActionRequest;
+}
+
+/**
+ * Emit the delegated action descriptor for an approved delegated-only
+ * plan. The agent runtime executes it through its GitLab MCP tool; oflow
+ * then verifies the resulting GitLab state independently. The plan stays
+ * in the approved state until verification succeeds.
+ */
+export async function applyPlanDelegated(
+  root: string,
+  input: string,
+): Promise<DelegatedApplyResult> {
+  const stored = await loadPlan(root, input);
+  assertState(stored.plan, "approved", "apply");
+  assertDigest(stored.plan);
+  const operation = stored.plan.operation;
+  if (operation.kind !== "merge_request.create") {
+    throw new OflowError(
+      "Delegated apply currently supports merge_request.create plans only.",
+      "UNSUPPORTED_DELEGATED_ACTION",
+    );
+  }
+  const remote = await getGitLabRemote(root);
+  if (remote.host !== operation.host || remote.projectPath !== operation.projectPath) {
+    throw new OflowError(
+      "The current Git remote does not match the plan target.",
+      "PLAN_TARGET_MISMATCH",
+    );
+  }
+  const descriptor: DelegatedActionRequest = {
+    execution: "delegated",
+    backendPreference: "gitlab-mcp",
+    action: {
+      name: "merge_request.create",
+      arguments: {
+        project: operation.projectPath,
+        sourceBranch: operation.sourceBranch,
+        targetBranch: operation.targetBranch,
+        title: operation.title,
+        description: operation.description,
+      },
+    },
+    afterExecution: {
+      command: "oflow apply " + relative(root, stored.path) + " --receipt <receipt.json>",
+    },
+  };
+  await recordPlanEvent(root, stored.plan, "delegated");
+  return { stored, descriptor };
+}
+
+/**
+ * Ingest the execution receipt produced by the agent runtime after it ran
+ * the delegated action through its GitLab MCP tool. A successful receipt
+ * transitions the plan to `applied` so independent verification can run;
+ * a failed receipt records the failure without contacting GitLab.
+ */
+export async function ingestExecutionReceipt(
+  root: string,
+  input: string,
+  receipt: ExecutionReceipt,
+): Promise<StoredPlan> {
+  const stored = await loadPlan(root, input);
+  assertState(stored.plan, "approved", "apply a receipt to");
+  assertDigest(stored.plan);
+  const operation = stored.plan.operation;
+  if (operation.kind !== "merge_request.create") {
+    throw new OflowError(
+      "Delegated apply currently supports merge_request.create plans only.",
+      "UNSUPPORTED_DELEGATED_ACTION",
+    );
+  }
+  if (receipt.backend !== "gitlab-mcp") {
+    throw new OflowError(
+      "Delegated receipts must come from the gitlab-mcp backend; got " + receipt.backend + ".",
+      "INVALID_RECEIPT_BACKEND",
+    );
+  }
+  if (receipt.action !== operation.kind) {
+    throw new OflowError(
+      "Receipt action " + receipt.action + " does not match plan operation " + operation.kind + ".",
+      "RECEIPT_ACTION_MISMATCH",
+    );
+  }
+  const receiptResult = receipt.result && typeof receipt.result === "object"
+    ? receipt.result as Record<string, unknown>
+    : {};
+  const resultIid = typeof receiptResult.iid === "number" ? receiptResult.iid
+    : typeof receiptResult.id === "number" ? receiptResult.id
+    : undefined;
+  const resultUrl = typeof receiptResult.web_url === "string" ? receiptResult.web_url
+    : typeof receiptResult.webUrl === "string" ? receiptResult.webUrl
+    : undefined;
+  stored.plan.delegatedReceipt = {
+    backend: receipt.backend,
+    action: receipt.action,
+    executedAt: receipt.executedAt,
+    resultIid,
+    resultUrl,
+    error: receipt.error,
+  };
+  if (!receipt.success) {
+    const failure = {
+      code: "DELEGATED_EXECUTION_FAILED",
+      message: receipt.error ?? "The agent runtime reported a failed delegated execution.",
+    };
+    stored.plan.applyError = { ...failure, completed: 0 };
+    stored.plan.updatedAt = new Date().toISOString();
+    await writeJson(stored.path, stored.plan);
+    await recordPlanEvent(root, stored.plan, "apply-failed", failure);
+    throw new OflowError(failure.message, failure.code);
+  }
+  stored.plan.execution = { backend: "gitlab-mcp" };
+  stored.plan.result = {
+    kind: operation.kind,
+    iid: resultIid,
+    webUrl: resultUrl,
+  };
+  stored.plan.state = "applied";
+  stored.plan.updatedAt = new Date().toISOString();
+  await writeJson(stored.path, stored.plan);
+  await recordPlanEvent(root, stored.plan, "receipt");
   return stored;
 }
 
@@ -1310,6 +1536,8 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
           stored.plan.operation.body,
           stored.plan.result?.noteId,
         )
+      : stored.plan.operation.kind === "merge_request.create"
+        ? await verifyMergeRequestCreate(client, stored.plan.operation)
       : stored.plan.operation.kind === "label.create" || stored.plan.operation.kind === "label.update"
         ? verifyLabel(
           await client.listLabels(stored.plan.operation.projectPath),
@@ -1396,6 +1624,13 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
           ].join("\n")
       : plan.operation.kind === "issue.note.create"
         ? "- body: " + plan.operation.body
+        : plan.operation.kind === "merge_request.create"
+          ? [
+              "- story_iid: " + plan.operation.storyIid,
+              "- source_branch: " + plan.operation.sourceBranch,
+              "- target_branch: " + plan.operation.targetBranch,
+              "- title: " + plan.operation.title,
+            ].join("\n")
         : plan.operation.kind === "label.create"
         ? [
             "- name: " + plan.operation.name,
@@ -1646,6 +1881,13 @@ function isSupportedOperation(
     return Number.isSafeInteger(operation.boardId) && operation.boardId > 0 &&
       Number.isSafeInteger(operation.labelId) && operation.labelId > 0 &&
       typeof operation.labelName === "string" && operation.labelName.trim().length > 0;
+  }
+  if (operation.kind === "merge_request.create") {
+    return Number.isSafeInteger(operation.storyIid) && operation.storyIid > 0 &&
+      typeof operation.sourceBranch === "string" && operation.sourceBranch.trim().length > 0 &&
+      typeof operation.targetBranch === "string" && operation.targetBranch.trim().length > 0 &&
+      typeof operation.title === "string" && operation.title.trim().length > 0 &&
+      typeof operation.description === "string";
   }
   return operation.kind === "board-list.update" &&
     Number.isSafeInteger(operation.boardId) && operation.boardId > 0 &&
@@ -2283,6 +2525,57 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   );
 }
 
+
+/**
+ * Postcondition verification for a delegated merge_request.create: find
+ * the MR by source branch (the agent runtime chose the iid) and confirm
+ * the fields the plan promised. Never trusts the agent's claim alone.
+ */
+async function verifyMergeRequestCreate(
+  client: GitLabClient,
+  operation: MergeRequestCreateOperation,
+): Promise<PlanVerification> {
+  const mergeRequests = await client.listMergeRequests(
+    operation.projectPath,
+    undefined,
+    "all",
+  );
+  const match = mergeRequests.find(
+    (candidate) => candidate.source_branch === operation.sourceBranch,
+  );
+  if (!match) {
+    return {
+      passed: false,
+      checks: [
+        {
+          field: "merge_request",
+          expected: "a merge request from " + operation.sourceBranch,
+          actual: "no merge request with that source branch",
+          passed: false,
+        },
+      ],
+      reasons: [
+        "Execute the delegated action through the agent runtime's GitLab MCP tool, then run verify again.",
+      ],
+    };
+  }
+  const checks: PlanVerification["checks"] = [
+    check("source_branch", operation.sourceBranch, match.source_branch ?? ""),
+    check("target_branch", operation.targetBranch, match.target_branch ?? ""),
+    check("title", operation.title, match.title),
+  ];
+  if (match.description !== undefined && match.description !== null) {
+    checks.push(check("description", operation.description, match.description));
+  }
+  const passed = checks.every((entry) => entry.passed);
+  return {
+    passed,
+    checks,
+    reasons: passed
+      ? ["Merge request !" + match.iid + " matches the approved plan."]
+      : ["Merge request !" + match.iid + " does not match the approved plan."],
+  };
+}
 function verifyIssue(
   issue: GitLabIssue,
   changes: GitLabIssueUpdate,
@@ -3019,6 +3312,9 @@ function formatTarget(operation: PlanOperation): string {
   }
   if (operation.kind === "board-list.create") {
     return "board #" + operation.boardId + " list for " + JSON.stringify(operation.labelName);
+  }
+  if (operation.kind === "merge_request.create") {
+    return "merge request " + JSON.stringify(operation.sourceBranch) + " -> " + operation.targetBranch;
   }
   return "board #" + operation.boardId + " list #" + operation.listId;
 }

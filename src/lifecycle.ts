@@ -5,8 +5,10 @@
  * execution-backend resolution into one compact agent entry point.
  * `oflow check` unifies local git state, story assessment, MR/pipeline
  * evidence, and policy into a single next-action summary.
- *
- * Both are compositions over existing primitives; they add no new remote
+ * `oflow finish` is a read-only completion gate that prints the guarded
+ * close command; `oflow handoff` emits compact resume context for the
+ * next agent.
+ * All are compositions over existing primitives; they add no new remote
  * calls beyond what `work --mine`/`context`/`assess` already make.
  */
 
@@ -16,6 +18,8 @@ import { compactWorkItems, getCurrentGitLabUser, listWorkItems } from "./context
 import { OflowError } from "./errors.js";
 import { getCurrentBranch } from "./git.js";
 import { loadStoryContext } from "./context.js";
+import { dim, statusMarker } from "./presentation.js";
+import type { PresentationOptions } from "./presentation.js";
 import type { GitLabIssue } from "./types.js";
 
 export interface StartOptions {
@@ -232,7 +236,7 @@ export interface CheckResult {
 }
 
 export async function checkStory(options: CheckOptions): Promise<CheckResult> {
-  const { story, reason } = await pickStory(options.root, options.story);
+  const { story } = await pickStory(options.root, options.story);
   const assessment = await assessStory(options.root, story.iid);
 
   const nextAction = assessment.nextActions[0]
@@ -267,10 +271,7 @@ export async function checkStory(options: CheckOptions): Promise<CheckResult> {
       clean: assessment.local.clean,
     },
     nextAction,
-    warnings: [
-      ...assessment.warnings,
-      ...("selected because: " + reason ? [] : []),
-    ],
+    warnings: assessment.warnings,
   };
 }
 
@@ -309,6 +310,225 @@ export function formatCheckMarkdown(result: CheckResult): string {
   );
   if (result.warnings.length > 0) {
     lines.push("", "## Warnings", "", ...result.warnings.map((w) => "- " + w));
+  }
+  return lines.join("\n") + "\n";
+}
+
+export interface FinishOptions {
+  root: string;
+  story?: number;
+}
+
+export interface FinishResult {
+  generatedAt: string;
+  story: number;
+  ready: boolean;
+  gates: Array<{ id: string; passed: boolean; detail: string }>;
+  nextCommand: string;
+  warnings: string[];
+}
+
+/**
+ * Read-only completion gate: reports whether a story is ready to close and
+ * prints the guarded plan command that would close it. Never mutates.
+ */
+export async function finishStory(options: FinishOptions): Promise<FinishResult> {
+  const { story } = await pickStory(options.root, options.story);
+  const assessment = await assessStory(options.root, story.iid);
+
+  const unsatisfied = assessment.criteria.filter(
+    (criterion) => criterion.status !== "satisfied",
+  );
+  const mergeRequest = assessment.remote.mergeRequest;
+  const pipeline = assessment.remote.pipeline;
+  const gates = [
+    {
+      id: "acceptance-criteria",
+      passed: assessment.criteria.length > 0 && unsatisfied.length === 0,
+      detail: assessment.criteria.length === 0
+        ? "No parsed acceptance criteria."
+        : unsatisfied.length === 0
+          ? "All " + assessment.criteria.length + " criteria satisfied."
+          : unsatisfied.length + " of " + assessment.criteria.length + " criteria not satisfied: " +
+            unsatisfied.map((criterion) => criterion.id).join(", ") + ".",
+    },
+    {
+      id: "merge-request",
+      passed: mergeRequest !== null,
+      detail: mergeRequest
+        ? "!" + mergeRequest.iid + " (" + mergeRequest.state + (mergeRequest.draft ? ", draft" : "") + ")."
+        : "No merge request references this story yet.",
+    },
+    {
+      id: "pipeline",
+      passed: pipeline !== null && pipeline.status === "success",
+      detail: pipeline
+        ? "Pipeline #" + pipeline.id + " status: " + (pipeline.status ?? "unknown") + "."
+        : "No pipeline evidence found.",
+    },
+    {
+      id: "local-git",
+      passed: assessment.local.clean,
+      detail: assessment.local.clean
+        ? "Working tree clean on " + (assessment.local.branch ?? "(detached)") + "."
+        : "Uncommitted changes: " + assessment.local.changedFiles.length + " file(s).",
+    },
+  ];
+
+  return {
+    generatedAt: new Date().toISOString(),
+    story: story.iid,
+    ready: gates.every((gate) => gate.passed),
+    gates,
+    nextCommand:
+      "oflow plan issue update --story " + story.iid + " --state closed",
+    warnings: assessment.warnings,
+  };
+}
+
+export function formatFinishMarkdown(
+  result: FinishResult,
+  presentation: PresentationOptions = { color: false },
+): string {
+  const lines = [
+    dim("# oflow finish", presentation),
+    "",
+    "Story !" + result.story + " — " + statusMarker(result.ready ? "READY" : "NOT READY", presentation),
+    "",
+    "## Gates",
+    "",
+  ];
+  for (const gate of result.gates) {
+    lines.push("- [" + statusMarker(gate.passed ? "PASS" : "FAIL", presentation) + "] " + gate.id + " — " + gate.detail);
+  }
+  lines.push(
+    "",
+    "To close the story through the guarded path:",
+    "  " + result.nextCommand,
+  );
+  if (result.warnings.length > 0) {
+    lines.push("", "## Warnings", "", ...result.warnings.map((warning) => "- " + warning));
+  }
+  return lines.join("\n") + "\n";
+}
+
+export interface HandoffResult {
+  generatedAt: string;
+  project: {
+    host: string;
+    path: string;
+  };
+  story: {
+    iid: number;
+    title: string;
+    state: string | null;
+    webUrl: string | null;
+  };
+  criteria: Array<{ id: string; status: string; evidence: string[] }>;
+  mergeRequest: {
+    iid: number;
+    state: string | null;
+    draft: boolean;
+    webUrl: string | null;
+  } | null;
+  pipeline: { id: number; status: string | null } | null;
+  local: {
+    branch: string | null;
+    clean: boolean;
+    changedFiles: string[];
+    recentCommits: string[];
+  };
+  blockers: string[];
+  nextActions: string[];
+}
+
+/**
+ * Compact handoff context for the next agent: everything needed to resume
+ * work on the current story without re-deriving it from scratch.
+ */
+export async function handoffStory(options: FinishOptions): Promise<HandoffResult> {
+  const { story } = await pickStory(options.root, options.story);
+  const assessment = await assessStory(options.root, story.iid);
+  const project = assessment.story.webUrl
+    ? new URL(assessment.story.webUrl)
+    : null;
+  return {
+    generatedAt: new Date().toISOString(),
+    project: {
+      host: project ? project.host : "",
+      path: project ? project.pathname.split("/-/")[0].replace(/^\//, "") : "",
+    },
+    story: {
+      iid: assessment.story.iid,
+      title: assessment.story.title,
+      state: assessment.story.state,
+      webUrl: assessment.story.webUrl,
+    },
+    criteria: assessment.criteria.map((criterion) => ({
+      id: criterion.id,
+      status: criterion.status,
+      evidence: criterion.evidence,
+    })),
+    mergeRequest: assessment.remote.mergeRequest
+      ? {
+          iid: assessment.remote.mergeRequest.iid,
+          state: assessment.remote.mergeRequest.state,
+          draft: assessment.remote.mergeRequest.draft,
+          webUrl: assessment.remote.mergeRequest.webUrl,
+        }
+      : null,
+    pipeline: assessment.remote.pipeline
+      ? { id: assessment.remote.pipeline.id, status: assessment.remote.pipeline.status }
+      : null,
+    local: {
+      branch: assessment.local.branch,
+      clean: assessment.local.clean,
+      changedFiles: assessment.local.changedFiles,
+      recentCommits: assessment.local.recentCommits,
+    },
+    blockers: assessment.blockers,
+    nextActions: assessment.nextActions,
+  };
+}
+
+export function formatHandoffMarkdown(result: HandoffResult): string {
+  const lines = [
+    "# oflow handoff",
+    "",
+    "Story !" + result.story.iid + ": " + result.story.title,
+    "State: " + (result.story.state ?? "unknown"),
+    result.story.webUrl ? "URL: " + result.story.webUrl : "",
+    "",
+    "## Acceptance criteria",
+    "",
+  ].filter((line) => line !== "");
+  if (result.criteria.length === 0) {
+    lines.push("- (none parsed)");
+  }
+  for (const criterion of result.criteria) {
+    lines.push("- " + criterion.id + ": " + criterion.status);
+    for (const item of criterion.evidence) {
+      lines.push("  evidence: " + item);
+    }
+  }
+  lines.push(
+    "",
+    "Merge request: " + (result.mergeRequest
+      ? "!" + result.mergeRequest.iid + " (" + result.mergeRequest.state + (result.mergeRequest.draft ? ", draft" : "") + ")"
+      : "missing"),
+    "Pipeline: " + (result.pipeline
+      ? "#" + result.pipeline.id + " (" + (result.pipeline.status ?? "unknown") + ")"
+      : "missing"),
+    "Local: " + (result.local.branch ?? "(detached)") + (result.local.clean ? ", clean" : ", dirty (" + result.local.changedFiles.length + " changed)"),
+  );
+  if (result.local.recentCommits.length > 0) {
+    lines.push("Recent commits:", ...result.local.recentCommits.map((commit) => "- " + commit));
+  }
+  if (result.blockers.length > 0) {
+    lines.push("", "## Blockers", "", ...result.blockers.map((blocker) => "- " + blocker));
+  }
+  if (result.nextActions.length > 0) {
+    lines.push("", "## Next actions", "", ...result.nextActions.map((action) => "- " + action));
   }
   return lines.join("\n") + "\n";
 }

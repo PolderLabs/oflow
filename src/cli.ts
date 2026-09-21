@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   clearGitLabToken,
@@ -13,8 +14,9 @@ import {
   readTokenFromStdin,
   saveGitLabToken,
 } from "./auth.js";
-import { checkStory, formatCheckMarkdown, formatStartMarkdown, startWork } from "./lifecycle.js";
+import { checkStory, formatCheckMarkdown, formatFinishMarkdown, formatHandoffMarkdown, formatStartMarkdown, finishStory, handoffStory, startWork } from "./lifecycle.js";
 import { assessStory, formatAssessmentMarkdown } from "./assess.js";
+import { formatAuditMarkdown, readAudit } from "./audit.js";
 import { formatCapabilitiesMarkdown, getCapabilities } from "./capabilities.js";
 import { formatIterationCadenceMarkdown, listIterationCadences } from "./cadences.js";
 import {
@@ -41,6 +43,8 @@ import {
 import { OflowError } from "./errors.js";
 import { startDashboard } from "./dashboard.js";
 import { formatDoctor, doctor } from "./doctor.js";
+import { readText } from "./fs.js";
+import { resolvePresentation } from "./presentation.js";
 import { getGitLabRemote, getRepoRoot } from "./git.js";
 import { glabApiGet } from "./glab.js";
 import { formatInstallResult, installProject } from "./install.js";
@@ -65,8 +69,10 @@ import {
   createMilestoneUpdatePlan,
   formatPlanMarkdown,
   verifyPlan,
+  applyPlanDelegated,
+  ingestExecutionReceipt,
+  createMergeRequestCreatePlan,
 } from "./plan.js";
-import { formatAuditMarkdown, readAudit } from "./audit.js";
 import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.js";
 import {
   compactSyncSummary,
@@ -89,10 +95,12 @@ import type {
   GitLabLabelUpdate,
   GitLabMilestoneUpdate,
   IssueType,
-  IssueState,
   IterationState,
+  IssueState,
 } from "./types.js";
 import { isIssueType } from "./types.js";
+import type { ExecutionReceipt } from "./actions.js";
+import { isCanonicalActionName } from "./actions.js";
 
 interface CliOptions {
   command: string;
@@ -120,6 +128,8 @@ interface CliOptions {
   planPath?: string;
   title?: string;
   description?: string;
+  sourceBranch?: string;
+  targetBranch?: string;
   issueType?: string;
   body?: string;
   name?: string;
@@ -150,6 +160,8 @@ interface CliOptions {
   full: boolean;
   mine: boolean;
   withGitLabMcp: boolean;
+  receipt?: string;
+  delegate: boolean;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -389,6 +401,22 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           story: options.story === undefined ? undefined : await resolveStoryIid(root, options.story),
         });
         print(options.json, result, formatCheckMarkdown(result));
+        return 0;
+      }
+      case "finish": {
+        const result = await finishStory({
+          root,
+          story: options.story === undefined ? undefined : await resolveStoryIid(root, options.story),
+        });
+        print(options.json, result, formatFinishMarkdown(result, resolvePresentation(process.stdout)));
+        return result.ready ? 0 : 1;
+      }
+      case "handoff": {
+        const result = await handoffStory({
+          root,
+          story: options.story === undefined ? undefined : await resolveStoryIid(root, options.story),
+        });
+        print(options.json, result, formatHandoffMarkdown(result));
         return 0;
       }
       case "capabilities": {
@@ -669,9 +697,28 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           print(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
+        if (options.planResource === "merge-request" && options.planOperation === "create") {
+          if (options.story === undefined) {
+            throw new OflowError(
+              "plan merge-request create requires --story <iid>.",
+              "MISSING_STORY",
+            );
+          }
+          const storyIid = await resolveStoryIid(root, options.story);
+          const stored = await createMergeRequestCreatePlan({
+            root,
+            storyIid,
+            sourceBranch: options.sourceBranch,
+            targetBranch: options.targetBranch,
+            title: options.title,
+            description: options.description,
+          });
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
         {
           throw new OflowError(
-            "Use oflow plan issue create/update/note, plan issues labels, plan label create/update, plan milestone create/update, plan board create/update, or plan board-list create/update with the required fields.",
+            "Use oflow plan issue create/update/note, plan issues labels, plan label create/update, plan milestone create/update, plan board create/update, plan board-list create/update, or plan merge-request create with the required fields.",
             "UNSUPPORTED_PLAN",
           );
         }
@@ -693,6 +740,35 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             "apply requires a .oflow/state/plans/<plan-id>.json path.",
             "MISSING_PLAN_PATH",
           );
+        }
+        if (options.receipt) {
+          const receipt = parseExecutionReceipt(await readText(resolve(options.receipt)));
+          const stored = await ingestExecutionReceipt(root, options.planPath, receipt);
+          await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.delegate) {
+          const { descriptor } = await applyPlanDelegated(root, options.planPath);
+          print(
+            options.json,
+            descriptor,
+            [
+              "# oflow apply --delegate",
+              "",
+              "Execute this action through the agent runtime's GitLab MCP tool:",
+              "",
+              "  action:      " + descriptor.action.name,
+              "  project:     " + descriptor.action.arguments.project,
+              "  source:      " + descriptor.action.arguments.sourceBranch,
+              "  target:      " + descriptor.action.arguments.targetBranch,
+              "  title:       " + descriptor.action.arguments.title,
+              "",
+              "Save the tool response as JSON, then run:",
+              "  " + descriptor.afterExecution.command,
+            ].join("\n") + "\n",
+          );
+          return 0;
         }
         const stored = await applyPlan(root, options.planPath);
         await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
@@ -746,7 +822,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       }
       case "doctor": {
         const result = await doctor(root, { checkApi: options.checkApi });
-        print(options.json, result, formatDoctor(result));
+        print(options.json, result, formatDoctor(result, resolvePresentation(process.stdout)));
         return result.warnings.length === 0 ? 0 : 1;
       }
       case "start": {
@@ -890,6 +966,7 @@ function parseArgs(argv: string[]): CliOptions {
     full: false,
     mine: false,
     withGitLabMcp: false,
+    delegate: false,
   };
 
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
@@ -912,7 +989,7 @@ function parseArgs(argv: string[]): CliOptions {
     options.glabEndpoint = argv[2];
     firstOptionIndex = 3;
   } else if (
-    (command === "approve" || command === "apply") &&
+    (command === "approve" || command === "apply" || command === "verify") &&
     argv[1] &&
     !argv[1].startsWith("-")
   ) {
@@ -944,6 +1021,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.mine = true;
     } else if (argument === "--with-gitlab-mcp") {
       options.withGitLabMcp = true;
+    } else if (argument === "--delegate") {
+      options.delegate = true;
     } else if (
       argument === "--story" ||
       argument === "--stories" ||
@@ -952,6 +1031,9 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--root" ||
       argument === "--host" ||
       argument === "--title" ||
+      argument === "--source-branch" ||
+      argument === "--target-branch" ||
+      argument === "--receipt" ||
       argument === "--description" ||
       argument === "--issue-type" ||
       argument === "--type" ||
@@ -1000,6 +1082,12 @@ function parseArgs(argv: string[]): CliOptions {
         options.host = value;
       } else if (argument === "--title") {
         options.title = value;
+      } else if (argument === "--source-branch") {
+        options.sourceBranch = value;
+      } else if (argument === "--target-branch") {
+        options.targetBranch = value;
+      } else if (argument === "--receipt") {
+        options.receipt = value;
       } else if (argument === "--description") {
         options.description = value;
       } else if (argument === "--issue-type" || argument === "--type") {
@@ -1231,6 +1319,46 @@ function parseDashboardPort(value: string): number {
     );
   }
   return port;
+}
+
+function parseExecutionReceipt(content: string | null): ExecutionReceipt {
+  if (content === null) {
+    throw new OflowError("Receipt file not found.", "RECEIPT_FILE_NOT_FOUND");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new OflowError("Receipt file is not valid JSON.", "INVALID_RECEIPT_JSON");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new OflowError("Receipt must be a JSON object.", "INVALID_RECEIPT_JSON");
+  }
+  const record = parsed as Record<string, unknown>;
+  const backend = record.backend;
+  const action = record.action;
+  const executedAt = record.executedAt;
+  const success = record.success;
+  if (
+    backend !== "gitlab-mcp" ||
+    typeof action !== "string" ||
+    !isCanonicalActionName(action) ||
+    typeof executedAt !== "string" ||
+    typeof success !== "boolean"
+  ) {
+    throw new OflowError(
+      "Receipt must contain backend 'gitlab-mcp', a canonical action name, executedAt, and success fields.",
+      "INVALID_RECEIPT_JSON",
+    );
+  }
+  return {
+    backend,
+    action,
+    executedAt,
+    success,
+    result: record.result,
+    error: typeof record.error === "string" ? record.error : undefined,
+  };
 }
 
 async function waitForDashboardShutdown(close: () => Promise<void>): Promise<void> {
@@ -1656,6 +1784,8 @@ function helpText(): string {
     "  doctor [--check-api]",
     "  start [--story <iid>] [--json]         one compact work context for agents",
     "  check [--story <iid>] [--json]         unified story, evidence, and policy check",
+    "  finish [--story <iid>] [--json]        gated completion check with close command",
+    "  handoff [--story <iid>] [--json]       compact context for the next agent",
     "  work [filters] [--json]             list current GitLab work items",
     "  epic [--iid <iid>] [--limit <n>]    list or inspect group epics",
     "  iteration [--group] [--state <state>] list project or group sprints",
@@ -1687,6 +1817,9 @@ function helpText(): string {
     "  plan board-list update --board --list --position reorder a board list",
     "  approve <plan.json>                  approve a local plan artifact",
     "  apply <plan.json>                    apply an approved plan",
+    "  apply <plan.json> --delegate         emit a delegated GitLab MCP action",
+    "  apply <plan.json> --receipt <file>   ingest an executed delegated action receipt",
+    "  verify <plan.json>                   independently verify an applied plan",
     "  start --story <iid>",
     "  context --story <iid> [--json]",
     "  mr --story <iid>",

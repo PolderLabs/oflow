@@ -9,6 +9,8 @@ const AUDIT_VERSION = 1;
 export type PlanAuditAction =
   | "created"
   | "approved"
+  | "delegated"
+  | "receipt"
   | "applied"
   | "apply-failed"
   | "verified";
@@ -173,6 +175,8 @@ function formatAuditTarget(operation: PlanArtifact["operation"]): string {
       return "board #" + String(operation.boardId) + " list";
     case "board-list.update":
       return "board #" + String(operation.boardId) + " list #" + String(operation.listId);
+    case "merge_request.create":
+      return "merge request from " + operation.sourceBranch + " for story #" + String(operation.storyIid);
   }
 }
 
@@ -206,7 +210,7 @@ function isAuditEvent(value: unknown): value is PlanAuditEvent {
   return record.version === AUDIT_VERSION &&
     typeof record.at === "string" &&
     typeof record.planId === "string" &&
-    (action === "created" || action === "approved" || action === "applied" || action === "apply-failed" || action === "verified") &&
+    (action === "created" || action === "approved" || action === "delegated" || action === "receipt" || action === "applied" || action === "apply-failed" || action === "verified") &&
     (record.state === "draft" || record.state === "approved" || record.state === "applied" || record.state === "verified") &&
     operation !== null && typeof operation === "object" &&
     typeof (operation as Record<string, unknown>).kind === "string" &&

@@ -1192,14 +1192,30 @@ returns:
     }
   },
   "afterExecution": {
-    "command": "oflow verify --plan .oflow/state/plans/..."
+    "command": "oflow apply .oflow/state/plans/<id>.json --receipt <receipt.json>"
   }
 }
 ```
 
-The agent calls its GitLab MCP tool. Then `oflow verify` independently checks
-the resulting GitLab state using an authenticated read transport when
-available.
+The agent calls its GitLab MCP tool and saves the tool response as a receipt
+file:
+
+```json
+{
+  "backend": "gitlab-mcp",
+  "action": "merge_request.create",
+  "executedAt": "2026-09-21T10:05:00Z",
+  "success": true,
+  "result": { "iid": 9, "web_url": "https://gitlab.example.test/team/project/-/merge_requests/9" }
+}
+```
+
+`oflow apply <plan> --receipt <file>` ingests the receipt, records it on the
+plan artifact (staying honest about the transport), and transitions the plan to
+`applied`. A failed receipt records `apply-failed` and leaves the plan
+`approved` so delegation can be retried. Then `oflow verify <plan>`
+independently checks the resulting GitLab state using an authenticated read
+transport when available.
 
 This preserves the workflow boundary without requiring `oflow` to own the MCP
 session. A future host adapter may make this handshake automatic.

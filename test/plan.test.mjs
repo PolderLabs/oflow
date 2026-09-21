@@ -24,6 +24,9 @@ import {
   createBoardUpdatePlan,
   createMilestoneCreatePlan,
   createMilestoneUpdatePlan,
+  createMergeRequestCreatePlan,
+  applyPlanDelegated,
+  ingestExecutionReceipt,
   formatPlanMarkdown,
   verifyPlan,
 } from "../dist/plan.js";
@@ -1317,6 +1320,133 @@ test("board and label-backed board-list plans stay guarded and verify remote sta
     await approvePlan(root, listUpdated.path);
     await applyPlan(root, listUpdated.path);
     assert.equal((await verifyPlan(root, listUpdated.path)).plan.state, "verified");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("delegated merge-request create round-trips a receipt and verifies independently", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-mr-delegated-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "mr-delegated-test-token";
+  const mergeRequests = [];
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      const path = url.pathname;
+      if (path === "/api/v4/projects/team%2Fproject") {
+        return response({ id: 7, path_with_namespace: "team/project", default_branch: "main" });
+      }
+      if (path === "/api/v4/projects/team%2Fproject/issues/42") {
+        return response({ iid: 42, title: "Pick a pod" });
+      }
+      if (path === "/api/v4/projects/team%2Fproject/merge_requests" && url.searchParams.get("state") === "all") {
+        return response(mergeRequests);
+      }
+      throw new Error("unexpected fetch: " + path);
+    };
+
+    const stored = await createMergeRequestCreatePlan({
+      root,
+      storyIid: 42,
+      sourceBranch: "story/42-pick-a-pod",
+      targetBranch: "main",
+      title: "Pick a pod",
+      description: "Implements story #42.",
+    });
+    await approvePlan(root, stored.path);
+
+    const delegated = await applyPlanDelegated(root, stored.path);
+    assert.equal(delegated.descriptor.execution, "delegated");
+    assert.equal(delegated.descriptor.backendPreference, "gitlab-mcp");
+    assert.equal(delegated.descriptor.action.name, "merge_request.create");
+    assert.equal(delegated.descriptor.action.arguments.sourceBranch, "story/42-pick-a-pod");
+    assert.equal(delegated.descriptor.afterExecution.command.includes("--receipt"), true);
+    const afterDelegation = JSON.parse(await readFile(stored.path, "utf8"));
+    assert.equal(afterDelegation.state, "approved");
+
+    let blocked;
+    try {
+      await verifyPlan(root, stored.path);
+    } catch (error) {
+      blocked = error;
+    }
+    assert.ok(blocked instanceof Error);
+    assert.equal(blocked.message.includes("Only an applied plan can be verified."), true);
+
+    const failed = await ingestExecutionReceipt(root, stored.path, {
+      backend: "gitlab-mcp",
+      action: "merge_request.create",
+      executedAt: "2026-09-21T10:00:00Z",
+      success: false,
+      error: "MCP tool reported a failure",
+    }).catch((error) => error);
+    assert.ok(failed instanceof Error);
+    assert.equal(failed.message, "MCP tool reported a failure");
+    const afterFailure = JSON.parse(await readFile(stored.path, "utf8"));
+    assert.equal(afterFailure.applyError.code, "DELEGATED_EXECUTION_FAILED");
+
+    await ingestExecutionReceipt(root, stored.path, {
+      backend: "gitlab-mcp",
+      action: "merge_request.create",
+      executedAt: "2026-09-21T10:05:00Z",
+      success: true,
+      result: { iid: 9, web_url: "https://gitlab.example.test/team/project/-/merge_requests/9" },
+    });
+    const applied = JSON.parse(await readFile(stored.path, "utf8"));
+    assert.equal(applied.state, "applied");
+    assert.equal(applied.execution.backend, "gitlab-mcp");
+    assert.equal(applied.result.iid, 9);
+    assert.equal(applied.delegatedReceipt.executedAt, "2026-09-21T10:05:00Z");
+
+    mergeRequests.push({
+      iid: 9,
+      source_branch: "story/42-pick-a-pod",
+      target_branch: "main",
+      title: "Pick a pod",
+      description: "Implements story #42.",
+    });
+    const verified = await verifyPlan(root, stored.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+
+    const events = (await readAudit(root)).events.map((event) => event.action);
+    assert.deepEqual(events.slice(0, 5), ["verified", "receipt", "apply-failed", "delegated", "approved"]);
+
+    await writeFile(
+      join(root, ".oflow", "state", "audit.jsonl"),
+      JSON.stringify({
+        version: 1,
+        at: "2026-09-21T10:06:00Z",
+        planId: 123,
+        action: "receipt",
+        state: "applied",
+        operation: { kind: "merge_request.create", host: "h", projectPath: "p", target: "t" },
+        details: {},
+      }) + "\n",
+    );
+    let corrupt;
+    try {
+      await readAudit(root);
+    } catch (error) {
+      corrupt = error;
+    }
+    assert.ok(corrupt instanceof Error);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

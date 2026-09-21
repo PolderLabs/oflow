@@ -44,6 +44,8 @@ test("doctor probes bounded read capabilities and never probes writes", async ()
     let body = [];
     if (url.endsWith("/user")) {
       body = { id: 7, username: "test-user" };
+    } else if (url.endsWith("/personal_access_tokens/self")) {
+      body = { scopes: ["api", "read_api"], active: true, revoked: false, expires_at: null };
     } else if (url.endsWith("/projects/team%2Fproduct")) {
       body = { id: 11, path_with_namespace: "team/product", web_url: "https://gitlab.com/team/product" };
     } else if (url.includes("/boards?")) {
@@ -98,6 +100,16 @@ test("doctor probes bounded read capabilities and never probes writes", async ()
       report.apiChecks.find((check) => check.id === "work-items.update")?.status,
       "not-probed",
     );
+    const tokenCheck = report.apiChecks.find((check) => check.id === "token.scopes");
+    assert.equal(tokenCheck?.status, "passed");
+    assert.ok(tokenCheck?.detail.includes("api, read_api"));
+    assert.ok(typeof tokenCheck?.latencyMs === "number");
+    assert.ok(formatDoctor(report).includes("token.scopes"));
+    assert.ok(
+      report.apiChecks
+        .filter((check) => check.status === "passed" && check.latencyMs !== undefined)
+        .every((check) => check.latencyMs >= 0),
+    );
     assert.ok(methods.every((request) =>
       request.method === "GET" || !request.body.includes("mutation"),
     ));
@@ -107,6 +119,57 @@ test("doctor probes bounded read capabilities and never probes writes", async ()
     assert.ok(output.includes("[PASS] REST work-items.read"));
     assert.ok(output.includes("[N/A] REST work-items.update"));
     assert.ok(output.includes("Write check policy: doctor never tests a mutation."));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) {
+      delete process.env.GITLAB_TOKEN;
+    } else {
+      process.env.GITLAB_TOKEN = previousToken;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports token scope probing as skipped when the PAT endpoint is unavailable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-pat-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "test-token";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/personal_access_tokens/self")) {
+      return {
+        ok: false,
+        status: 403,
+        headers: new Headers(),
+        text: async () => JSON.stringify({ message: "403 Forbidden" }),
+      };
+    }
+    let body = [];
+    if (url.endsWith("/user")) {
+      body = { id: 7, username: "test-user" };
+    } else if (url.endsWith("/projects/team%2Fproduct")) {
+      body = { id: 11, path_with_namespace: "team/product", web_url: "https://gitlab.com/team/product" };
+    } else if (url.includes("/boards?")) {
+      body = [{ id: 9, name: "Planning" }];
+    } else if (url.includes("/api/graphql")) {
+      body = { data: { group: { workItems: { nodes: [], pageInfo: { hasNextPage: false } } } } };
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify(body),
+    };
+  };
+
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+    const report = await doctor(root, { checkApi: true });
+    const tokenCheck = report.apiChecks.find((check) => check.id === "token.scopes");
+    assert.equal(tokenCheck?.status, "skipped");
+    assert.ok(tokenCheck?.detail.includes("unavailable"));
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) {

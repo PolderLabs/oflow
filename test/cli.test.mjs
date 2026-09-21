@@ -128,6 +128,81 @@ test("CLI routes --type task into a guarded work-item create plan", async () => 
   }
 });
 
+test("CLI routes merge-request create flags into a guarded MR plan", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-mr-create-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "mr-create-cli-test-token";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    execFileSync("git", ["-C", root, "checkout", "-q", "-b", "story-42-pick-a-pod"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    const seen = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      seen.push(url.pathname);
+      if (url.pathname === "/api/v4/projects/team%2Fproject") {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify({
+            id: 7,
+            path_with_namespace: "team/project",
+            default_branch: "main",
+          }),
+        };
+      }
+      if (url.pathname === "/api/v4/projects/team%2Fproject/issues/42") {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify({ iid: 42, title: "Pick a pod" }),
+        };
+      }
+      throw new Error("unexpected fetch: " + url.pathname);
+    };
+    assert.equal(await main([
+      "plan",
+      "merge-request",
+      "create",
+      "--root",
+      root,
+      "--story",
+      "42",
+      "--source-branch",
+      "feature/pick-a-pod",
+      "--target-branch",
+      "release/1.2",
+      "--title",
+      "Pick a pod",
+      "--description",
+      "Implements story #42.",
+      "--json",
+    ]), 0);
+    const planFiles = readdirSync(join(root, ".oflow", "state", "plans"));
+    assert.equal(planFiles.length, 1);
+    const plan = JSON.parse(readFileSync(join(root, ".oflow", "state", "plans", planFiles[0]), "utf8"));
+    assert.equal(plan.operation.kind, "merge_request.create");
+    assert.equal(plan.operation.sourceBranch, "feature/pick-a-pod");
+    assert.equal(plan.operation.targetBranch, "release/1.2");
+    assert.equal(plan.operation.title, "Pick a pod");
+    assert.equal(plan.operation.description, "Implements story #42.");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("cache diagnostics stay local and report a missing read model without a token", () => {
   const root = mkdtempSync(join(tmpdir(), "oflow-cache-status-cli-"));
   try {

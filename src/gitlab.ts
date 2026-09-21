@@ -113,6 +113,35 @@ export class GitLabClient {
     return user as GitLabUser;
   }
 
+  /**
+   * Self-describing PAT metadata (scopes, expiry) from the read-only
+   * personal_access_tokens endpoint. Only present on GitLab 16.0+; older
+   * or unsupported token kinds surface as an error the caller reports as
+   * skipped, never failed.
+   */
+  async getPersonalAccessTokenSelf(): Promise<{
+    scopes: string[];
+    expiresAt: string | null;
+    revoked: boolean;
+    active: boolean;
+  }> {
+    const token = await this.request<unknown>("/personal_access_tokens/self", {
+      retryable: false,
+    });
+    if (!isRecord(token) || !Array.isArray(token.scopes)) {
+      throw new OflowError(
+        "GitLab API returned an invalid personal access token response.",
+        "INVALID_GITLAB_RESPONSE",
+      );
+    }
+    return {
+      scopes: token.scopes.filter((scope): scope is string => typeof scope === "string"),
+      expiresAt: typeof token.expires_at === "string" ? token.expires_at : null,
+      revoked: token.revoked === true,
+      active: token.active === true,
+    };
+  }
+
   async getIssue(projectPath: string, iid: number): Promise<GitLabIssue> {
     return this.request<GitLabIssue>(
       "/projects/" +

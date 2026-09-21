@@ -379,6 +379,7 @@ export interface DoctorCapabilityCheck {
   status: DoctorCheckStatus;
   required: boolean;
   detail: string;
+  latencyMs?: number;
 }
 
 export interface DoctorReport {
