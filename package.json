@@ -1,6 +1,6 @@
 {
   "name": "oflow-workflow",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A small, GitLab-first workflow layer for Claude, Codex, Copilot, and VS Code agents.",
   "type": "module",
   "bin": {

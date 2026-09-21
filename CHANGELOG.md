@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.2.0
+## 0.2.1
+
+Hardening follow-up to the delegated action flow.
+
+### Fixed
+
+- `oflow apply` refuses delegated-only plans before any remote call (guard
+  hoisted and driven by `DELEGATED_ONLY_OPERATIONS`).
+- A successful receipt ingestion now clears a stale `applyError` left by an
+  earlier failed attempt.
+- `oflow finish` requires the story merge request to be merged, not merely
+  present.
+- Windows CI: the fake-glab auth-resolver test is skipped like the other
+  glab tests (Windows cannot exec shebang scripts).
+
+### Added
+
+- Verified delegated plans report the transport split: the agent executed via
+  GitLab MCP while oflow verified through its own REST read.
+- CLI-level test covering the full delegated loop: plan -> approve -> refused
+  direct apply -> delegate -> refused early verify -> receipt -> verify.
 
 Agent execution layer: delegated GitLab MCP actions, richer doctor
 diagnostics, the complete agent lifecycle, and color output.
