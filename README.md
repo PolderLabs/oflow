@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/PolderLabsVOF/oflow/main/docs/assets/oflow-hero.png" alt="oflow agent workflow architecture illustration" width="100%" />
-</p>
-
 <h1 align="center">oflow</h1>
 
 <p align="center">
