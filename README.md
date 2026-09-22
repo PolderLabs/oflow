@@ -367,10 +367,16 @@ repository. A self-managed GitLab instance may expose an endpoint like this:
 }
 ```
 
-The MCP client handles its own authorization. Do not copy the oflow token into
+The MCP client handles its own authorization: the GitLab MCP endpoint requires
+the fine-grained **`MCP tool: Execute`** user permission, which the read-only
+token profile above does not include. Add it only on a token used by the agent
+runtime for MCP, and expect a `403 insufficient_granular_scope` naming that
+permission when it is missing. Do not copy the oflow token into
 repository files or commit MCP configuration. MCP availability depends on the
 GitLab instance, administrator settings, and agent runtime; it does not replace
-oflow's local contract or write safeguards. See
+oflow's local contract or write safeguards. `oflow install --with-gitlab-mcp`
+writes this exact secret-free server entry into project-local `.omp/mcp.json`
+when an OMP host is detected. See
 [`docs/GITLAB-INTEGRATION.md`](docs/GITLAB-INTEGRATION.md) for the boundary
 between REST, `glab`, and MCP.
 

@@ -338,7 +338,11 @@ https://gitlab.example.com/api/v4/mcp
 
 Whether that URL is available depends on the GitLab instance configuration and
 the MCP client. GitLab documents the server as beta and requires the instance
-administrator to allow access.
+administrator to allow access. Fine-grained tokens used by the MCP client also
+need the **`MCP tool: Execute`** user permission; without it the endpoint
+answers `403 insufficient_granular_scope` naming exactly that permission. The
+CLI's read-only token profile deliberately omits it, so an MCP-enabled token is
+a separate decision for the agent runtime, never something `oflow` assumes.
 
 ## Backend selection policy
 
