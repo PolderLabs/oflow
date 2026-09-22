@@ -402,3 +402,23 @@ wrapper before the P0 contract and identity tests are green.
 - `npm pack --dry-run` — clean.
 - CLI smoke: `node dist/cli.js auth status --probe --json` returns the
   capability array.
+
+## Session friction log 2026-09-22 — triage record
+
+Ten friction points from live agent use (labels validation, work-item
+type axis, stale-digest escape hatches, user-resolution scopes, author
+resolution, bulk cap, interruption model, work JSON typing, label
+coverage audit, post-create type change). Full triage table with fix
+sketches lives in `docs/ROADMAP.md` under "Session friction log —
+2026-09-22 (post-F2 triage)".
+
+Decisions:
+- All ten fold into the existing F1/F5/F6 structure or become explicit
+  backlog; none reopen closed F1/F2 decisions.
+- Costliest axes were work-item typing (#2, #8, #10) and user
+  resolution (#4, #5) — both forced REST fallbacks during the session.
+- The interruption model (#3, #7) is the remaining F1 gap: partial
+  applies need a resumable state; per-IID results are already tracked
+  for bulk ops and can be surfaced for recovery.
+- Identity details from the session are intentionally absent (public
+  repo); the friction record describes behaviors, not people.

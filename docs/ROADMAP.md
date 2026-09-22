@@ -226,6 +226,30 @@ The release checklist must trace every F1–F6 item to implementation,
 regression tests, documentation, and a compatible JSON example before the
 version is bumped. Native Codex/OMP packaging cannot displace this work.
 
+### Session friction log — 2026-09-22 (post-F2 triage)
+
+Ten concrete friction points from live agent use. Each maps onto the
+F1–F6 structure or is recorded as new backlog with a fix sketch. None
+block F3; several fold into F6.
+
+| # | Friction | Maps to | Fix sketch |
+|---|----------|---------|------------|
+| 1 | `--add-labels` does not validate label existence before approval; missing labels silently no-op at apply | F6 | Dry-run lists labels being added with `[MISSING]` markers; approval blocked while any are missing unless `--force`; hint surfaces `oflow plan label create` |
+| 2 | `plan issue create` has no `--type`/`--issue-type` flag; work items default to `issue` | F6 | Forward `issue_type` through `GitLabIssueCreate`; add `--type task\|issue\|incident\|requirement` to the create command |
+| 3 | Stale-digest guard on bulk plans has no escape hatch; interrupted applies orphan approved plans | F1/F6 | `oflow plan <id> --supersede` atomically rebuilds against current IID state; partial-progress recovery reuses the existing bulk per-IID result tracking; auto-archive failed applies |
+| 4 | `--assignee <username>` requires User:Read scope and fails with raw GitLab JSON | F6 | On granular-scope 403, accept numeric `--assignee-id` without the user lookup; print the oflow-level remediation inline (reuse `normalizeForbidden`) |
+| 5 | `work --author` is case-sensitive and username-only; no human-name resolution | F5 | Accept username, display name, or email; resolve via a local member cache populated at `install`/first `work` invocation |
+| 6 | Bulk plans silently capped at 50 IIDs; cap undocumented in `--help` | F6 | Auto-split into chunked plans of ≤50 (oflow already knows batching) and/or document the cap in help text |
+| 7 | Apply interrupted mid-batch leaves ambiguous state; no resumable `applied-partial` | F1 | Add `applied-partial` state with `oflow apply --resume`; per-IID results already tracked for bulk ops — expose them for recovery |
+| 8 | `work --json` omits `issue_type`/`work_item_type` | F5 | Include `issue_type` in the `work --json` payload; it is already on the wire from GitLab |
+| 9 | No `labels audit` coverage command; agents hand-roll coverage counts | new backlog | `oflow labels audit [--label <name>]` returning coverage across open/closed grouped by type/milestone |
+| 10 | No surface to change work-item type after create | F6 | `plan issue update --type` forwarding `issue_type` on the update payload (REST supports it) |
+
+Priority signal from the session: the **type axis** (#2, #8, #10) and
+**user-resolution axis** (#4, #5) were the costliest gaps — both forced
+REST fallbacks. The **interruption model** (#3, #7) is the lifecycle
+gap F1's partial-progress work must close.
+
 ### Stretch, only after the must-ship gates pass
 
 - [ ] Package a thin Codex plugin/skill layer that calls `oflow` JSON.
