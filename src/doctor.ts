@@ -4,7 +4,7 @@ import { configPath, loadConfig } from "./config.js";
 import { exists } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
 import { getGitLabToken, getGitLabTokenSource } from "./auth.js";
-import { normalizeForbidden, probeCapabilities, resolveAuth } from "./auth-resolver.js";
+import { normalizeForbidden, resolveAuth } from "./auth-resolver.js";
 import { GitLabClient } from "./gitlab.js";
 import { detectBackends } from "./backends.js";
 import { dim, statusMarker, type PresentationOptions } from "./presentation.js";
@@ -176,19 +176,21 @@ export async function doctor(
     }
   }
   let capabilities: AuthCapability[] | undefined;
-  if (options.checkApi && remote) {
-    try {
-      const resolution = await resolveAuth({ host: remote.host, root });
-      capabilities = await probeCapabilities(
-        { host: remote.host, projectPath: remote.projectPath },
-        resolution.sources,
-        resolution.readBackend,
-      );
-    } catch (error) {
-      warnings.push(
-        "Capability probe skipped: " + (error instanceof Error ? error.message : String(error)),
-      );
+  if (options.checkApi) {
+    let authSource: string | undefined;
+    let mcpPresent = false;
+    if (remote) {
+      try {
+        const resolution = await resolveAuth({ host: remote.host, root });
+        authSource = resolution.sources[0]?.source;
+        mcpPresent = resolution.sources.some((source) => source.source === "mcp-runtime");
+      } catch {
+        // best-effort only; resolution.sources is informational
+      }
     }
+    capabilities = apiChecks.map((check) =>
+      mapDoctorCheckToAuthCapability(check, authSource, mcpPresent),
+    );
   }
   return {
     root,
@@ -501,12 +503,51 @@ function skippedCheck(
   };
 }
 
+function mapDoctorCheckToAuthCapability(
+  check: DoctorCapabilityCheck,
+  source: string | undefined,
+  mcpRuntimePresent: boolean,
+): AuthCapability {
+  const probe: AuthCapability["probe"] =
+    check.status === "passed"
+      ? "passed"
+      : check.status === "skipped"
+        ? "skipped"
+        : check.status === "not-probed"
+          ? "not-probed"
+          : "failed";
+  // Writes are only "usable" when the MCP runtime owns the OAuth session
+  // (same rule as auth-resolver): doctor never runs a write probe.
+  const usable =
+    probe === "passed" ||
+    (check.access === "write" && probe === "not-probed" && mcpRuntimePresent);
+  const backend: AuthCapability["backend"] =
+    check.backend === "MCP"
+      ? "gitlab-mcp"
+      : check.backend === "glab"
+        ? "glab"
+        : check.backend === "GraphQL"
+          ? "graphql"
+          : check.backend === "REST + GraphQL"
+            ? "rest"
+            : "rest";
+  const mcpWrite = check.access === "write" && mcpRuntimePresent;
+  return {
+    id: check.id,
+    usable,
+    probe,
+    backend: mcpWrite ? "gitlab-mcp" : backend,
+    ...(mcpWrite ? { source: "mcp-runtime" } : source ? { source } : {}),
+    reason: check.detail,
+  };
+}
+
 function formatProbeError(error: unknown): string {
   const { reason, remediation } = normalizeForbidden(error);
   return remediation ? reason + " — remediation: " + remediation : reason;
 }
-
 function inferGroupPath(project: GitLabProject | null, projectPath: string): string | null {
+
   const namespace = project?.namespace;
   if (namespace && typeof namespace.full_path === "string" && namespace.full_path.trim()) {
     return namespace.full_path;

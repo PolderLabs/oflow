@@ -314,7 +314,7 @@ wrapper before the P0 contract and identity tests are green.
   safe hosts so Codex integration URLs can ship in docs.
 
 **Regression tests**
-- `test/plan-lifecycle.test.mjs` — 17 tests covering session/TTL binding in
+- `test/plan-lifecycle.test.mjs` — 26 tests covering session/TTL binding in
   the digest, legacy/expired/cross-session gating, force cannot bypass
   state/target/malformed metadata, force still runs live remote
   precondition checks, list + discard local hygiene, discard rejects

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -177,6 +177,124 @@ test("doctor reports token scope probing as skipped when the PAT endpoint is una
     } else {
       process.env.GITLAB_TOKEN = previousToken;
     }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("doctor --check-api maps apiChecks to report.capabilities without re-probing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-cap-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  const methods = [];
+  process.env.GITLAB_TOKEN = "test-token";
+  globalThis.fetch = async (input, init) => {
+    methods.push({ method: init?.method ?? "GET", url: String(input) });
+    const url = String(input);
+    let body = [];
+    if (url.endsWith("/user")) {
+      body = { id: 7, username: "test-user" };
+    } else if (url.endsWith("/personal_access_tokens/self")) {
+      body = { scopes: ["api", "read_api"], active: true, revoked: false, expires_at: null };
+    } else if (url.endsWith("/projects/team%2Fproduct")) {
+      body = { id: 11, path_with_namespace: "team/product", web_url: "https://gitlab.com/team/product" };
+    } else if (url.includes("/boards?")) {
+      body = [{ id: 9, name: "Planning" }];
+    } else if (url.includes("/api/graphql")) {
+      body = { data: { group: { workItems: { nodes: [], pageInfo: { hasNextPage: false } }, iterationCadences: { nodes: [], pageInfo: { hasNextPage: false } } } } };
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify(body),
+    };
+  };
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+    const report = await doctor(root, { checkApi: true });
+    assert.ok(Array.isArray(report.capabilities));
+    const ids = report.capabilities.map((cap) => cap.id);
+    for (const expected of ["project.read", "user.read", "work-items.read", "work-items.update"]) {
+      assert.ok(ids.includes(expected), "missing capability " + expected);
+    }
+    const write = report.capabilities.find((cap) => cap.id === "work-items.update");
+    assert.equal(write.probe, "not-probed");
+    assert.equal(write.usable, false, "writes are only usable when the MCP runtime is present");
+    const read = report.capabilities.find((cap) => cap.id === "project.read");
+    assert.equal(read.usable, true);
+    assert.equal(read.probe, "passed");
+    // No additional probes beyond what checkApiCapabilities needs.
+    assert.ok(methods.length > 0);
+    assert.ok(methods.length < 30, "expected bounded probe count, got " + methods.length);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("doctor surfaces 401 remediation hint in apiChecks detail", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-401-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "stale-token";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/user")) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/product" }));
+  };
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+    const report = await doctor(root, { checkApi: true });
+    assert.equal(report.apiCheck, "failed");
+    const userCheck = report.apiChecks.find((check) => check.id === "user.read");
+    assert.equal(userCheck?.status, "failed");
+    assert.ok(userCheck?.detail);
+    assert.match(userCheck.detail, /401|oflow auth login/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("doctor --check-api marks writes usable when the MCP runtime is configured", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-mcp-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "test-token";
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/user")) return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ id: 7, username: "test-user" }) };
+    if (url.endsWith("/personal_access_tokens/self")) return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ scopes: ["api"], active: true, revoked: false, expires_at: null }) };
+    if (url.endsWith("/projects/team%2Fproduct")) return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ id: 11, path_with_namespace: "team/product", web_url: "https://gitlab.com/team/product" }) };
+    if (url.includes("/boards?")) return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify([{ id: 9, name: "Planning" }]) };
+    if (url.includes("/api/graphql")) return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ data: { group: { workItems: { nodes: [], pageInfo: { hasNextPage: false } }, iterationCadences: { nodes: [], pageInfo: { hasNextPage: false } } } } }) };
+    return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({}) };
+  };
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+    await mkdir(join(root, ".omp"), { recursive: true });
+    await writeFile(join(root, ".omp/mcp.json"), JSON.stringify({
+      servers: [{ name: "gitlab", url: "https://gitlab.com/api/v4/mcp" }],
+    }));
+    const report = await doctor(root, { checkApi: true });
+    const write = report.capabilities.find((cap) => cap.id === "work-items.update");
+    assert.equal(write.probe, "not-probed");
+    assert.equal(write.usable, true, "writes become usable when MCP runtime is configured");
+    assert.equal(write.source, "mcp-runtime");
+    assert.equal(write.backend, "gitlab-mcp");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
     await rm(root, { recursive: true, force: true });
   }
 });

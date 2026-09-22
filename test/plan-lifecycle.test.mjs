@@ -580,3 +580,149 @@ test("apply no-op result carries preview payload, noOp flag, and verified state 
   assert.equal(serialized.plan.preview.iid, 42);
 });
 
+
+test("milestone_id: 0 against a remote with milestone: null is equivalent (no-op)", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    return new Response(JSON.stringify({
+      iid: 42, title: "Original title", updated_at: "2026-01-01T00:00:00Z",
+      labels: [], assignees: [], state: "opened", milestone: null,
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path, plan } = await save(root, {
+    operation: {
+      kind: "issue.update", host: "gitlab.example.test", projectPath: "team/project",
+      issueIid: 42, changes: { milestone_id: 0 }, expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    },
+  });
+  await approvePlan(root, path);
+  const stored = await applyPlan(root, path);
+  assert.equal(stored.plan.state, "verified");
+  assert.equal(stored.plan.noOp, true);
+});
+
+test("milestone_id: 0 against a remote with a real milestone is NOT equivalent (must mutate)", async (t) => {
+  const root = await fixture(t);
+  let putAttempted = false;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    if (method === "PUT") {
+      putAttempted = true;
+      return new Response(JSON.stringify({
+        iid: 42, title: "Original title", updated_at: "2026-01-01T00:00:00Z",
+        labels: [], assignees: [], state: "opened", milestone: null,
+      }));
+    }
+    return new Response(JSON.stringify({
+      iid: 42, title: "Original title", updated_at: "2026-01-01T00:00:00Z",
+      labels: [], assignees: [], state: "opened",
+      milestone: { id: 7, title: "v1.0" },
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path } = await save(root, {
+    operation: {
+      kind: "issue.update", host: "gitlab.example.test", projectPath: "team/project",
+      issueIid: 42, changes: { milestone_id: 0 }, expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    },
+  });
+  await approvePlan(root, path);
+  const stored = await applyPlan(root, path);
+  assert.equal(stored.plan.state, "applied");
+  assert.equal(stored.plan.noOp, undefined);
+  assert.equal(putAttempted, true);
+});
+
+test("assignee_ids: [] against a remote with no assignees is equivalent (no-op)", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    return new Response(JSON.stringify({
+      iid: 42, title: "Original title", updated_at: "2026-01-01T00:00:00Z",
+      labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path } = await save(root, {
+    operation: {
+      kind: "issue.update", host: "gitlab.example.test", projectPath: "team/project",
+      issueIid: 42, changes: { assignee_ids: [] }, expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    },
+  });
+  await approvePlan(root, path);
+  const stored = await applyPlan(root, path);
+  assert.equal(stored.plan.state, "verified");
+  assert.equal(stored.plan.noOp, true);
+});
+
+test("labels order change is equivalent (no-op) due to order-insensitive comparison", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    return new Response(JSON.stringify({
+      iid: 42, title: "Original title", updated_at: "2026-01-01T00:00:00Z",
+      labels: ["backend", "frontend"], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path } = await save(root, {
+    operation: {
+      kind: "issue.update", host: "gitlab.example.test", projectPath: "team/project",
+      issueIid: 42, changes: { labels: "frontend,backend" },
+      expectedUpdatedAt: "2026-01-01T00:00:00Z",
+    },
+  });
+  await approvePlan(root, path);
+  const stored = await applyPlan(root, path);
+  assert.equal(stored.plan.state, "verified");
+  assert.equal(stored.plan.noOp, true);
+});
+
+test("apply no-op then verify roundtrip: state stays verified and no second mutation", async (t) => {
+  const root = await fixture(t);
+  let putAttempts = 0;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    if (method === "PUT") {
+      putAttempts += 1;
+      return new Response(JSON.stringify({
+        iid: 42, title: "Updated title", updated_at: "2026-01-01T00:00:00Z",
+        labels: [], assignees: [], state: "opened",
+      }));
+    }
+    return new Response(JSON.stringify({
+      iid: 42, title: "Updated title", updated_at: "2026-01-01T00:00:00Z",
+      labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path } = await save(root);
+  await approvePlan(root, path);
+  const applied = await applyPlan(root, path);
+  assert.equal(applied.plan.state, "verified");
+  assert.equal(applied.plan.noOp, true);
+  assert.equal(putAttempts, 0);
+  // Explicit verifyPlan on the no-op path: still passes, no PUT.
+  const verified = await verifyPlan(root, path);
+  assert.equal(verified.plan.state, "verified");
+  assert.equal(putAttempts, 0);
+});
