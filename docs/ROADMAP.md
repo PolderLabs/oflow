@@ -80,15 +80,20 @@ kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
 
 ### Must ship
 
-- [ ] Make transport state truthful: distinguish configured, authenticated,
+- [x] Make transport state truthful: distinguish configured, authenticated,
   readable, mutable, and verifiable for REST, `glab`, and runtime-owned MCP.
-- [ ] Route core reads through a proven backend or return explicit reduced-mode
-  results; remove aggregate-auth false positives.
-- [ ] Add first-class GitLab identity (`oflow identity --json`) and make
+  (src/transport.ts + capabilities/doctor wiring; commit 79e3159)
+- [x] Route core reads through a proven backend or return explicit reduced-mode
+  results; remove aggregate-auth false positives. (capabilities.reduced flag
+  plus per-capability ownership; commit 79e3159)
+- [x] Add first-class GitLab identity (`oflow identity --json`) and make
   `work --mine` use the resolved server identity rather than a guess.
-- [ ] Make `capabilities --json` and `doctor` report live availability,
+  (src/identity.ts + cli wiring; --with-email opt-in policy; commit 79e3159)
+- [x] Make `capabilities --json` and `doctor` report live availability,
   permissions, implementation support, and runtime-owned state without write
-  probes.
+  probes. (probeTransport heuristic + CapabilitiesTransport/DoctorReport
+  surfaces; commit 79e3159)
+
 - [ ] Reconcile generated Claude, Codex, OMP, Copilot/VS Code, and OpenWolf
   contracts with the actual JSON commands and approval gates.
 - [ ] Audit REST, `glab`, and delegated field parity for labels, epic links,
