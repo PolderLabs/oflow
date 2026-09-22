@@ -7,6 +7,8 @@ export const AUDIT_RELATIVE_PATH = ".oflow/state/audit.jsonl";
 const AUDIT_VERSION = 1;
 
 export type PlanAuditAction =
+  | "discarded"
+  | "lifecycle-forced"
   | "created"
   | "approved"
   | "delegated"
@@ -28,6 +30,9 @@ export interface PlanAuditEvent {
     target: string;
   };
   details: {
+    lifecycleReason?: string;
+    recheckedAt?: string;
+    rechecks?: string[];
     fields?: string[];
     issueCount?: number;
     resultCount?: number;
@@ -50,6 +55,7 @@ export async function recordPlanEvent(
   plan: PlanArtifact,
   action: PlanAuditAction,
   failure?: { code: string; message: string },
+  lifecycle?: Pick<PlanAuditEvent["details"], "lifecycleReason" | "recheckedAt" | "rechecks">,
 ): Promise<void> {
   const event: PlanAuditEvent = {
     version: 1,
@@ -65,6 +71,7 @@ export async function recordPlanEvent(
     },
     details: {
       ...auditDetails(plan, action),
+      ...lifecycle,
       ...(failure === undefined
         ? {}
         : { errorCode: failure.code, errorMessage: failure.message }),
@@ -210,7 +217,7 @@ function isAuditEvent(value: unknown): value is PlanAuditEvent {
   return record.version === AUDIT_VERSION &&
     typeof record.at === "string" &&
     typeof record.planId === "string" &&
-    (action === "created" || action === "approved" || action === "delegated" || action === "receipt" || action === "applied" || action === "apply-failed" || action === "verified") &&
+    (action === "discarded" || action === "lifecycle-forced" || action === "created" || action === "approved" || action === "delegated" || action === "receipt" || action === "applied" || action === "apply-failed" || action === "verified") &&
     (record.state === "draft" || record.state === "approved" || record.state === "applied" || record.state === "verified") &&
     operation !== null && typeof operation === "object" &&
     typeof (operation as Record<string, unknown>).kind === "string" &&

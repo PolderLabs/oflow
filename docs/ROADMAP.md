@@ -12,6 +12,11 @@ support, delegated GitLab MCP actions, and the `start`/`check`/`finish`/
 its core is delivered. Remaining Phase 4 work is agent-runtime validation and
 the deferred delivery capabilities.
 
+The post-release research, identity/token decisions, native plugin direction,
+and cross-project OpenWolf boundary are recorded in
+[`RESEARCH-AND-NEXT-STEPS.md`](RESEARCH-AND-NEXT-STEPS.md). That document is
+the durable decision record for the next implementation pass.
+
 ## Product direction
 
 An agent should be able to inspect a repository and its GitLab planning state,
@@ -47,6 +52,158 @@ evidence, and verification. Backend-specific calls stay in adapters. See
 [`GITLAB-INTEGRATION.md`](GITLAB-INTEGRATION.md) for auth, security, and the
 backend selection policy.
 
+## Post-0.2.1 reconciliation
+
+The current release is a reliable foundation, not complete GitLab Scrum
+coverage. The next milestone is reliability before breadth:
+
+1. make configured/authenticated/readable/mutable/verifiable transport states
+   honest and make core reads use the resolved backend or report reduced mode;
+2. add first-class GitLab identity and make `work --mine` ID/server based;
+3. make capabilities and doctor reflect live backend/permission availability;
+4. reconcile the generated OMP/Codex/Claude contracts and validate them with
+   the OpenWolf context/handoff fixture;
+5. close the session-friction requirements, including the bounded plan-backed
+   MR create/update slice and verification policy;
+6. then package the thin native Codex/OMP integrations before expanding
+   hierarchy, cadence, or broader delivery writes.
+
+Do not make token minting a normal setup requirement. Any future credential-
+minting flow is opt-in, short-lived, explicitly scoped, tested, and followed
+by explicit bootstrap-token revocation instructions.
+
+## Next release target — v0.3.0
+
+The recommended next release is a reliability and agent-integration release,
+not an attempt to wrap every GitLab endpoint. The detailed execution plan is
+kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
+
+### Must ship
+
+- [ ] Make transport state truthful: distinguish configured, authenticated,
+  readable, mutable, and verifiable for REST, `glab`, and runtime-owned MCP.
+- [ ] Route core reads through a proven backend or return explicit reduced-mode
+  results; remove aggregate-auth false positives.
+- [ ] Add first-class GitLab identity (`oflow identity --json`) and make
+  `work --mine` use the resolved server identity rather than a guess.
+- [ ] Make `capabilities --json` and `doctor` report live availability,
+  permissions, implementation support, and runtime-owned state without write
+  probes.
+- [ ] Reconcile generated Claude, Codex, OMP, Copilot/VS Code, and OpenWolf
+  contracts with the actual JSON commands and approval gates.
+- [ ] Audit REST, `glab`, and delegated field parity for labels, epic links,
+  dates, weight, and milestone identifiers.
+- [ ] Add synthetic compatibility fixtures and release gates for all supported
+  host/transport combinations; never use real credentials in fixtures.
+
+### Mandatory session-friction closure
+
+The following items came from an actual near-miss and repeated agent
+operability friction. They are all part of v0.3.0, not optional backlog. The
+implementation order is impact-first: lifecycle safety, capability truth,
+delivery writes, verification flexibility, discoverability, then ergonomics.
+
+#### F1 — Plan lifecycle hygiene and apply safety
+
+- [ ] Add plan `sessionId`/created-at expiry metadata and a documented TTL for
+  draft and approved plans.
+- [ ] Refuse expired or cross-session `approve`/`apply` by default; require an
+  explicit, visibly dangerous `--force` path with a fresh target re-check.
+- [ ] Add `oflow plan list` with state, age, target, operation, and expiry
+  information, plus `oflow plan discard <id>` for safe local cleanup.
+- [ ] Make every pre-apply output show the target IID, current title, project,
+  operation, and a human-readable field diff before the remote write.
+- [ ] Detect equivalent current state before applying; report a verified
+  `no-op` (for example `milestone_id: 0` when the milestone is already null)
+  instead of recording a misleading applied mutation.
+
+#### F2 — Token scope introspection and remediation
+
+- [ ] Extend `auth status`, `doctor --check-api`, and `capabilities --json`
+  with per-capability `usable: yes/no`, probe status, permission reason, and
+  backend/source information.
+- [ ] Probe only safe read/current-user/metadata endpoints and clearly label
+  capabilities that cannot be proven without a write; never turn doctor into a
+  mutation test.
+- [ ] Make missing-scope errors name the supported oflow-level workaround when
+  one exists, such as delegated MR creation or
+  `git push -o merge_request.create`, instead of only returning a raw 403.
+
+#### F3 — Plan-backed merge-request writes
+
+- [ ] Implement the `merge-requests.write` capability under the same
+  `plan -> approve -> apply -> verify` lifecycle.
+- [ ] Add `oflow mr create --description-file <path>` and
+  `oflow mr update --iid <iid> --description-file <path>` so multiline
+  descriptions remain intact and auditable.
+- [ ] Support the selected REST/glab/delegated transport honestly, report the
+  required scope before apply, and retain independent post-apply verification.
+- [ ] Keep MR review, discussion, approval, and pipeline mutation operations
+  separate; they are not silently included in this write milestone.
+
+#### F4 — Verification flexibility and pipeline policy
+
+- [ ] Treat `Done when` and equivalent description bullet sections as
+  acceptance criteria when no checklist heading exists, while preserving
+  conservative evidence semantics.
+- [ ] Add an explicit `oflow plan issue update --convert-ac` operation for
+  turning eligible bullets into stable task/checklist criteria; never rewrite
+  descriptions implicitly.
+- [ ] Detect projects without `.gitlab-ci.yml` and report missing pipeline
+  evidence as `unknown`/warning rather than a permanent completion block.
+- [ ] Add `pipeline=disabled` (or equivalent) project configuration with clear
+  policy output and tests for enabled, absent, and disabled pipeline modes.
+
+#### F5 — CLI discoverability and machine contracts
+
+- [ ] Make `oflow help` and `oflow plan --help` document the actual top-level
+  `approve <plan>` and `apply <plan>` commands, including `--state closed`.
+- [ ] Make every plan-producing `--json` response expose a stable top-level
+  `planPath` (while preserving the full plan object for compatibility).
+- [ ] Publish JSON schemas/examples or a concise cookbook for `work`, `sync`,
+  `audit.jsonl`, plans, receipts, and verification output.
+- [ ] Add `oflow work --state closed|all`; make the effective state filter
+  visible in JSON and text output.
+
+#### F6 — Batch, normalized work-item, and low-risk ergonomics
+
+- [ ] Add one bulk-note plan/apply flow for
+  `plan issue note --stories <iid,...>` with bounded targets, shared-body
+  verification, and partial-progress recovery.
+- [ ] Expose one normalized read path per IID for issue-backed and Work Item
+  resources; do not force agents to probe `/issues/` and Work Item endpoints
+  separately.
+- [ ] Add a safe milestone/iteration fallback: when the equivalent milestone
+  already expresses the requested timebox, report a no-op/note rather than
+  failing after an unsupported group-iteration lookup.
+- [ ] Add `--yes` only for `issue.note.create`, preserving the audit event,
+  target summary, verification, and explicit two-step approval for all other
+  remote mutations.
+
+The release checklist must trace every F1–F6 item to implementation,
+regression tests, documentation, and a compatible JSON example before the
+version is bumped. Native Codex/OMP packaging cannot displace this work.
+
+### Stretch, only after the must-ship gates pass
+
+- [ ] Package a thin Codex plugin/skill layer that calls `oflow` JSON.
+- [ ] Package a thin native OMP extension/skills layer over the existing bridge
+  and runtime-owned MCP configuration.
+- [ ] Improve credential profile guidance without adding token minting to normal
+  setup.
+
+If the native plugin surfaces cannot be installed and smoke-tested in the same
+release workflow, ship the corrected bridge and compatibility fixtures in
+v0.3.0 and move the distributable plugin artifacts to v0.3.1.
+
+### Explicitly deferred
+
+Epic CRUD, iteration/cadence writes, merge-request reviews/discussions/
+approvals, pipeline mutations, destructive deletion, repository push, and
+credential minting remain later milestones. The explicitly scoped MR create/
+update work above is not a general delivery API; it must remain plan-backed,
+permission-aware, and independently verified.
+
 ## Status
 
 ### Phase 0 — Current foundation
@@ -70,7 +227,8 @@ mutate after approval.
 
 ### Phase 1 — Scrum and planning read model
 
-This is the immediate implementation focus.
+This phase is the completed read-model foundation. The immediate
+implementation focus is the post-0.2.1 reconciliation above.
 
 - [x] Add `oflow capabilities --json` with supported, planned, and unavailable
   operations plus required token boundaries/permissions.
@@ -111,11 +269,14 @@ This is the immediate implementation focus.
 - [x] Implement issue-update plan creation without remote writes.
 - [x] Implement explicit approval with plan identity and digest checks.
 - [x] Implement issue-update apply through a GitLab REST adapter.
-- [ ] Permit a `glab` apply adapter only after the same plan and approval gates
-  are implemented and tested.
+- [x] Permit `glab` execution for the implemented issue-update action behind
+  the same plan and approval gates; broader glab mutation coverage remains
+  staged.
 - [x] Implement post-apply verification for issue updates.
 - [x] Add a durable local JSONL audit trail beyond the plan artifact.
 - [x] Update issue/work-item fields through the guarded plan path.
+- [ ] Audit field parity across REST, glab, and delegated transports for label
+  replacement/add/remove, `epic_id`, due dates, weight, and milestone mapping.
 - [x] Create work items through guarded plans; creation is non-retryable.
 - [x] Close/reopen and assign work items through guarded issue updates.
 - [x] Assign/remove work items from an existing epic through guarded issue
@@ -205,7 +366,7 @@ shows the explicit CLI command required to contact GitLab.
 - [x] GitLab host resolver (`--host`, config, git remote, `GITLAB_HOST`,
   authenticated glab hosts)
 - [x] Environment auth detection (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`,
-  `OAUTH_TOKEN`)
+  `GITLAB_PRIVATE_TOKEN`)
 - [x] glab auth detection and reuse as an authenticated transport without a
   duplicate oflow login
 - [x] oflow credential store with per-host isolation
@@ -214,6 +375,13 @@ shows the explicit CLI command required to contact GitLab.
   scraping agent OAuth caches)
 - [x] `oflow auth status` (text and `--json`, metadata only, no credentials)
 - [x] Backend/auth selection diagnostics
+- [ ] Separate configured, authenticated, readable, mutable, and verifiable
+  states for each backend; make core reads honor the selected read transport
+  or report explicit reduced mode
+- [ ] Add `oflow identity --json` (or `auth whoami`) with GitLab principal and
+  credential/backend metadata; make `work --mine` ID/server based
+- [ ] Make capabilities and doctor report live backend/permission availability
+  without probing writes
 
 ### Phase 4d — glab execution adapter
 
@@ -223,7 +391,7 @@ shows the explicit CLI command required to contact GitLab.
   redaction
 - [x] Verification remains owned by oflow
 
-### Phase 4e — OMP host adapter
+### Phase 4e — OMP host adapter and native extension
 
 - [x] Detect OMP (binary, `.omp/` directory, `OMP_PROFILE`)
 - [x] Managed `.omp/AGENTS.md` bridge with user-content preservation
@@ -235,6 +403,8 @@ shows the explicit CLI command required to contact GitLab.
   (`oflow install --with-gitlab-mcp`, `--no-mcp`)
 - [x] OMP profile diagnostics without touching global OMP config
 - [x] Tests for the OMP install matrix
+- [ ] Package a native OMP extension/skills layer that delegates to oflow JSON
+  and runtime-owned GitLab MCP without duplicating the GitLab adapter
 
 ### Phase 4f — Delegated GitLab MCP actions
 
@@ -258,20 +428,23 @@ shows the explicit CLI command required to contact GitLab.
 - [ ] Codex validation
 - [ ] OMP validation
 - [ ] Copilot/VS Code validation
+- [ ] OpenWolf e2e validation for status, handoff, memory/anatomy boundaries,
+  and credential non-retention
 
-### Phase 4h — Deferred delivery capabilities
+### Phase 4h — Delivery capabilities (bounded next-release slice)
 
-Merge-request writes and delivery automation stay postponed until the Scrum
-model, mutation safety, and the agent execution layer are stable.
+Merge-request review/discussion state and delivery automation remain postponed,
+but v0.3.0 includes the bounded, plan-backed MR create/update slice below.
 Merge-request and pipeline reads are already included in the compact
-sync/context evidence. When delivery actions arrive, they enter as
-backend-neutral actions under the same plan -> approve -> apply -> verify
-gates:
+sync/context evidence. Delivery actions enter as backend-neutral actions under
+the same plan -> approve -> apply -> verify gates:
 
 - [x] Merge-request creation through delegated GitLab MCP actions
   (`plan merge-request create` -> `approve` -> `apply --delegate` ->
-  `apply --receipt` -> `verify`); updates, discussions, and review state
-  remain deferred
+  `apply --receipt` -> `verify`); review/discussion state remains deferred
+- [ ] Implement `merge-requests.write` with plan-backed REST/glab/delegated
+  create and update operations, multiline description files, permission
+  diagnostics, and independent verification
 - [ ] Branch and repository operations (optional; local Git preferred)
 - [ ] Pipeline inspection and controlled trigger/cancel/retry operations
 - [ ] Delivery evidence linked back to acceptance criteria
@@ -309,6 +482,11 @@ Every capability must document:
 7. Verification evidence and failure states.
 8. REST, `glab`, and MCP support, including unsupported paths.
 9. Unit, integration, CLI, and safety tests.
+
+Capability discovery must also distinguish implementation support from current
+runtime availability. In particular, MCP configuration is not proof of MCP
+authentication, and an authenticated write backend is not proof of an
+independent verification backend.
 
 ## Definition of ready for an agent
 

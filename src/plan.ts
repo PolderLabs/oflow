@@ -1,6 +1,7 @@
+import { lstat, readdir, realpath, unlink } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { recordPlanEvent } from "./audit.js";
+import { readAudit, recordPlanEvent } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
@@ -28,6 +29,7 @@ import type {
 } from "./types.js";
 
 export const PLAN_DIRECTORY = ".oflow/state/plans";
+export const PLAN_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_BULK_ISSUES = 50;
 
 export type PlanState = "draft" | "approved" | "applied" | "verified";
@@ -216,6 +218,8 @@ export interface PlanArtifact {
   version: 2;
   id: string;
   createdAt: string;
+  sessionId?: string;
+  expiresAt?: string;
   updatedAt: string;
   state: PlanState;
   digest: string;
@@ -323,6 +327,8 @@ export async function createIssueCreatePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -385,6 +391,8 @@ export async function createIssueUpdatePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -579,6 +587,8 @@ export async function createIssueNotePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -626,6 +636,8 @@ export async function createLabelCreatePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -692,6 +704,8 @@ export async function createLabelUpdatePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -740,6 +754,8 @@ export async function createMilestoneCreatePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -791,6 +807,8 @@ export async function createMilestoneUpdatePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -836,6 +854,8 @@ export async function createBoardCreatePlan(
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -978,6 +998,8 @@ async function writePlan(root: string, operation: PlanOperation): Promise<Stored
     version: 2,
     id: randomUUID(),
     createdAt: now,
+    sessionId: currentPlanSession(),
+    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
     updatedAt: now,
     state: "draft",
     digest: "",
@@ -990,10 +1012,11 @@ async function writePlan(root: string, operation: PlanOperation): Promise<Stored
   return { path, plan };
 }
 
-export async function approvePlan(root: string, input: string): Promise<StoredPlan> {
+export async function approvePlan(root: string, input: string, options: { force?: boolean } = {}): Promise<StoredPlan> {
   const stored = await loadPlan(root, input);
   assertState(stored.plan, "draft", "approve");
   assertDigest(stored.plan);
+  await assertPlanLifecycle(root, stored.plan, options.force);
   stored.plan.state = "approved";
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
@@ -1001,10 +1024,11 @@ export async function approvePlan(root: string, input: string): Promise<StoredPl
   return stored;
 }
 
-export async function applyPlan(root: string, input: string): Promise<StoredPlan> {
+export async function applyPlan(root: string, input: string, options: { force?: boolean } = {}): Promise<StoredPlan> {
   const stored = await loadPlan(root, input);
   assertState(stored.plan, "approved", "apply");
   assertDigest(stored.plan);
+  await assertPlanLifecycle(root, stored.plan, options.force);
   if ((DELEGATED_ONLY_OPERATIONS as readonly string[]).includes(stored.plan.operation.kind)) {
     throw new OflowError(
       stored.plan.operation.kind + " is delegated-only. Run: oflow apply <plan> --delegate, execute the returned action through the agent runtime's GitLab MCP tool, then oflow apply <plan> --receipt <file> and oflow verify <plan>.",
@@ -1345,10 +1369,12 @@ export interface DelegatedApplyResult {
 export async function applyPlanDelegated(
   root: string,
   input: string,
+  options: { force?: boolean } = {},
 ): Promise<DelegatedApplyResult> {
   const stored = await loadPlan(root, input);
   assertState(stored.plan, "approved", "apply");
   assertDigest(stored.plan);
+  await assertPlanLifecycle(root, stored.plan, options.force);
   const operation = stored.plan.operation;
   if (operation.kind !== "merge_request.create") {
     throw new OflowError(
@@ -1394,10 +1420,12 @@ export async function ingestExecutionReceipt(
   root: string,
   input: string,
   receipt: ExecutionReceipt,
+  options: { force?: boolean } = {},
 ): Promise<StoredPlan> {
   const stored = await loadPlan(root, input);
   assertState(stored.plan, "approved", "apply a receipt to");
   assertDigest(stored.plan);
+  // Receipts reconcile execution evidence, even after expiry or a session change.
   const operation = stored.plan.operation;
   if (operation.kind !== "merge_request.create") {
     throw new OflowError(
@@ -1684,6 +1712,8 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
     "Plan: " + stored.path,
     "ID: " + plan.id,
     "State: " + plan.state,
+    "Session: " + (plan.sessionId ?? "legacy (unknown)"),
+    "Expires: " + (plan.expiresAt ?? "legacy (unknown)"),
     "Target: " + plan.operation.host + "/" + plan.operation.projectPath + " " + formatTarget(plan.operation),
     "Digest: " + plan.digest,
     ...(plan.sourceAssessment
@@ -1765,6 +1795,219 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
   }
   lines.push("");
   return lines.join("\n");
+}
+
+// Unset sessions are TTL-only. Old shell-PID artifacts are also implicit: PIDs
+// are neither stable shell identities nor evidence of a different agent session.
+function currentPlanSession(): string | undefined {
+  return process.env.OFLOW_SESSION_ID?.trim() || undefined;
+}
+
+function lifecycleIssue(plan: PlanArtifact): string | null {
+  const created = Date.parse(plan.createdAt);
+  if (!Number.isFinite(created) || new Date(created).toISOString() !== plan.createdAt || created > Date.now()) {
+    throw new OflowError("Invalid plan creation timestamp.", "INVALID_PLAN");
+  }
+  if (plan.sessionId === undefined && plan.expiresAt === undefined) return "legacy";
+  if (
+    (plan.sessionId !== undefined && (typeof plan.sessionId !== "string" || !plan.sessionId.trim())) ||
+    typeof plan.expiresAt !== "string" || !Number.isFinite(Date.parse(plan.expiresAt)) ||
+    new Date(Date.parse(plan.expiresAt)).toISOString() !== plan.expiresAt ||
+    Date.parse(plan.expiresAt) <= Date.parse(plan.createdAt) ||
+    Date.parse(plan.expiresAt) - Date.parse(plan.createdAt) > PLAN_TTL_MS
+  ) {
+    throw new OflowError("Invalid plan lifecycle metadata.", "INVALID_PLAN");
+  }
+  if (Date.now() >= Date.parse(plan.expiresAt)) return "expired";
+  const current = currentPlanSession();
+  if (current && plan.sessionId && !/^shell-\d+$/.test(plan.sessionId) && plan.sessionId !== current) return "cross-session";
+  return null;
+}
+
+async function assertPlanLifecycle(root: string, plan: PlanArtifact, force = false): Promise<void> {
+  const reason = lifecycleIssue(plan);
+  if (!reason) return;
+  if (!force) {
+    throw new OflowError(
+      "Refusing " + reason + " plan. Create a fresh plan, or explicitly use --force after reviewing the target.",
+      "PLAN_LIFECYCLE_BLOCKED",
+    );
+  }
+  // Force overrides only lifecycle freshness, never target, digest or state checks.
+  const remote = await getGitLabRemote(root);
+  if (remote.host !== plan.operation.host || remote.projectPath !== plan.operation.projectPath) {
+    throw new OflowError("The current Git remote does not match the plan target.", "PLAN_TARGET_MISMATCH");
+  }
+  const rechecks = await recheckPlanTarget(plan);
+  await recordPlanEvent(root, plan, "lifecycle-forced", undefined, {
+    lifecycleReason: reason, recheckedAt: new Date().toISOString(), rechecks,
+  });
+}
+
+/** Read-only revalidation of the operation's target and recorded preconditions. */
+async function recheckPlanTarget(plan: PlanArtifact): Promise<string[]> {
+  const op = plan.operation;
+  const client = new GitLabClient(op.host);
+  const project = await client.getProject(op.projectPath);
+  const requireTarget = (valid: boolean): void => {
+    if (!valid) throw new OflowError(
+      "Live plan target cannot be proven or has changed; create a fresh plan.",
+      "PLAN_TARGET_CHANGED",
+    );
+  };
+  requireTarget(project.path_with_namespace === op.projectPath);
+  const checks = ["project-identity"];
+  const issue = async (iid: number, expected?: string | null) => {
+    const current = await client.getIssue(op.projectPath, iid);
+    requireTarget(current.iid === iid);
+    if (expected !== undefined) requireTarget((current.updated_at ?? null) === expected);
+    checks.push("issue-identity:" + iid, ...(expected === undefined ? [] : ["issue-updated-at:" + iid]));
+  };
+  switch (op.kind) {
+    case "issue.create":
+      break;
+    case "issue.update":
+    case "issue.iteration.update":
+      // Without a captured revision, a stale update cannot prove absence of drift.
+      requireTarget(op.expectedUpdatedAt !== undefined);
+      await issue(op.issueIid, op.expectedUpdatedAt);
+      break;
+    case "issues.labels.update":
+    case "issues.planning.update":
+    case "issues.iteration.update":
+      for (const iid of pendingBulkIssueIids(op.issueIids, existingBulkResults(plan, op.kind))) {
+        requireTarget(op.expectedUpdatedAt?.[String(iid)] !== undefined);
+        await issue(iid, op.expectedUpdatedAt?.[String(iid)]);
+      }
+      break;
+    case "issue.note.create":
+      await issue(op.issueIid);
+      break;
+    case "merge_request.create":
+      await issue(op.storyIid);
+      // The current provider has no branch/head read boundary. Do not emit a
+      // stale delegated action when its branch targets cannot be proven live.
+      throw new OflowError(
+        "Cannot recheck merge-request branch targets with the current provider; create a fresh plan.",
+        "PLAN_RECHECK_UNSUPPORTED",
+      );
+    case "label.create": {
+      const page = await client.listLabelsPage(op.projectPath);
+      requireTarget(!page.pagination.hasNextPage);
+      const existing = findUniqueNamedResource(page.items, op.name, (item) => item.name, "project label");
+      if (existing) assertLabelCreateRecoveryMatch(existing, op);
+      checks.push("label-create-preconditions");
+      break;
+    }
+    case "milestone.create": {
+      const page = await client.listMilestonesPage(op.projectPath, "all");
+      requireTarget(!page.pagination.hasNextPage);
+      const existing = findUniqueNamedResource(page.items, op.title, (item) => item.title, "project milestone");
+      if (existing) assertMilestoneCreateRecoveryMatch(existing, op);
+      checks.push("milestone-create-preconditions");
+      break;
+    }
+    case "board.create": {
+      const page = await client.listBoardsPage(op.projectPath);
+      requireTarget(!page.pagination.hasNextPage);
+      findUniqueNamedResource(page.items, op.name, (item) => item.name, "project board");
+      checks.push("board-create-preconditions");
+      break;
+    }
+    case "board-list.create": {
+      requireTarget((await client.getBoard(op.projectPath, op.boardId)).id === op.boardId);
+      const labels = await client.listLabelsPage(op.projectPath);
+      requireTarget(!labels.pagination.hasNextPage && labels.items.some(
+        (label) => label.id === op.labelId && label.name === op.labelName,
+      ));
+      const lists = await client.listBoardListsPage(op.projectPath, op.boardId);
+      requireTarget(!lists.pagination.hasNextPage && lists.items.filter((list) => list.label?.id === op.labelId).length <= 1);
+      checks.push("board-identity", "label-identity", "board-list-create-preconditions");
+      break;
+    }
+    case "label.update":
+    case "milestone.update":
+    case "board.update":
+    case "board-list.update":
+      // These artifacts do not yet capture a remote revision or before-image.
+      // An existence check would not establish that a stale update is safe.
+      throw new OflowError(
+        "This update has no recorded remote revision; create a fresh plan instead of forcing it.",
+        "PLAN_RECHECK_UNSUPPORTED",
+      );
+  }
+  if ((op.kind === "issue.iteration.update" || op.kind === "issues.iteration.update") && op.iterationId !== null) {
+    const page = await client.listProjectIterationsPage(op.projectPath);
+    requireTarget(!page.pagination.hasNextPage && page.items.some((iteration) =>
+      "gid://gitlab/Iteration/" + iteration.id === op.iterationId && iteration.iid === op.iterationIid && iteration.title === op.iterationTitle,
+    ));
+    checks.push("iteration-identity");
+  }
+  return checks;
+}
+
+export async function listPlans(root: string) {
+  let entries;
+  try {
+    entries = await readdir(join(root, PLAN_DIRECTORY), { withFileTypes: true });
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return [];
+    throw error;
+  }
+  const plans = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    try {
+    const { path, plan } = await loadPlan(root, join(PLAN_DIRECTORY, entry.name));
+    assertDigest(plan);
+    if (!["draft", "approved", "applied", "verified"].includes(plan.state)) {
+      throw new OflowError("Invalid plan state.", "INVALID_PLAN");
+    }
+    plans.push({
+      id: plan.id, path, state: plan.state, createdAt: plan.createdAt,
+      ageSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(plan.createdAt)) / 1000)),
+      sessionId: plan.sessionId ?? null, expiresAt: plan.expiresAt ?? null,
+      lifecycle: lifecycleIssue(plan) ?? "current",
+      operation: plan.operation.kind,
+      target: plan.operation.host + "/" + plan.operation.projectPath + " " + formatTarget(plan.operation),
+    });
+    } catch (error: unknown) {
+      plans.push({
+        id: entry.name.slice(0, -5), path: join(root, PLAN_DIRECTORY, entry.name),
+        state: "invalid", createdAt: null, ageSeconds: null, sessionId: null,
+        expiresAt: null, lifecycle: "invalid", operation: "unknown", target: "unknown",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return plans;
+}
+
+export async function discardPlan(root: string, id: string): Promise<{ id: string; discarded: true }> {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id)) {
+    throw new OflowError("Discard requires a local plan ID, not a path.", "UNSAFE_PLAN_PATH");
+  }
+  const input = join(PLAN_DIRECTORY, id + ".json");
+  const path = resolvePlanPath(root, input);
+  if (
+    await realpath(join(root, PLAN_DIRECTORY)) !== join(await realpath(root), PLAN_DIRECTORY) ||
+    !(await lstat(path)).isFile()
+  ) {
+    throw new OflowError("Discard requires a regular local plan file.", "UNSAFE_PLAN_PATH");
+  }
+  const { plan } = await loadPlan(root, input);
+  const audit = await readAudit(root, Number.MAX_SAFE_INTEGER);
+  if (
+    plan.id !== id || (plan.state !== "draft" && plan.state !== "approved") ||
+    plan.result || plan.execution || plan.delegatedReceipt || plan.applyError ||
+    audit.events.some((event) => event.planId === id &&
+      ["delegated", "receipt", "applied", "apply-failed", "verified"].includes(event.action))
+  ) {
+    throw new OflowError("Cannot discard terminal plans or plans with execution history.", "PLAN_HISTORY_PROTECTED");
+  }
+  await unlink(path);
+  await recordPlanEvent(root, plan, "discarded");
+  return { id, discarded: true };
 }
 
 async function loadPlan(root: string, input: string): Promise<StoredPlan> {
@@ -2175,6 +2418,8 @@ function planDigest(plan: PlanArtifact): string {
     version: plan.version,
     id: plan.id,
     createdAt: plan.createdAt,
+    sessionId: plan.sessionId,
+    expiresAt: plan.expiresAt,
     operation: plan.operation,
     sourceAssessment: plan.sourceAssessment,
   };

@@ -96,6 +96,12 @@ host, project, state, limit, filters, and query mode; a cache miss or mismatch
 fails rather than silently falling back to the network. It stores no token and
 cached data is never a freshness precondition for a remote write.
 
+`work --mine` depends on a real GitLab identity. The planned
+`oflow identity --json`/`auth whoami` contract will expose the authenticated
+GitLab principal and backend state; oflow must never substitute the local Git
+author, agent name, or model name. See
+[`RESEARCH-AND-NEXT-STEPS.md`](RESEARCH-AND-NEXT-STEPS.md).
+
 Live `oflow sync` also persists the bounded planning/delivery snapshot in the
 same SQLite database. The schema tracks work items, merge requests, pipelines,
 labels, milestones, project-visible iterations, and up to 50 recent sync
@@ -205,6 +211,8 @@ oflow dashboard [--port <n>]
 oflow glab api <endpoint> [--json]
 oflow work [--state opened|closed|all] [filters]
 oflow mr --iid <iid> [--full] [--json]
+oflow mr create --description-file <path>       # v0.3.0 plan-backed write
+oflow mr update --iid <iid> --description-file <path>  # v0.3.0 write
 oflow context --story <iid> [--json]
 oflow verify --story <iid> [--json]
 ```
@@ -379,8 +387,10 @@ collection and reuses a single exact match for those uniquely-identifiable
 resources. It refuses mismatched fields or multiple matches with
 `PLAN_RESOURCE_CONFLICT` rather than creating a duplicate. Updates use
 idempotent PUT requests. Board-card movement is represented by guarded issue
-label updates, not an unverified board-card mutation. Board deletion, cadence
-writes, and merge-request writes are not yet apply-capable. The supported
+label updates, not an unverified board-card mutation. Board deletion and
+cadence writes remain deferred; the bounded v0.3.0 merge-request create/update
+slice will add plan-backed description-file writes with independent
+verification. The supported
 board endpoint behavior is documented by GitLab's [project issue boards
 API](https://docs.gitlab.com/api/boards/).
 

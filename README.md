@@ -60,6 +60,7 @@ remote changes follow plan → approve → apply → verify
 | **Fast reads** | Compact `sync --summary`, exact cached snapshots, and SQLite-backed assigned-work reads. |
 | **Current-user work** | `work --mine --refresh` resolves the authenticated GitLab user and caches assigned work. |
 | **Safe writes** | Issues, notes, labels, milestones, boards, board lists, and bounded owner/timebox/iteration changes. |
+| **Delegated delivery** | Merge-request creation through plan → approve → delegate → receipt → verify; MR updates and pipeline mutations remain staged. |
 | **Evidence verification** | MR acceptance evidence and matching successful pipeline checks, including head-SHA validation when available. |
 | **Auditability** | Local plan artifacts and lifecycle audit records without storing tokens or full sensitive payloads. |
 | **Local cockpit** | Loopback-only read-only dashboard over SQLite, with sync history and explicit refresh requests. |
@@ -483,16 +484,16 @@ resumed safely.
 | GitLab MCP | ◐ Optional | Agent-facing companion; not required by oflow |
 | Local planning dashboard | ✅ | SQLite-backed, loopback-only, credential-free browser view |
 | Copilot / VS Code handoff | ✅ | `.github/copilot-instructions.md` plus shared CLI JSON contract |
-| Merge-request writes | ◌ Planned | Deliberately later in the roadmap |
+| Merge-request writes | ◌ v0.3.0 | Plan-backed create/update with multiline description files |
 
 ## Roadmap
 
-**Current position:** the Scrum/planning read model, agent context flow, safe
-planning writes, assessment, SQLite cache, dashboard foundation, and
-Copilot/VS Code handoff are delivered. The next major boundary is delivery
-integration: merge-request writes, richer pipeline controls, and release
-evidence. Those are intentionally not enabled by the current token profile or
-the automatic agent workflow.
+**Current position:** v0.2.1 delivered the Scrum/planning read model, agent
+context flow, safe planning writes, assessment, SQLite cache, dashboard
+foundation, and host handoff bridge. The next release target is v0.3.0:
+truthful transport/auth state, first-class GitLab identity, live capabilities,
+host-contract compatibility, and thin agent integrations. Delivery expansion
+outside the bounded MR create/update slice remains intentionally later.
 
 ### Delivered — workflow and Scrum foundation
 
@@ -508,11 +509,25 @@ the automatic agent workflow.
 - Acceptance-aware story context, assessment, and verification.
 - Guarded issue, planning, label, milestone, board, and bounded bulk writes.
 
-### Next — delivery integration
+### Next — v0.3.0 reliability and agent integration
 
-- Merge-request lifecycle reads and writes with the same safety gates.
+- Resolve configured/authenticated/readable/mutable/verifiable transport state.
+- Add `oflow identity --json` and deterministic `work --mine` behavior.
+- Make capabilities and doctor reflect live permissions and reduced modes.
+- Validate generated Claude, Codex, OMP, Copilot/VS Code, and OpenWolf
+  contracts against the stable JSON surface.
+- Audit portable action field parity and add synthetic compatibility fixtures.
+- Close the session-friction items: safe plan expiry/list/discard/apply
+  summaries/no-op detection, scope introspection, plan-backed MR create/update,
+  flexible verification, documented JSON/help contracts, bulk notes, normalized
+  Work Item reads, safe timebox fallback, and audited note fast paths.
+
+### Later — delivery and broader GitLab coverage
+
+- Merge-request discussions, reviews, approvals, and other delivery operations
+  with the same safety gates.
 - Richer pipeline and deployment evidence.
-- More GitLab Work Item hierarchy operations.
+- More GitLab Work Item hierarchy and cadence operations.
 - Additional provider capabilities only when they preserve the local contract.
 
 The detailed staged plan lives in [`docs/ROADMAP.md`](docs/ROADMAP.md), and the

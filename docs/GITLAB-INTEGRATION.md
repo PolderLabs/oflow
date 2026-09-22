@@ -4,6 +4,9 @@ This document records how `oflow` connects to GitLab.com and GitLab
 Self-Managed/Dedicated installations. It is the decision record for REST,
 `glab`, and MCP integrations.
 
+The post-0.2.1 research and next-step sequence is maintained in
+[`RESEARCH-AND-NEXT-STEPS.md`](RESEARCH-AND-NEXT-STEPS.md).
+
 ## Decision
 
 Use a hybrid architecture, with clear ownership:
@@ -114,6 +117,23 @@ If a future `oflow` `glab` adapter needs to call `glab`, it should:
 The first implementation should not add a hard dependency on `glab`. A missing
 binary must produce a clear “optional backend unavailable” message while the
 REST path continues to work.
+
+## Authentication truth and current hardening item
+
+Auth discovery and usable transport are different claims. The resolver may
+find a configured MCP server or an authenticated `glab` session, while a core
+command may still need a direct REST token. The target contract is to report
+these states separately:
+
+```text
+configured -> authenticated -> readable -> mutable -> verifiable
+```
+
+MCP configuration is runtime-owned and does not prove OAuth success. A
+delegated write without an independent read transport must be reported as
+reduced verification, never as fully verified. The implementation roadmap
+tracks routing core reads through the selected backend or refusing with a
+clear reduced-mode explanation.
 
 ## Why REST is the right core for Scrum first
 
@@ -279,6 +299,21 @@ shows `passed`, `failed`, `skipped`, and `not-probed` states. Every write
 capability is intentionally `not-probed`; test a real write only through
 `plan -> approve -> apply -> verify`.
 
+## Token creation is not normal onboarding
+
+Fine-grained PATs are the preferred manually provisioned option when the
+target GitLab version supports the required permissions. A token that can mint
+other tokens is a high-privilege credential factory and is not a safe default
+for an interactive planning tool. Normal onboarding should use a read or
+planning-write profile, GitLab MCP OAuth, or a project/group/service-account
+credential instead.
+
+If an advanced bootstrap flow is added, it must accept the bootstrap secret
+only through protected stdin/runtime secret input, display the exact scope,
+boundary, and expiry, require explicit approval, verify the replacement, and
+show how to revoke/remove the bootstrap token. It must never store the
+bootstrap secret in `.oflow`, SQLite, Git, prompts, or OpenWolf memory.
+
 ## How MCP fits
 
 MCP is a tool-delivery mechanism for an agent, not a replacement for the
@@ -342,9 +377,11 @@ Every capability must expose:
    mutation; issue updates already use this path.
 5. Add MCP capability discovery/bridging only where the agent runtime can
    provide stable structured results.
-6. Keep merge-request reads compact and deterministic; expand into merge-
-   request writes, pipelines, releases, security, and other GitLab product
-   families later, each with separate permissions and tests.
+6. Keep merge-request reads compact and deterministic; add the bounded,
+   plan-backed v0.3.0 merge-request create/update description-file slice with
+   separate permissions and tests. Keep reviews, discussions, approvals,
+   pipeline mutations, releases, security, and other GitLab product families
+   later, each with their own contract.
 
 ## Current recommendation for a planning-focused project
 

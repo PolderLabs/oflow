@@ -27,6 +27,7 @@ const safeHosts = new Set([
   "127.0.0.1",
   "docs.gitlab.com",
   "docs.github.com",
+  "developers.openai.com",
   "example.com",
   "example.net",
   "example.org",

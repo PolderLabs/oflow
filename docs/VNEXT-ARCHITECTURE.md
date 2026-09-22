@@ -595,12 +595,16 @@ Recognize standard GitLab variables:
 ```text
 GITLAB_TOKEN
 GITLAB_ACCESS_TOKEN
-OAUTH_TOKEN
+GITLAB_PRIVATE_TOKEN
 ```
 
 Use these for direct REST/GraphQL when present. Environment authentication is
 especially appropriate for CI, containers, ephemeral environments, secret
 managers, and developer shells that already inject credentials.
+
+`OAUTH_TOKEN` is not an oflow direct-token variable. A separate client such as
+`glab` may recognize it; oflow must report only the variables it actually
+resolves.
 
 Environment variables take precedence over stored `oflow` credentials for the
 same direct API transport. Never echo their values.
@@ -1273,7 +1277,7 @@ Normal users running `oflow start` should not care. Advanced diagnostics
 ```text
 ACTION                    MCP       glab      REST
 work_item.update          yes       yes       yes
-merge_request.create      yes       yes       planned
+merge_request.create/update plan    planned   v0.3.0
 pipeline.retry            yes       yes       planned
 iteration.assign          maybe     api       GraphQL
 ```
@@ -1362,6 +1366,7 @@ It performs the minimum necessary refresh and returns compact working context:
   },
   "policy": {
     "pipelineRequired": true,
+    "pipelineMode": "enabled|disabled|auto",
     "humanMergeApproval": true,
     "closeAfterMerge": true
   },
@@ -1662,11 +1667,12 @@ verify outcome
 Later, host-specific integrations can directly bridge to the agent runtime.
 This is much less risky than building a generic MCP stack inside v0.x.
 
-### 10.5 OMP-specific future bridge
+### 10.5 OMP-specific future extension
 
-OMP is particularly extensible. A later `oflow` OMP extension could provide
-`/oflow-start`, `/oflow-check`, `/oflow-apply` with access to the OMP runtime
-and its MCP tools:
+OMP is particularly extensible. The current release provides a project-local
+bridge. A later native `oflow` OMP extension can provide
+`/oflow-start`, `/oflow-check`, `/oflow-apply`, and `/oflow-handoff` with
+access to the OMP runtime and its MCP tools:
 
 ```text
 OMP extension
@@ -1678,9 +1684,10 @@ OMP extension
    +--> oflow verify
 ```
 
-This would create a near-seamless workflow without `oflow` owning the MCP
-OAuth token. Do not build this until the generic CLI/action contract is
-stable.
+This creates a near-seamless workflow without `oflow` owning the MCP OAuth
+token. Do not build the distributable extension until the generic CLI/action,
+identity, and transport-truth contracts are stable. See
+[`RESEARCH-AND-NEXT-STEPS.md`](RESEARCH-AND-NEXT-STEPS.md).
 
 ---
 
@@ -2161,9 +2168,10 @@ Do this in small PRs.
 8. **`oflow start`** — compose existing sync/work/context/assessment
    primitives into a single compact agent command.
 9. **`oflow check`** — compose evidence, MR, pipeline, and policy state.
-10. **Delegated MCP action prototype** — use one action
-    (`merge_request.create`); the agent performs it through GitLab MCP;
-    `oflow` verifies the result through glab/direct read transport.
+10. **Bounded delivery writes** — add plan-backed merge-request create/update
+    with description files, permission diagnostics, and independent
+    verification; reviews, discussions, approvals, and pipeline mutations stay
+    separate.
 11. **Dogfood** — run the complete workflow on real stories. Measure API
     calls, tokens/context size, manual GitLab interactions, workflow errors,
     handoff quality. Only then expand the delivery action set.

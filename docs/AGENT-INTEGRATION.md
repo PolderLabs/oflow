@@ -1,9 +1,11 @@
 # Agent integration boundary
 
-`oflow` is a local CLI and read model, not an agent-host-specific plugin. That
-is intentional: Claude, Codex, GitHub Copilot, VS Code agents, CI jobs, and
-other terminal-capable agents can use the same small JSON contract without
-sharing credentials with a browser or an editor extension.
+`oflow` is a local CLI and read model with a portable JSON contract. It is not
+yet an agent-host-specific plugin, and that boundary is intentional: Claude,
+Codex, GitHub Copilot, VS Code agents, CI jobs, and other terminal-capable
+agents can use the same contract without duplicating GitLab logic or sharing
+credentials with a browser or editor extension. The post-0.2.1 decisions are
+tracked in [`RESEARCH-AND-NEXT-STEPS.md`](RESEARCH-AND-NEXT-STEPS.md).
 
 ## The stable contract
 
@@ -27,6 +29,33 @@ fine-grained configuration can be reconstructed.
 The CLI's JSON output is the integration surface. Agents do not need to know
 how GitLab REST, GraphQL, `glab`, SQLite, or optional MCP tools are wired
 behind it.
+
+## Identity and assignment
+
+The future stable identity entry point is `oflow identity --json` (or an
+equivalent `auth whoami`). It must use GitLab's current-user endpoint and
+report the GitLab principal, host, credential source, and backend capability
+metadata without exposing credentials. `work --mine` must use that server
+identity or a server-side `assignee=me` filter; local Git authors, model names,
+agent names, and instruction-file emails are not GitLab identity.
+
+Until that contract is implemented, a missing `User: Read` capability must be
+reported as unavailable rather than guessed.
+
+## Native packaging direction
+
+The host-specific layer should remain thin:
+
+- a Codex plugin may package skills, commands, and optional MCP wiring;
+- an OMP extension may package native commands/skills and runtime-owned MCP;
+- both must invoke `oflow` for identity, capabilities, plans, receipts, and
+  verification instead of reimplementing GitLab requests;
+- OpenWolf may preserve context, anatomy, memory, and handoff state, but must
+  not persist GitLab tokens or replace remote verification.
+
+The current `.omp/` bridge is the fallback installation path. Native packages
+come after the P0 transport-truth and identity work, so all hosts share one
+correct contract.
 
 ## GitHub Copilot and VS Code
 

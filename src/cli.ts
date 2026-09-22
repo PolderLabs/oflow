@@ -52,6 +52,8 @@ import { resolveAuth, type AuthResolution } from "./auth-resolver.js";
 import {
   applyPlan,
   approvePlan,
+  listPlans,
+  discardPlan,
   createBulkIssueIterationPlan,
   createBulkIssueLabelsPlan,
   createBulkIssuePlanningPlan,
@@ -162,11 +164,13 @@ interface CliOptions {
   withGitLabMcp: boolean;
   receipt?: string;
   delegate: boolean;
+  force: boolean;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
     const options = parseArgs(argv);
+    if (options.force) process.stderr.write("WARNING: --force overrides plan expiry/session protection, not target, digest, state or remote preconditions.\n");
     if (options.command === "help" || options.command === "--help" || options.command === "-h") {
       process.stdout.write(helpText());
       return 0;
@@ -435,6 +439,21 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "plan": {
+        if (options.planResource === "list") {
+          const plans = await listPlans(root);
+          print(options.json, { plans }, plans.length === 0 ? "No local plans.\n" :
+            plans.map((plan) => [plan.id, plan.state, plan.operation, plan.target,
+              "age=" + plan.ageSeconds + "s", "expires=" + (plan.expiresAt ?? "unknown"),
+              plan.lifecycle].join(" · ")).join("\n") + "\n");
+          return 0;
+        }
+        if (options.planResource === "discard") {
+          if (options.dryRun) throw new OflowError("plan discard does not support --dry-run; use plan list to inspect plans.", "INVALID_PLAN_OPTION");
+          if (!options.planPath) throw new OflowError("plan discard requires a plan ID.", "MISSING_PLAN_ID");
+          const result = await discardPlan(root, options.planPath);
+          print(options.json, result, "Discarded local plan " + result.id + ".\n");
+          return 0;
+        }
         if (options.planResource === "assess" && options.planOperation === "update") {
           assertAssessmentPlanOptions(options);
           if (options.assignee === undefined && options.milestone === undefined) {
@@ -730,7 +749,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             "MISSING_PLAN_PATH",
           );
         }
-        const stored = await approvePlan(root, options.planPath);
+        const stored = await approvePlan(root, options.planPath, { force: options.force });
         print(options.json, stored, formatPlanMarkdown(stored));
         return 0;
       }
@@ -743,13 +762,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         }
         if (options.receipt) {
           const receipt = parseExecutionReceipt(await readText(resolve(options.receipt)));
-          const stored = await ingestExecutionReceipt(root, options.planPath, receipt);
+          const stored = await ingestExecutionReceipt(root, options.planPath, receipt, { force: options.force });
           await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
           print(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.delegate) {
-          const { descriptor } = await applyPlanDelegated(root, options.planPath);
+          const { descriptor } = await applyPlanDelegated(root, options.planPath, { force: options.force });
           print(
             options.json,
             descriptor,
@@ -770,7 +789,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           );
           return 0;
         }
-        const stored = await applyPlan(root, options.planPath);
+        const stored = await applyPlan(root, options.planPath, { force: options.force });
         await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
         print(options.json, stored, formatPlanMarkdown(stored));
         return 0;
@@ -967,6 +986,7 @@ function parseArgs(argv: string[]): CliOptions {
     mine: false,
     withGitLabMcp: false,
     delegate: false,
+    force: false,
   };
 
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
@@ -977,7 +997,15 @@ function parseArgs(argv: string[]): CliOptions {
     firstOptionIndex = 2;
   } else if (command === "plan") {
     options.planResource = argv[1];
-    if (argv[2] && !argv[2].startsWith("-")) {
+    if (options.planResource === "list") {
+      firstOptionIndex = 2;
+    } else if (options.planResource === "discard") {
+      firstOptionIndex = 2;
+      if (argv[2] && !argv[2].startsWith("-")) {
+        options.planPath = argv[2];
+        firstOptionIndex = 3;
+      }
+    } else if (argv[2] && !argv[2].startsWith("-")) {
       options.planOperation = argv[2];
       firstOptionIndex = 3;
     } else {
@@ -1001,6 +1029,8 @@ function parseArgs(argv: string[]): CliOptions {
     const argument = argv[index];
     if (argument === "--json") {
       options.json = true;
+    } else if (argument === "--force") {
+      options.force = true;
     } else if (argument === "--dry-run") {
       options.dryRun = true;
     } else if (argument === "--token-stdin" || argument === "--stdin") {
@@ -1296,6 +1326,9 @@ function parseArgs(argv: string[]): CliOptions {
   }
   if (options.port !== undefined && options.command !== "dashboard") {
     throw new OflowError("--port is only supported with dashboard.", "INVALID_DASHBOARD_OPTION");
+  }
+  if (options.force && command !== "approve" && command !== "apply") {
+    throw new OflowError("--force is only supported with approve and apply.", "INVALID_FORCE_OPTION");
   }
   return options;
 }
@@ -1815,6 +1848,8 @@ function helpText(): string {
     "  plan board update --board --name     prepare an auditable board update",
     "  plan board-list create --board --label prepare a label-backed board list",
     "  plan board-list update --board --list --position reorder a board list",
+    "  plan list [--json]                  list local plan state, age, target and expiry",
+    "  plan discard <id>                   discard an unexecuted draft/approved plan (audited)",
     "  approve <plan.json>                  approve a local plan artifact",
     "  apply <plan.json>                    apply an approved plan",
     "  apply <plan.json> --delegate         emit a delegated GitLab MCP action",
@@ -1825,6 +1860,12 @@ function helpText(): string {
     "  mr --story <iid>",
     "  mr --iid <iid> [--full] [--json]",
     "  verify --story <iid> [--json]",
+    "",
+    "Plan lifecycle: 24-hour TTL from creation. OFLOW_SESSION_ID binds agent sessions;",
+    "without it, TTL alone applies (old shell-PID IDs are implicit). Legacy plans remain readable.",
+    "--force on approve/apply overrides legacy/expired/cross-session guards with an audit event.",
+    "Force requires a live target recheck; it never bypasses state, digest or remote preconditions.",
+    "Only explicit session IDs are compared. Receipts and verification are not TTL/session-gated.",
     "",
     "Options:",
     "  --root <path>  run against a repository below this path",
