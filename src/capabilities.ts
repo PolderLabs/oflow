@@ -1,3 +1,5 @@
+import type { AuthCapability } from "./types.js";
+import { probeCapabilities, resolveAuth } from "./auth-resolver.js";
 import { detectBackends, type BackendStatus } from "./backends.js";
 
 export type CapabilityState = "implemented" | "planned" | "optional";
@@ -11,13 +13,37 @@ export interface Capability {
   permission: string;
 }
 
+export interface CapabilitiesOptions {
+  /** When provided, oflow probes the live backend and returns per-capability usability. */
+  probe?: {
+    root: string;
+    host: string;
+    projectPath?: string;
+  };
+}
+
 export interface CapabilitiesResult {
   generatedAt: string;
   backends: BackendStatus;
   capabilities: Capability[];
+  /** F2 probe results; absent when no probe was requested or one could not be run. */
+  probes?: AuthCapability[];
 }
+export async function getCapabilities(options: CapabilitiesOptions = {}): Promise<CapabilitiesResult> {
+  const probes = options.probe
+    ? await (async (): Promise<AuthCapability[]> => {
+      const resolution = await resolveAuth({ host: options.probe!.host, root: options.probe!.root });
+      return probeCapabilities(
+        {
+          host: options.probe!.host,
+          ...(options.probe!.projectPath ? { projectPath: options.probe!.projectPath } : {}),
+        },
+        resolution.sources,
+        resolution.readBackend,
+      );
+    })()
+    : undefined;
 
-export async function getCapabilities(): Promise<CapabilitiesResult> {
   return {
     generatedAt: new Date().toISOString(),
     backends: await detectBackends(),
@@ -247,6 +273,7 @@ export async function getCapabilities(): Promise<CapabilitiesResult> {
         "Work Item: Read",
       ),
     ],
+    ...(probes ? { probes } : {}),
   };
 }
 
@@ -280,8 +307,20 @@ export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
         item.permission +
         " |",
     ),
-    "",
   ];
+  if (result.probes && result.probes.length > 0) {
+    lines.push(
+      "Live capability probes (F2):",
+      "| Capability | Usable | Probe | Backend | Source | Reason |",
+      "| --- | --- | --- | --- | --- | --- |",
+      ...result.probes.map((cap) =>
+        "| " + cap.id + " | " + (cap.usable ? "yes" : "no") +
+        " | " + cap.probe + " | " + cap.backend +
+        " | " + (cap.source ?? "-") + " | " + (cap.reason ?? "-") + " |",
+      ),
+      "",
+    );
+  }
   return lines.join("\n");
 }
 

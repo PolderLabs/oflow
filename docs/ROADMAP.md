@@ -144,15 +144,32 @@ delivery writes, verification flexibility, discoverability, then ergonomics.
 
 #### F2 — Token scope introspection and remediation
 
-- [ ] Extend `auth status`, `doctor --check-api`, and `capabilities --json`
+- [x] Extend `auth status`, `doctor --check-api`, and `capabilities --json`
   with per-capability `usable: yes/no`, probe status, permission reason, and
   backend/source information.
-- [ ] Probe only safe read/current-user/metadata endpoints and clearly label
+  *(Implemented: `probeCapabilities` in `src/auth-resolver.ts` (exported via
+  `src/types.ts`) runs read-only probes against the resolved REST transport;
+  writes are labelled `usable:true backend:"gitlab-mcp"` when an MCP runtime
+  source is present, otherwise `not-probed`.  `auth status --probe --json`,
+  `doctor --check-api`, and `capabilities --probe` consume the same probe
+  array.)*
+- [x] Probe only safe read/current-user/metadata endpoints and clearly label
   capabilities that cannot be proven without a write; never turn doctor into a
   mutation test.
-- [ ] Make missing-scope errors name the supported oflow-level workaround when
+  *(Implemented: read definitions (`user.read`, `project.read`,
+  `work-items.read`, `merge-requests.read`, `pipelines.read`, `labels.read`,
+  `milestones.read`, `boards.read`) call only GET endpoints with a bounded
+  page size of 1; writes are listed with `probe: "not-probed"` and a reason
+  pointing at the `plan -> approve -> apply -> verify` flow.  `doctor`
+  retains its existing non-mutating contract.)*
+- [x] Make missing-scope errors name the supported oflow-level workaround when
   one exists, such as delegated MR creation or
   `git push -o merge_request.create`, instead of only returning a raw 403.
+  *(Implemented: `normalizeForbidden(error: unknown)` checks numeric `.status`
+  on `GitLabApiError` first, then falls back to a message regex; 403 emits
+  `remediation` naming the broader-scope token, `glab auth login`, and the
+  `oflow mr create --delegate` / `git push -o merge_request.create`
+  workarounds; 401 emits a re-auth remediation.)*
 
 #### F3 — Plan-backed merge-request writes
 

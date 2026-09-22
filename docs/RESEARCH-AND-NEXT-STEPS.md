@@ -350,3 +350,52 @@ wrapper before the P0 contract and identity tests are green.
    verdict from the same snapshot; `applyPlan` short-circuits to
    `verified` + `noOp` and writes an audit `verified` event with a
    lifecycle reason.
+
+## F2 traceability (closed in this slice)
+
+**Source files**
+- `src/auth-resolver.ts` — `probeCapabilities(options, sources, readBackend)`
+  runs the per-capability probe matrix, plus `normalizeForbidden(error: unknown)`
+  exported for reuse by other surfaces.  `CAPABILITY_DEFINITIONS` enumerates
+  8 read probes (`user.read`, `project.read`, `work-items.read`,
+  `merge-requests.read`, `pipelines.read`, `labels.read`, `milestones.read`,
+  `boards.read`) and 7 write entries; writes are labelled `usable:true
+  backend:"gitlab-mcp"` when an MCP runtime source is present, otherwise
+  `not-probed`.  `runWithTimeout` enforces the per-probe timeout.
+- `src/types.ts` — new `AuthCapability` and `AuthCapabilityBackend` types
+  (moved here to avoid the types ↔ auth-resolver cycle).
+- `src/cli.ts` — `auth status --probe --json` populates `resolution.capabilities`;
+  `capabilities --probe` invokes `getCapabilities({ probe })`; new
+  `CliOptions.probe` flag.
+- `src/capabilities.ts` — `CapabilitiesOptions` + `probes` field on the
+  result; markdown renders a probe summary table.
+- `src/doctor.ts` — `DoctorReport.capabilities` populated under
+  `--check-api`; `formatProbeError` now calls `normalizeForbidden` so doctor
+  failure details name the same oflow-level workarounds.
+
+**Regression tests** (`test/capabilities-probe.test.mjs`, +10)
+- All reads pass when the resolved REST transport is authenticated.
+- Write capabilities are `not-probed` without an MCP runtime source.
+- Write capabilities become `usable:true backend:"gitlab-mcp"` with an MCP source.
+- Numeric 403 from `GitLabApiError` → `probe:"forbidden"` + remediation
+  naming the broader-scope token, `glab auth login`, and
+  `oflow mr create --delegate` / `git push -o merge_request.create`.
+- Numeric 401 → `probe:"forbidden"` + remediation naming `oflow auth login`.
+- Project-scoped reads are `skipped` when `readBackend` is `none`.
+- Project-scoped reads are `skipped` when `projectPath` is missing.
+- Per-probe timeout fires and surfaces as `usable:false`.
+- `normalizeForbidden(403)` and `normalizeForbidden(401)` carry the right
+  remediation strings.
+
+**Documentation / example**
+- `docs/ROADMAP.md` — F2 items marked `[x]` with implementation notes.
+- `docs/RESEARCH-AND-NEXT-STEPS.md` — this section.
+
+**Release-gate evidence**
+- `npm run build` — clean.
+- `npm run typecheck` — clean.
+- `npm test` — `tests 137, pass 137, fail 0, skipped 0` (127 prior + 10 F2).
+- `npm run check:public` — passes.
+- `npm pack --dry-run` — clean.
+- CLI smoke: `node dist/cli.js auth status --probe --json` returns the
+  capability array.

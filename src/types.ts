@@ -39,6 +39,31 @@ export interface AgentDetection {
   signals: Record<AgentName, string[]>;
 }
 
+/** Backend label used by per-capability probe results. */
+export type AuthCapabilityBackend =
+  | "glab"
+  | "rest"
+  | "graphql"
+  | "gitlab-mcp"
+  | "none";
+
+/** F2 snapshot: whether a capability can be satisfied by the resolved transport. */
+export interface AuthCapability {
+  id: string;
+  usable: boolean;
+  probe:
+    | "passed"
+    | "failed"
+    | "forbidden"
+    | "unavailable"
+    | "skipped"
+    | "not-probed";
+  backend: AuthCapabilityBackend;
+  source?: string;
+  reason?: string;
+  remediation?: string;
+}
+
 export interface GitLabRemote {
   host: string;
   projectPath: string;
@@ -391,6 +416,8 @@ export interface DoctorReport {
   tokenSource: "environment" | "stored" | null;
   apiCheck: "not-requested" | "skipped" | "passed" | "failed";
   apiChecks: DoctorCapabilityCheck[];
+  /** F2: per-capability usability snapshot from the auth resolver (present with --check-api). */
+  capabilities?: AuthCapability[];
   backends: BackendStatus;
   requiredFiles: Array<{ path: string; present: boolean }>;
   warnings: string[];

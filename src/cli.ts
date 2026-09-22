@@ -48,7 +48,7 @@ import { resolvePresentation } from "./presentation.js";
 import { getGitLabRemote, getRepoRoot } from "./git.js";
 import { glabApiGet } from "./glab.js";
 import { formatInstallResult, installProject } from "./install.js";
-import { resolveAuth, type AuthResolution } from "./auth-resolver.js";
+import { resolveAuth, probeCapabilities, type AuthCapability, type AuthResolution } from "./auth-resolver.js";
 import {
   applyPlan,
   approvePlan,
@@ -120,6 +120,7 @@ interface CliOptions {
   dryRun: boolean;
   tokenStdin: boolean;
   checkApi: boolean;
+  probe: boolean;
   epics: boolean;
   group: boolean;
   cached: boolean;
@@ -424,7 +425,16 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "capabilities": {
-        const result = await getCapabilities();
+        let probe: { root: string; host: string; projectPath: string } | undefined;
+        if (options.probe) {
+          try {
+            const remote = await getGitLabRemote(root);
+            probe = { root, host: remote.host, projectPath: remote.projectPath };
+          } catch {
+            probe = undefined;
+          }
+        }
+        const result = await getCapabilities(probe ? { probe } : {});
         print(options.json, result, formatCapabilitiesMarkdown(result));
         return 0;
       }
@@ -954,10 +964,33 @@ async function runAuth(
   if (action === "status") {
     const resolution = await resolveAuth({ host, root: root ?? undefined });
     const status = authStatus(host);
+    let capabilities: AuthCapability[] | undefined;
+    if (options.probe && root) {
+      try {
+        let projectPathForProbe: string | undefined;
+        try {
+          const remote = await getGitLabRemote(root);
+          if (remote.host === host) projectPathForProbe = remote.projectPath;
+        } catch {
+          projectPathForProbe = undefined;
+        }
+        capabilities = await probeCapabilities(
+          { host, ...(projectPathForProbe ? { projectPath: projectPathForProbe } : {}) },
+          resolution.sources,
+          resolution.readBackend,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        resolution.notes.push("Capability probe failed: " + message);
+      }
+    }
+    const resolutionWithCapabilities: AuthResolution = capabilities
+      ? { ...resolution, capabilities }
+      : resolution;
     print(
       options.json,
-      { ...status, resolution },
-      formatAuthStatus(status, resolution),
+      { ...status, resolution: resolutionWithCapabilities },
+      formatAuthStatus(status, resolutionWithCapabilities),
     );
     return 0;
   }
@@ -977,6 +1010,7 @@ function parseArgs(argv: string[]): CliOptions {
     dryRun: false,
     tokenStdin: false,
     checkApi: false,
+    probe: false,
     epics: false,
     group: false,
     cached: false,
@@ -1037,6 +1071,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.tokenStdin = true;
     } else if (argument === "--check-api") {
       options.checkApi = true;
+    } else if (argument === "--probe") {
+      options.probe = true;
     } else if (argument === "--epics") {
       options.epics = true;
     } else if (argument === "--group") {
@@ -1766,6 +1802,17 @@ function formatAuthStatus(status: AuthStatus, resolution?: AuthResolution): stri
         "",
         "No CLI-authenticated transport. Run `glab auth login` or set GITLAB_TOKEN.",
       );
+    }
+    if (resolution.capabilities && resolution.capabilities.length > 0) {
+      lines.push("", "CAPABILITIES");
+      for (const cap of resolution.capabilities) {
+        const marker = cap.usable ? "usable" : "unusable";
+        const sourceLabel = cap.source ? " (" + cap.source + ")" : "";
+        lines.push("  " + cap.id + " [" + cap.backend + sourceLabel + "]: " +
+          cap.probe + " - " + marker);
+        if (cap.reason) lines.push("    " + cap.reason);
+        if (cap.remediation) lines.push("    remediation: " + cap.remediation);
+      }
     }
     return lines.join("\n") + "\n";
   }

@@ -4,11 +4,12 @@ import { configPath, loadConfig } from "./config.js";
 import { exists } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
 import { getGitLabToken, getGitLabTokenSource } from "./auth.js";
+import { normalizeForbidden, probeCapabilities, resolveAuth } from "./auth-resolver.js";
 import { GitLabClient } from "./gitlab.js";
 import { detectBackends } from "./backends.js";
-import { dim, statusMarker } from "./presentation.js";
-import type { PresentationOptions } from "./presentation.js";
+import { dim, statusMarker, type PresentationOptions } from "./presentation.js";
 import type {
+  AuthCapability,
   DoctorCapabilityCheck,
   DoctorReport,
   DoctorCheckStatus,
@@ -174,7 +175,21 @@ export async function doctor(
       );
     }
   }
-
+  let capabilities: AuthCapability[] | undefined;
+  if (options.checkApi && remote) {
+    try {
+      const resolution = await resolveAuth({ host: remote.host, root });
+      capabilities = await probeCapabilities(
+        { host: remote.host, projectPath: remote.projectPath },
+        resolution.sources,
+        resolution.readBackend,
+      );
+    } catch (error) {
+      warnings.push(
+        "Capability probe skipped: " + (error instanceof Error ? error.message : String(error)),
+      );
+    }
+  }
   return {
     root,
     remote,
@@ -184,6 +199,7 @@ export async function doctor(
     tokenSource: tokenSource?.kind ?? null,
     apiCheck,
     apiChecks,
+    ...(capabilities ? { capabilities } : {}),
     backends,
     requiredFiles,
     warnings,
@@ -486,8 +502,8 @@ function skippedCheck(
 }
 
 function formatProbeError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/\s+/g, " ").slice(0, 300);
+  const { reason, remediation } = normalizeForbidden(error);
+  return remediation ? reason + " — remediation: " + remediation : reason;
 }
 
 function inferGroupPath(project: GitLabProject | null, projectPath: string): string | null {
@@ -539,6 +555,13 @@ export function formatDoctor(report: DoctorReport, presentation: PresentationOpt
       "Write check policy: doctor never tests a mutation. Use an approved plan and verify the result.",
     );
   }
+  if (report.capabilities && report.capabilities.length > 0) {
+    lines.push(
+      "",
+      "Capability usability (F2, probe-based):",
+      ...report.capabilities.map((cap) => "- " + formatAuthCapability(cap, presentation)),
+    );
+  }
   lines.push(
     "",
     "Required files:",
@@ -565,4 +588,15 @@ function formatCapabilityCheck(check: DoctorCapabilityCheck, presentation: Prese
     check.backend + " " + check.id +
     (check.latencyMs === undefined ? "" : dim(" (" + String(check.latencyMs) + "ms)", presentation)) +
     " — " + check.detail;
+}
+
+function formatAuthCapability(cap: AuthCapability, presentation: PresentationOptions): string {
+  const marker = cap.usable ? "USABLE" : "BLOCKED";
+  const remediation = cap.remediation ? " — remediation: " + cap.remediation : "";
+  return "[" + statusMarker(marker, presentation) + "] " +
+    cap.id + " via " + cap.backend +
+    (cap.source ? " (" + cap.source + ")" : "") +
+    " — probe=" + cap.probe +
+    (cap.reason ? "; " + cap.reason : "") +
+    remediation;
 }
