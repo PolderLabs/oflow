@@ -242,8 +242,8 @@ block F3; several fold into F6.
 | 6 | Bulk plans silently capped at 50 IIDs; cap undocumented in `--help` | F6 | Auto-split into chunked plans of ≤50 (oflow already knows batching) and/or document the cap in help text |
 | 7 | Apply interrupted mid-batch leaves ambiguous state; no resumable `applied-partial` | F1 | Add `applied-partial` state with `oflow apply --resume`; per-IID results already tracked for bulk ops — expose them for recovery |
 | 8 | `work --json` omits `issue_type`/`work_item_type` | F5 | Include `issue_type` in the `work --json` payload; it is already on the wire from GitLab |
-| 9 | No `labels audit` coverage command; agents hand-roll coverage counts | new backlog | `oflow labels audit [--label <name>]` returning coverage across open/closed grouped by type/milestone |
-| 10 | No surface to change work-item type after create | F6 | `plan issue update --type` forwarding `issue_type` on the update payload (REST supports it) |
+| 9 | No `labels audit` coverage command; agents hand-roll coverage counts | new backlog | `oflow labels audit [--label <name>]` returning coverage across open/closed grouped by type/milestone; must carry the type-coverage warning so audits over REST listings cannot claim completeness for invisible custom-type items (issue #4) |
+| 10 | No surface to change work-item type after create | F6 | Type conversion needs the GraphQL `workItemConvert` mutation — issue #4 proved `PUT /issues/<iid>` 404s for non-issue/task items and REST `issue_type` cannot cross that boundary. Sketch: `plan issue update --type` guarded through a GraphQL conversion step with the same plan lifecycle |
 
 Priority signal from the session: the **type axis** (#2, #8, #10) and
 **user-resolution axis** (#4, #5) were the costliest gaps — both forced

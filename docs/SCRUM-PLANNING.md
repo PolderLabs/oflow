@@ -305,9 +305,14 @@ documents `assignee_ids` on issue updates and username lookup through the Users
 API ([Issues API](https://docs.gitlab.com/api/issues/),
 [Users API](https://docs.gitlab.com/api/users/)).
 
-Use `--type task` (or `--issue-type task`) to create or convert a real GitLab
-Task work item. The type is carried in the approved plan and verified after
-apply; the `Task` label remains independent from the GitLab work-item type.
+Use `--type task` (or `--issue-type task`) to create a real GitLab Task work
+item with that type from the start; the type is carried in the approved plan
+and verified after apply, and the `Task` label remains independent from the
+GitLab work-item type. REST supports only the native types (`issue`,
+`incident`, `test_case`, `task`): converting an existing item to or from a
+custom work-item type (User Story, EPIC) requires GitLab's GraphQL
+`workItemConvert` mutation, which oflow does not wrap yet (see ROADMAP
+friction #10 and issue #4).
 
 For a single story, assign or clear a sprint with
 `oflow plan issue update --story <iid> --iteration <title|iid|none>`. oflow

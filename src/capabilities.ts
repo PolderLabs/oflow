@@ -291,6 +291,8 @@ export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
       (result.backends.glab.available
         ? "available" + (result.backends.glab.version ? " (" + result.backends.glab.version + ")" : "")
         : "not installed"),
+    "MCP: agent-runtime optional",
+    "",
     "| Capability | State | Access | Resource | Backend | Permission | Note |",
     "| --- | --- | --- | --- | --- | --- | --- |",
     ...result.capabilities.map(
