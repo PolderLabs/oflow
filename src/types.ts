@@ -421,6 +421,24 @@ export interface DoctorReport {
   backends: BackendStatus;
   requiredFiles: Array<{ path: string; present: boolean }>;
   warnings: string[];
+  /**
+   * Slice A 5-state transport lifecycle for the probed host. Present only
+   * when `--check-api` was passed and a remote was resolved. Distinct from
+   * `capabilities` (per-capability F2 snapshot): `transport` answers "is
+   * the host reachable end-to-end?" while `capabilities` answers "what
+   * can each capability do?"
+   */
+  transport?: {
+    host: string;
+    state: {
+      configured: boolean;
+      authenticated: boolean | "runtime-owned";
+      readable: boolean;
+      mutable: boolean | "runtime-owned" | "unsupported";
+      verifiable: boolean | "runtime-owned" | "unsupported";
+    };
+    reduced: boolean;
+  };
 }
 
 /** One discovered credential source for a GitLab host; never token material. */

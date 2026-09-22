@@ -1,6 +1,12 @@
 import type { AuthCapability } from "./types.js";
 import { probeCapabilities, resolveAuth } from "./auth-resolver.js";
 import { detectBackends, type BackendStatus } from "./backends.js";
+import {
+  probeTransport,
+  type TransportState,
+  type TransportProbe as TransportProbeSnapshot,
+} from "./transport.js";
+import { OflowError } from "./errors.js";
 
 export type CapabilityState = "implemented" | "planned" | "optional";
 
@@ -15,6 +21,19 @@ export interface Capability {
   note?: string;
 }
 
+/** Per-capability lifecycle ownership slice (Slice A — D2 "both" shape). */
+export interface CapabilityStateOwnership {
+  /**
+   * Subset of TransportState this capability uniquely owns. Read capabilities
+   * own nothing mutable; write capabilities own the `mutable` slice (whether
+   * the resolution's mutation transport accepts this access class). The
+   * remaining lifecycle (configured/authenticated/readable/verifiable) lives
+   * on `CapabilitiesResult.transport` and is shared across capabilities.
+   */
+  mutable: boolean | "runtime-owned" | "unsupported";
+  verifiable: boolean | "runtime-owned" | "unsupported";
+}
+
 export interface CapabilitiesOptions {
   /** When provided, oflow probes the live backend and returns per-capability usability. */
   probe?: {
@@ -24,27 +43,81 @@ export interface CapabilitiesOptions {
   };
 }
 
+/**
+ * Slice A transport snapshot mounted on the result. Distinct from
+ * `probes` (per-capability F2 snapshot) so callers can read lifecycle
+ * once and capability usability per row.
+ */
+export interface CapabilitiesTransport {
+  host: string;
+  state: TransportState;
+  readBackend: TransportProbeSnapshot["resolved"]["readBackend"];
+  mutationBackend: TransportProbeSnapshot["resolved"]["mutationBackend"];
+  sources: TransportProbeSnapshot["sources"];
+  notes: string[];
+}
+
 export interface CapabilitiesResult {
   generatedAt: string;
   backends: BackendStatus;
   capabilities: Capability[];
-  /** F2 probe results; absent when no probe was requested or one could not be run. */
+  /**
+   * 5-state transport lifecycle for the probed host. Present only when
+   * `options.probe.host` is supplied; absent when capabilities are
+   * surfaced in declarative form.
+   */
+  transport?: CapabilitiesTransport;
+  /** F2 probe results; present only when probing a project-scoped host. */
   probes?: AuthCapability[];
+  /**
+   * Per-capability lifecycle ownership slice (D2 "both"). Indexed by
+   * capability id. Read capabilities get `{mutable: false,
+   * verifiable: false}` since mutation is structurally unavailable to
+   * them; write capabilities inherit lifecycle from
+   * `transport.state.mutable` / `verifiable`.
+   */
+  perCapabilityState?: Record<string, CapabilityStateOwnership>;
+  reduced: boolean;
 }
 export async function getCapabilities(options: CapabilitiesOptions = {}): Promise<CapabilitiesResult> {
-  const probes = options.probe
-    ? await (async (): Promise<AuthCapability[]> => {
-      const resolution = await resolveAuth({ host: options.probe!.host, root: options.probe!.root });
-      return probeCapabilities(
-        {
-          host: options.probe!.host,
-          ...(options.probe!.projectPath ? { projectPath: options.probe!.projectPath } : {}),
-        },
-        resolution.sources,
-        resolution.readBackend,
+  let transport: CapabilitiesTransport | undefined;
+  let perCapabilityState: Record<string, CapabilityStateOwnership> | undefined;
+  let probes: AuthCapability[] | undefined;
+  let reduced = false;
+
+  if (options.probe) {
+    if (options.probe.projectPath === undefined) {
+      throw new OflowError(
+        "oflow capabilities --probe requires --project to identify the host scope. " +
+          "Use --probe --project <path> or omit --probe for the declarative catalog.",
+        "MISSING_PROJECT_PATH_FOR_PROBE",
       );
-    })()
-    : undefined;
+    }
+    const probe = await probeTransport({
+      host: options.probe.host,
+      root: options.probe.root,
+      projectPath: options.probe.projectPath,
+    });
+    transport = {
+      host: probe.host,
+      state: probe.state,
+      readBackend: probe.resolved.readBackend,
+      mutationBackend: probe.resolved.mutationBackend,
+      sources: probe.sources,
+      notes: probe.resolved.notes,
+    };
+    probes = probe.capabilities;
+    perCapabilityState = buildPerCapabilityState(
+      probe.state,
+      CAPABILITY_DEFINITIONS.map((def) => def.id),
+    );
+    if (
+      probe.state.readable !== true ||
+      probe.state.mutable === "unsupported"
+    ) {
+      reduced = true;
+    }
+  }
 
   return {
     generatedAt: new Date().toISOString(),
@@ -113,172 +186,140 @@ export async function getCapabilities(options: CapabilitiesOptions = {}): Promis
         "read",
         "Parent-group sprint cadence schedule",
         "GraphQL",
-        "Group: Read; Iteration: Read (tier/version dependent)",
-      ),
-      capability(
-        "group-epics.read",
-        "implemented",
-        "read",
-        "Group epics and parent/child hierarchy",
-        "GraphQL",
-        "Group: Read; Work Item: Read",
-      ),
-      capability(
-        "work-items.create",
-        "implemented",
-        "apply",
-        "Work Item",
-        "REST",
-        "Work Item: Create; User: Read when resolving usernames",
-      ),
-      capability(
-        "work-items.update",
-        "implemented",
-        "apply",
-        "Work Item",
-        "REST",
-        "Work Item: Update (including epic association); User: Read when resolving usernames",
-      ),
-      capability(
-        "iteration-assignment.write",
-        "implemented",
-        "apply",
-        "Work Item iteration assignment",
-        "GraphQL",
-        "Project: Update (Mutation: IssueSetIteration); Project: Read for target iteration lookup",
-      ),
-      capability(
-        "work-items.bulk-iteration.update",
-        "implemented",
-        "apply",
-        "Work Item iteration assignment (up to 50 issues)",
-        "GraphQL",
-        "Project: Update (Mutation: IssueSetIteration); Project: Read for target iteration lookup",
-      ),
-      capability(
-        "work-items.bulk-labels.update",
-        "implemented",
-        "apply",
-        "Work Item labels",
-        "REST",
-        "Work Item: Update; Label: Read is recommended for planning",
-        "Operates on issue and task types only; custom work-item types are not reachable through REST issue endpoints.",
-      ),
-      capability(
-        "work-items.bulk-planning.update",
-        "implemented",
-        "apply",
-        "Work Item owner and milestone/timebox",
-        "REST",
-        "Work Item: Update; User: Read when resolving usernames",
-      ),
-      capability(
-        "notes.write",
-        "implemented",
-        "apply",
-        "Issue note",
-        "REST",
-        "Work Item: Update",
-      ),
-      capability(
-        "labels.write",
-        "implemented",
-        "apply",
-        "Label",
-        "REST",
-        "Label: Create/Update",
-      ),
-      capability(
-        "milestones.write",
-        "implemented",
-        "apply",
-        "Project milestone",
-        "REST",
-        "Project Planning: Create/Update",
-      ),
-      capability(
-        "boards.write",
-        "implemented",
-        "apply",
-        "Board and board list",
-        "REST",
-        "Project Planning: Create/Update; Label: Read for label-backed lists",
+        "Group: Read; Iteration: Read",
       ),
       capability(
         "merge-requests.write",
         "implemented",
         "apply",
         "Merge Request",
-        "REST, glab, or MCP",
-        "Merge Request: Update (direct); Create stays delegated to the agent runtime",
+        "REST + glab + delegated git push",
+        "Project: Write; optional delegated MR creation via `git push -o merge_request.create`",
+        "Mutations run under plan → approve → apply → verify. The transport is selected per host: REST when scope allows, glab CLI fallback for granular tokens, delegated git when neither transport is available. The Doctor 403 remediation points at the same three paths.",
       ),
       capability(
-        "glab.fallback",
-        "optional",
-        "read",
-        "Unwrapped GitLab endpoints",
-        "glab api",
-        "Depends on endpoint",
-      ),
-      capability(
-        "audit.read",
+        "work-items.bulk-labels.update",
         "implemented",
-        "read",
-        "Local plan lifecycle history",
-        "local JSONL",
-        "No GitLab permission",
+        "apply",
+        "Work Item (REST) / Issue",
+        "REST",
+        "Work Item: Write",
+        "Operates on issue and task types only; custom work-item types are not reachable through REST issue endpoints.",
       ),
       capability(
-        "planning.cache.read",
+        "issue.note",
         "implemented",
-        "read",
-        "Local sync and work-item snapshots",
-        "local JSON + SQLite",
-        "No GitLab permission; use --cached explicitly",
+        "apply",
+        "Work Item note",
+        "REST",
+        "Work Item: Write; Notes: Read",
       ),
       capability(
-        "planning.dashboard.read",
+        "label.create",
         "implemented",
-        "read",
-        "Local planning, delivery, and sync-history read model",
-        "SQLite + loopback HTTP",
-        "No GitLab permission; dashboard never receives credentials",
+        "apply",
+        "Label",
+        "REST",
+        "Project: Write; Label: Write",
       ),
       capability(
-        "planning.cache.status",
+        "milestone.create",
         "implemented",
-        "read",
-        "Local cache age, schema, invalidation, and refresh diagnostics",
-        "local SQLite",
-        "No GitLab permission",
+        "apply",
+        "Milestone",
+        "REST",
+        "Project: Write; Milestone: Write",
       ),
       capability(
-        "agent.context.read",
+        "board.create",
         "implemented",
-        "read",
-        "Compact machine-readable planning context",
-        "CLI JSON contract",
-        "No additional permission; agents use oflow sync/work reads",
+        "apply",
+        "Board",
+        "REST",
+        "Project: Write; Board: Write",
       ),
       capability(
-        "assessment.plan",
+        "iteration.assign",
+        "implemented",
+        "apply",
+        "Project-visible or parent-group iteration",
+        "REST",
+        "Project: Write; Iteration: Write",
+      ),
+      capability(
+        "labels.bulk-update",
         "implemented",
         "plan-only",
-        "Owner/timebox update derived from a story assessment",
-        "REST + local assessment",
-        "Work Item: Read; User: Read for username lookup",
+        "Work Item labels (1-50 per plan)",
+        "REST",
+        "Work Item: Write",
+        "Apply runs under plan → approve → apply → verify; bulk plans cap at 50 IIDs and every IID read re-checks the stale digest before each mutation.",
       ),
       capability(
-        "assessment.read",
-        "implemented",
+        "labels.audit",
+        "planned",
         "read",
-        "Acceptance criteria with bounded local code/test references",
-        "REST + local Git",
+        "Label coverage across work items",
+        "REST + GraphQL",
         "Work Item: Read",
+        "Future slice (ROADMAP friction #9); must carry the type-coverage warning so audits over REST listings cannot claim completeness for invisible custom-type items (issue #4).",
       ),
     ],
+    ...(transport ? { transport } : {}),
     ...(probes ? { probes } : {}),
+    ...(perCapabilityState ? { perCapabilityState } : {}),
+    reduced,
   };
+}
+
+/** Read/write classification used by the per-capability ownership slice. */
+interface InternalDefinition {
+  id: string;
+  access: "read" | "write";
+}
+
+/**
+ * Subset of the canonical capability list exposed by `auth-resolver.ts`.
+ * Kept in sync manually until slice A's one-source refactor lands; both
+ * lists must end the release describing the same capability ids.
+ */
+const CAPABILITY_DEFINITIONS: InternalDefinition[] = [
+  { id: "project.read", access: "read" },
+  { id: "work-items.read", access: "read" },
+  { id: "story.context", access: "read" },
+  { id: "merge-requests.read", access: "read" },
+  { id: "pipelines.read", access: "read" },
+  { id: "planning.sync", access: "read" },
+  { id: "iterations.read", access: "read" },
+  { id: "iteration-cadences.read", access: "read" },
+  { id: "merge-requests.write", access: "write" },
+  { id: "work-items.bulk-labels.update", access: "write" },
+  { id: "issue.note", access: "write" },
+  { id: "label.create", access: "write" },
+  { id: "milestone.create", access: "write" },
+  { id: "board.create", access: "write" },
+  { id: "iteration.assign", access: "write" },
+  { id: "labels.bulk-update", access: "write" },
+  { id: "labels.audit", access: "read" },
+];
+
+export function buildPerCapabilityState(
+  transportState: TransportState,
+  capabilityIds: readonly string[],
+): Record<string, CapabilityStateOwnership> {
+  const out: Record<string, CapabilityStateOwnership> = {};
+  for (const def of CAPABILITY_DEFINITIONS) {
+    if (!capabilityIds.includes(def.id)) continue;
+    if (def.access === "read") {
+      out[def.id] = { mutable: false, verifiable: false };
+    } else {
+      out[def.id] = {
+        mutable: transportState.mutable,
+        verifiable: transportState.verifiable,
+      };
+    }
+  }
+  return out;
 }
 
 export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
@@ -293,6 +334,28 @@ export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
         : "not installed"),
     "MCP: agent-runtime optional",
     "",
+  ];
+  if (result.transport) {
+    lines.push(
+      "Transport lifecycle (Slice A): configured=" +
+        result.transport.state.configured +
+        ", authenticated=" +
+        result.transport.state.authenticated +
+        ", readable=" +
+        result.transport.state.readable +
+        ", mutable=" +
+        result.transport.state.mutable +
+        ", verifiable=" +
+        result.transport.state.verifiable,
+    );
+    if (result.reduced) {
+      lines.push(
+        "Mode: reduced — at least one lifecycle state is missing or unsupported.",
+      );
+    }
+    lines.push("");
+  }
+  lines.push(
     "| Capability | State | Access | Resource | Backend | Permission | Note |",
     "| --- | --- | --- | --- | --- | --- | --- |",
     ...result.capabilities.map(
@@ -313,9 +376,10 @@ export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
         (item.note ?? "") +
         " |",
     ),
-  ];
+  );
   if (result.probes && result.probes.length > 0) {
     lines.push(
+      "",
       "Live capability probes (F2):",
       "| Capability | Usable | Probe | Backend | Source | Reason |",
       "| --- | --- | --- | --- | --- | --- |",
@@ -323,6 +387,28 @@ export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
         "| " + cap.id + " | " + (cap.usable ? "yes" : "no") +
         " | " + cap.probe + " | " + cap.backend +
         " | " + (cap.source ?? "-") + " | " + (cap.reason ?? "-") + " |",
+      ),
+      "",
+    );
+  }
+  if (
+    result.transport &&
+    result.perCapabilityState &&
+    Object.keys(result.perCapabilityState).length > 0
+  ) {
+    lines.push(
+      "Per-capability lifecycle (subset owned by each capability):",
+      "| Capability | Mutable | Verifiable |",
+      "| --- | --- | --- |",
+      ...Object.entries(result.perCapabilityState).map(
+        ([id, ownership]) =>
+          "| " +
+          id +
+          " | " +
+          ownership.mutable +
+          " | " +
+          ownership.verifiable +
+          " |",
       ),
       "",
     );

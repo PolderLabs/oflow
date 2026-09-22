@@ -5,6 +5,7 @@ import { exists } from "./fs.js";
 import { getGitLabRemote } from "./git.js";
 import { getGitLabToken, getGitLabTokenSource } from "./auth.js";
 import { normalizeForbidden, resolveAuth } from "./auth-resolver.js";
+import { deriveTransportState, type TransportState } from "./transport.js";
 import { GitLabClient } from "./gitlab.js";
 import { detectBackends } from "./backends.js";
 import { dim, statusMarker, type PresentationOptions } from "./presentation.js";
@@ -176,14 +177,24 @@ export async function doctor(
     }
   }
   let capabilities: AuthCapability[] | undefined;
+  let transport: DoctorReport["transport"];
   if (options.checkApi) {
     let authSource: string | undefined;
     let mcpPresent = false;
+    let transportState: TransportState | undefined;
     if (remote) {
       try {
         const resolution = await resolveAuth({ host: remote.host, root });
         authSource = resolution.sources[0]?.source;
         mcpPresent = resolution.sources.some((source) => source.source === "mcp-runtime");
+        transportState = deriveTransportState(resolution);
+        transport = {
+          host: resolution.host,
+          state: transportState,
+          reduced:
+            transportState.readable !== true ||
+            transportState.mutable === "unsupported",
+        };
       } catch {
         // best-effort only; resolution.sources is informational
       }
@@ -202,6 +213,7 @@ export async function doctor(
     apiCheck,
     apiChecks,
     ...(capabilities ? { capabilities } : {}),
+    ...(transport ? { transport } : {}),
     backends,
     requiredFiles,
     warnings,

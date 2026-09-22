@@ -49,6 +49,7 @@ import { readText } from "./fs.js";
 import { resolvePresentation } from "./presentation.js";
 import { getGitLabRemote, getRepoRoot } from "./git.js";
 import { glabApiGet } from "./glab.js";
+import { formatIdentityJson, formatIdentityMarkdown, resolveIdentity } from "./identity.js";
 import { formatInstallResult, installProject } from "./install.js";
 import { resolveAuth, probeCapabilities, type AuthCapability, type AuthResolution } from "./auth-resolver.js";
 import {
@@ -171,6 +172,7 @@ interface CliOptions {
   receipt?: string;
   delegate: boolean;
   force: boolean;
+  withEmail: boolean;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -210,6 +212,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         endpoint: options.glabEndpoint,
       });
       print(options.json, result, JSON.stringify(result, null, 2) + "\n");
+      return 0;
+    }
+
+    if (options.command === "identity") {
+      const root = await getRepoRoot(options.root);
+      const identity = await resolveIdentity(root, { withEmail: options.withEmail });
+      print(options.json, identity, formatIdentityMarkdown(identity));
       return 0;
     }
 
@@ -1098,6 +1107,7 @@ function parseArgs(argv: string[]): CliOptions {
     mine: false,
     withGitLabMcp: false,
     delegate: false,
+    withEmail: false,
     force: false,
   };
 
@@ -1170,6 +1180,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.withGitLabMcp = true;
     } else if (argument === "--delegate") {
       options.delegate = true;
+    } else if (argument === "--with-email") {
+      options.withEmail = true;
     } else if (
       argument === "--story" ||
       argument === "--stories" ||
