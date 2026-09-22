@@ -105,17 +105,42 @@ delivery writes, verification flexibility, discoverability, then ergonomics.
 
 #### F1 — Plan lifecycle hygiene and apply safety
 
-- [ ] Add plan `sessionId`/created-at expiry metadata and a documented TTL for
-  draft and approved plans.
-- [ ] Refuse expired or cross-session `approve`/`apply` by default; require an
+- [x] Add plan `sessionId`/created-at expiry metadata and a documented TTL for
+  draft and approved plans. *(Implemented: `PLAN_TTL_MS` in `src/plan.ts`,
+  stamped by every `createXxxPlan` factory, included in `planDigest`,
+  rendered in `formatPlanMarkdown`.  24h default.)*
+- [x] Refuse expired or cross-session `approve`/`apply` by default; require an
   explicit, visibly dangerous `--force` path with a fresh target re-check.
-- [ ] Add `oflow plan list` with state, age, target, operation, and expiry
+  *(Implemented: `assertPlanLifecycle` in `src/plan.ts`; CLI accepts
+  `--force` on `approve`/`apply` only and prints a stderr warning;
+  force re-asserts host/path binding then re-runs
+  `recheckPlanTarget`.  Unsupported rechecks raise
+  `PLAN_RECHECK_UNSUPPORTED`.  `verify` is unaffected.)*
+- [x] Add `oflow plan list` with state, age, target, operation, and expiry
   information, plus `oflow plan discard <id>` for safe local cleanup.
-- [ ] Make every pre-apply output show the target IID, current title, project,
+  *(Implemented: `listPlans` + `discardPlan` in `src/plan.ts`,
+  exposed as `plan list` and `plan discard <id>` in `src/cli.ts`; rejects
+  symlinked plan directory and file via `realpath` + `lstat`, refuses any
+  plan with non-empty `result`/`execution`/`delegatedReceipt`/`applyError`
+  or any audit event beyond `created`/`approved`; audits `discarded`.)*
+- [x] Make every pre-apply output show the target IID, current title, project,
   operation, and a human-readable field diff before the remote write.
-- [ ] Detect equivalent current state before applying; report a verified
+  *(Implemented: `loadApplySnapshot` + `formatApplyPreviewMarkdown` in
+  `src/plan.ts`; `formatPlanMarkdown` renders the preview block.  JSON
+  output exposes `plan.preview` with operation, host/project, IID, current
+  title, and the per-field before/after diff.  Single live read keeps the
+  preview and the no-op verdict coherent.)*
+- [x] Detect equivalent current state before applying; report a verified
   `no-op` (for example `milestone_id: 0` when the milestone is already null)
   instead of recording a misleading applied mutation.
+  *(Implemented: `loadApplySnapshot` reuses `verifyIssue` /
+  `verifyIssueIteration` / `verifyBulkIssue*` / `verifyLabel` /
+  `verifyMilestone` / `verifyBoard` for the equivalence verdict; on match,
+  `applyPlan` skips the mutation, sets `state: "verified"` with
+  `noOp: true`, records an audit `verified` event with a lifecycle reason,
+  and writes a verification block describing the equivalent state.  JSON
+  output includes `plan.preview` and `plan.noOp`; markdown appends a
+  "NO-OP: equivalent remote state detected" notice.)*
 
 #### F2 — Token scope introspection and remediation
 

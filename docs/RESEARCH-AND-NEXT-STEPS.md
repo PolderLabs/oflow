@@ -297,3 +297,56 @@ wrapper before the P0 contract and identity tests are green.
 - [OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins?site_locale=en)
 - [OMP MCP configuration](https://github.com/can1357/oh-my-pi/blob/main/docs/mcp-config.md)
 - [OMP extension packages](https://github.com/can1357/oh-my-pi/blob/main/docs/skills/authoring-extensions.md)
+
+## F1 traceability (closed in this slice)
+
+**Source files**
+- `src/plan.ts` — `PLAN_TTL_MS`, `currentPlanSession`, `lifecycleIssue`,
+  `assertPlanLifecycle`, `recheckPlanTarget`, `listPlans`, `discardPlan`,
+  `loadApplySnapshot`, `formatApplyPreviewMarkdown`, integration into
+  `applyPlan`, rendering in `formatPlanMarkdown`.  `PlanArtifact` gained
+  optional `sessionId`, `expiresAt`, `preview`, `noOp`.
+- `src/audit.ts` — `PlanAuditAction` adds `discarded` and `lifecycle-forced`;
+  `recordPlanEvent` accepts an optional lifecycle arg.
+- `src/cli.ts` — `CliOptions.force`, `--force` parse on approve/apply only,
+  stderr warning, `plan list` and `plan discard <id>` cases, help text.
+- `scripts/check-public-content.mjs` — `developers.openai.com` added to
+  safe hosts so Codex integration URLs can ship in docs.
+
+**Regression tests**
+- `test/plan-lifecycle.test.mjs` — 17 tests covering session/TTL binding in
+  the digest, legacy/expired/cross-session gating, force cannot bypass
+  state/target/malformed metadata, force still runs live remote
+  precondition checks, list + discard local hygiene, discard rejects
+  symlinks, CLI exposes hygiene + force, pre-apply preview carries IID,
+  title, and field diff, equivalent-state no-op short-circuits to
+  `verified`, mutation still fires when state does not match,
+  `formatPlanMarkdown` renders the preview and no-op notice, JSON output
+  exposes `plan.preview` and `plan.noOp`.
+
+**Documentation / example**
+- `docs/ROADMAP.md` — F1 acceptance items all checked with implementation
+  notes pointing at the source files and contract guarantees.
+- `docs/RESEARCH-AND-NEXT-STEPS.md` — this section.
+
+**Release-gate evidence**
+- `npm run build` — clean (`tsc -p tsconfig.json && chmod`).
+- `npm run typecheck` — clean (`tsc --noEmit -p tsconfig.json`).
+- `npm test` — `tests 127, pass 127, fail 0, skipped 0` (121 prior + 6 new).
+- `npm run check:public` — passes (no private host/credential indicators).
+- `npm pack --dry-run` — clean (155 files, ~199 kB).
+
+**Implementation order**
+1. Lifecycle metadata + TTL: `PLAN_TTL_MS`, `sessionId`/`expiresAt`,
+   `currentPlanSession`, `lifecycleIssue`, digest coverage, factory wiring.
+2. Lifecycle gates: `assertPlanLifecycle` in approve/apply/receipt paths;
+   `recheckPlanTarget` for force re-validation; `--force` only on
+   approve/apply with stderr warning; verify exempt.
+3. Local hygiene: `listPlans`, `discardPlan`, `plan list`, `plan discard`
+   CLI; symlink rejection; audit `discarded` and `lifecycle-forced`.
+4. Pre-apply preview: `loadApplySnapshot` does one live read;
+   `formatApplyPreviewMarkdown`; `formatPlanMarkdown` renders preview block.
+5. Equivalent-state no-op: `loadApplySnapshot` returns an equivalence
+   verdict from the same snapshot; `applyPlan` short-circuits to
+   `verified` + `noOp` and writes an audit `verified` event with a
+   lifecycle reason.

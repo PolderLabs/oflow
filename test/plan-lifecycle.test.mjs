@@ -261,11 +261,11 @@ test("legacy force apply succeeds only through approval and still requires indep
   });
   await approvePlan(root, path, { force: true });
   assert.equal((await applyPlan(root, path, { force: true })).plan.state, "applied");
-  assert.deepEqual(methods, ["GET", "GET", "GET", "PUT"]);
+  assert.deepEqual(methods, ["GET", "GET", "GET", "GET", "PUT"]);
   const verified = await verifyPlan(root, path);
   assert.equal(verified.plan.state, "verified");
   assert.equal(verified.plan.verification.passed, true);
-  assert.deepEqual(methods, ["GET", "GET", "GET", "PUT", "GET"]);
+  assert.deepEqual(methods, ["GET", "GET", "GET", "GET", "PUT", "GET"]);
   const actions = (await readAudit(root)).events.map((event) => event.action);
   assert.deepEqual(actions, ["verified", "applied", "lifecycle-forced", "approved", "lifecycle-forced"]);
 });
@@ -399,3 +399,184 @@ test("failed unlink never records a successful discard; corrupt plans do not hid
     assert.ok(rows.find((row) => row.id === id).error);
   }
 });
+
+test("apply records a pre-apply preview with target IID, current title, and field diff", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "synthetic-test-token";
+  let currentTitle = "Original title";
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    if (method === "PUT") currentTitle = "Updated title";
+    return new Response(JSON.stringify({
+      iid: 42, title: currentTitle, updated_at: "2026-01-01T00:00:00Z",
+      labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+  });
+  const { path } = await save(root);
+  await approvePlan(root, path);
+  const stored = await applyPlan(root, path);
+  assert.equal(stored.plan.state, "applied");
+  assert.ok(stored.plan.preview, "expected a pre-apply preview snapshot");
+  assert.equal(stored.plan.preview.operation, "issue.update");
+  assert.equal(stored.plan.preview.iid, 42);
+  assert.equal(stored.plan.preview.currentTitle, "Original title");
+  const titleDiff = stored.plan.preview.fields.find((entry) => entry.field === "title");
+  assert.ok(titleDiff, "expected a title field diff");
+  assert.equal(titleDiff.before, "Original title");
+  assert.equal(titleDiff.after, "Updated title");
+});
+
+test("apply detects an equivalent remote state and records a verified no-op instead of a mutation", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "synthetic-test-token";
+  let mutationAttempted = false;
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    if (method === "PUT") {
+      mutationAttempted = true;
+      return new Response(JSON.stringify({
+        iid: 42, title: "Updated title", updated_at: "2026-01-01T00:00:00Z",
+        labels: [], assignees: [], state: "opened",
+      }));
+    }
+    // Live remote already matches the plan (title was updated externally).
+    return new Response(JSON.stringify({
+      iid: 42, title: "Updated title", updated_at: "2026-01-01T00:00:00Z",
+      labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+  });
+  const { path } = await save(root);
+  await approvePlan(root, path);
+  const stored = await applyPlan(root, path);
+  assert.equal(stored.plan.state, "verified");
+  assert.equal(stored.plan.noOp, true);
+  assert.equal(mutationAttempted, false, "expected no PUT to be issued when state is equivalent");
+  assert.ok(stored.plan.verification.passed);
+  const actions = (await readAudit(root)).events.map((event) => event.action);
+  assert.ok(actions.includes("verified"));
+});
+
+test("apply falls through to the mutation when the live state does not yet match", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "synthetic-test-token";
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    return new Response(JSON.stringify({
+      iid: 42, title: method === "PUT" ? "Updated title" : "Original title",
+      updated_at: "2026-01-01T00:00:00Z", labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+  });
+  const { path } = await save(root);
+  await approvePlan(root, path);
+  const stored = await applyPlan(root, path);
+  assert.equal(stored.plan.state, "applied");
+  assert.equal(stored.plan.noOp, undefined);
+  assert.ok(stored.plan.preview);
+});
+
+test("formatPlanMarkdown renders the pre-apply preview, field diff, and no-op notice", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    return new Response(JSON.stringify({
+      iid: 42, title: method === "PUT" ? "Updated title" : "Original title",
+      updated_at: "2026-01-01T00:00:00Z", labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path } = await save(root);
+  await approvePlan(root, path);
+  const applied = await applyPlan(root, path);
+  const markdown = await import("../dist/plan.js").then((m) => m.formatPlanMarkdown(applied));
+  assert.match(markdown, /Pre-apply preview \(issue\.update on gitlab\.example\.test\/team\/project\)/);
+  assert.match(markdown, /Target IID: 42/);
+  assert.match(markdown, /Current title: Original title/);
+  assert.match(markdown, /- title: Original title → Updated title/);
+});
+
+test("apply result on the JSON-serialized stored plan exposes the preview payload", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    return new Response(JSON.stringify({
+      iid: 42, title: method === "PUT" ? "Updated title" : "Original title",
+      updated_at: "2026-01-01T00:00:00Z", labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path } = await save(root);
+  await approvePlan(root, path);
+  const applied = await applyPlan(root, path);
+  const serialized = JSON.parse(JSON.stringify(applied));
+  assert.ok(serialized.plan.preview, "JSON output must include pre-apply preview");
+  assert.equal(serialized.plan.preview.iid, 42);
+  assert.equal(serialized.plan.preview.currentTitle, "Original title");
+  assert.ok(serialized.plan.preview.fields.some((entry) => entry.field === "title"));
+  assert.equal(serialized.plan.noOp, undefined);
+});
+
+test("apply no-op result carries preview payload, noOp flag, and verified state in JSON output", async (t) => {
+  const root = await fixture(t);
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes("/issues/")) {
+      return new Response(JSON.stringify({ id: 1, path_with_namespace: "team/project" }));
+    }
+    const method = init?.method ?? "GET";
+    if (method === "PUT") {
+      return new Response("mutation should not have happened", { status: 500 });
+    }
+    return new Response(JSON.stringify({
+      iid: 42, title: "Updated title", updated_at: "2026-01-01T00:00:00Z",
+      labels: [], assignees: [], state: "opened",
+    }));
+  };
+  t.after(() => globalThis.fetch = previousFetch);
+  const { path } = await save(root);
+  await approvePlan(root, path);
+  const result = await applyPlan(root, path);
+  const serialized = JSON.parse(JSON.stringify(result));
+  assert.equal(serialized.plan.state, "verified");
+  assert.equal(serialized.plan.noOp, true);
+  assert.ok(serialized.plan.preview);
+  assert.equal(serialized.plan.preview.iid, 42);
+});
+

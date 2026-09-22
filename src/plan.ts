@@ -275,7 +275,40 @@ export interface PlanArtifact {
     message: string;
     completed: number;
   };
+  /**
+   * Live pre-apply snapshot: target IID, current title, and the before/after
+   * diff for every planned field.  Recorded during apply so users can audit
+   * what was about to be mutated, even on JSON output.
+   */
+  preview?: ApplyPreview;
+  /**
+   * When true, apply detected that the live remote state already matched the
+   * planned change; no mutation was issued and state advanced to "verified".
+   */
+  noOp?: true;
 }
+
+export interface ApplyPreviewFieldDiff {
+  field: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface ApplyPreview {
+  operation: PlanOperation["kind"];
+  host: string;
+  projectPath: string;
+  iid?: number;
+  currentTitle?: string | null;
+  fields: ApplyPreviewFieldDiff[];
+  fetchedAt: string;
+}
+
+export interface ApplyPreviewResult {
+  equivalent: { equivalent: boolean; reason?: string };
+  preview: ApplyPreview | null;
+}
+
 
 export interface StoredPlan {
   path: string;
@@ -1047,6 +1080,38 @@ export async function applyPlan(root: string, input: string, options: { force?: 
     );
   }
   const client = new GitLabClient(remote.host);
+  // F1 pre-apply preview + equivalent-state no-op detection, from a single
+  // live read so the displayed diff and the no-op verdict agree.
+  const snapshot = await loadApplySnapshot(stored.plan, client);
+  if (snapshot.preview) {
+    stored.plan.preview = snapshot.preview;
+  }
+  if (snapshot.equivalent.equivalent) {
+    // The remote already matches the plan; record a verified no-op instead
+    // of a misleading applied mutation.
+    stored.plan.noOp = true;
+    stored.plan.state = "verified";
+    stored.plan.updatedAt = new Date().toISOString();
+    stored.plan.verification = {
+      passed: true,
+      checks: snapshot.preview?.fields.map((field) => ({
+        field: field.field,
+        expected: field.after ?? "",
+        actual: field.before ?? "",
+        passed: (field.after ?? "") === (field.before ?? ""),
+      })) ?? [],
+      reasons: [
+        "Equivalent state detected before apply: " +
+          (snapshot.equivalent.reason ?? "remote state already matches the plan") +
+          ". No mutation was issued.",
+      ],
+    };
+    await writeJson(stored.path, stored.plan);
+    await recordPlanEvent(root, stored.plan, "verified", undefined, {
+      lifecycleReason: "no-op: equivalent state",
+    });
+    return stored;
+  }
   if (stored.plan.operation.kind === "issue.create") {
     const result = await client.createIssue(
       stored.plan.operation.projectPath,
@@ -1758,6 +1823,12 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
                       : "Update board list:",
     operationSummary,
   ];
+  if (plan.preview) {
+    lines.push("", formatApplyPreviewMarkdown(plan.preview));
+  }
+  if (plan.noOp) {
+    lines.push("", "NO-OP: equivalent remote state detected before the mutation; no write was issued.");
+  }
   if (plan.result) {
     lines.push("", "Applied result: " + formatResult(plan.result));
   }
@@ -2777,6 +2848,441 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
 }
 
 
+/**
+ * Load the live target state for an apply exactly once and return both the
+ * human-readable preview and the equivalence verdict from the same snapshot.
+ * Folding the two reads prevents a race where the preview and the no-op
+ * decision observe different points in time.
+ */
+async function loadApplySnapshot(
+  plan: PlanArtifact,
+  client: GitLabClient,
+): Promise<ApplyPreviewResult> {
+  const op = plan.operation;
+  if (op.kind === "issue.update") {
+    const issue = await client.getIssue(op.projectPath, op.issueIid);
+    return buildSnapshotResult(plan, issue);
+  }
+  if (op.kind === "issue.iteration.update") {
+    const issue = await client.getIssue(op.projectPath, op.issueIid);
+    return buildSnapshotResult(plan, issue);
+  }
+  if (op.kind === "issues.iteration.update") {
+    const issues = await Promise.all(
+      op.issueIids.map((issueIid) => client.getIssue(op.projectPath, issueIid)),
+    );
+    return buildSnapshotResult(plan, issues);
+  }
+  if (op.kind === "issues.labels.update") {
+    const issues = await Promise.all(
+      op.issueIids.map((issueIid) => client.getIssue(op.projectPath, issueIid)),
+    );
+    return buildSnapshotResult(plan, issues);
+  }
+  if (op.kind === "issues.planning.update") {
+    const issues = await Promise.all(
+      op.issueIids.map((issueIid) => client.getIssue(op.projectPath, issueIid)),
+    );
+    return buildSnapshotResult(plan, issues);
+  }
+  if (op.kind === "label.update") {
+    const labels = await client.listLabels(op.projectPath);
+    return buildSnapshotResult(plan, labels);
+  }
+  if (op.kind === "milestone.update") {
+    const milestone = await client.getMilestone(op.projectPath, op.milestoneIid);
+    return buildSnapshotResult(plan, milestone);
+  }
+  if (op.kind === "board.update") {
+    const board = await client.getBoard(op.projectPath, op.boardId);
+    return buildSnapshotResult(plan, board);
+  }
+  return { preview: null, equivalent: { equivalent: false } };
+}
+
+function buildSnapshotResult(
+  plan: PlanArtifact,
+  remote: GitLabIssue | GitLabIssue[] | GitLabLabel[] | GitLabMilestone | GitLabBoard,
+): ApplyPreviewResult {
+  const op = plan.operation;
+  const fetchedAt = new Date().toISOString();
+  const base = {
+    host: op.host,
+    projectPath: op.projectPath,
+    fetchedAt,
+  };
+  if (op.kind === "issue.update") {
+    const issue = remote as GitLabIssue;
+    return {
+      preview: {
+        ...base,
+        operation: op.kind,
+        iid: op.issueIid,
+        currentTitle: issue.title ?? null,
+        fields: issueUpdateFieldDiffs(issue, op.changes),
+      },
+      equivalent: equivalentForIssue(plan, issue),
+    };
+  }
+  if (op.kind === "issue.iteration.update") {
+    const issue = remote as GitLabIssue;
+    return {
+      preview: {
+        ...base,
+        operation: op.kind,
+        iid: op.issueIid,
+        currentTitle: issue.title ?? null,
+        fields: iterationUpdateFieldDiffs(issue, op),
+      },
+      equivalent: equivalentForIssueIteration(plan, issue),
+    };
+  }
+  if (op.kind === "issues.iteration.update") {
+    const issues = remote as GitLabIssue[];
+    return {
+      preview: {
+        ...base,
+        operation: op.kind,
+        fields: issues.flatMap((issue) =>
+          iterationUpdateFieldDiffs(issue, {
+            iterationId: op.iterationId,
+            iterationIid: op.iterationIid,
+            iterationTitle: op.iterationTitle,
+          })),
+      },
+      equivalent: equivalentForBulkIssueIteration(plan, issues),
+    };
+  }
+  if (op.kind === "issues.labels.update") {
+    const issues = remote as GitLabIssue[];
+    const fields: ApplyPreviewFieldDiff[] = [];
+    for (const issue of issues) {
+      const before = normalizeLabels((issue.labels ?? []).join(", "));
+      if (op.add_labels !== undefined) {
+        const added = normalizeLabels(op.add_labels);
+        const after = normalizeLabels(before.concat(added).join(", "));
+        fields.push({
+          field: "issue #" + String(issue.iid) + ".labels.add",
+          before: before.length > 0 ? before.join(", ") : null,
+          after: after.length > 0 ? after.join(", ") : null,
+        });
+      }
+      if (op.remove_labels !== undefined) {
+        const removed = normalizeLabels(op.remove_labels);
+        const after = normalizeLabels(before.filter((label) => !removed.includes(label)).join(", "));
+        fields.push({
+          field: "issue #" + String(issue.iid) + ".labels.remove",
+          before: before.length > 0 ? before.join(", ") : null,
+          after: after.length > 0 ? after.join(", ") : null,
+        });
+      }
+    }
+    return {
+      preview: { ...base, operation: op.kind, fields },
+      equivalent: equivalentForBulkIssueLabels(plan, issues),
+    };
+  }
+  if (op.kind === "issues.planning.update") {
+    const issues = remote as GitLabIssue[];
+    const fields: ApplyPreviewFieldDiff[] = [];
+    for (const issue of issues) {
+      fields.push(...issueUpdateFieldDiffs(issue, op.changes).map((entry) => ({
+        ...entry,
+        field: "issue #" + String(issue.iid) + "." + entry.field,
+      })));
+    }
+    return {
+      preview: { ...base, operation: op.kind, fields },
+      equivalent: equivalentForBulkIssuePlanning(plan, issues),
+    };
+  }
+  if (op.kind === "label.update") {
+    const labels = remote as GitLabLabel[];
+    const label = labels.find((item) => item.id === op.labelId) ?? labels.find((item) => item.name === op.label);
+    return {
+      preview: { ...base, operation: op.kind, fields: labelUpdateFieldDiffs(label, op.changes) },
+      equivalent: equivalentForLabel(plan, labels),
+    };
+  }
+  if (op.kind === "milestone.update") {
+    const milestone = remote as GitLabMilestone;
+    return {
+      preview: { ...base, operation: op.kind, fields: milestoneUpdateFieldDiffs(milestone, op.changes) },
+      equivalent: equivalentForMilestone(plan, milestone),
+    };
+  }
+  if (op.kind === "board.update") {
+    const board = remote as GitLabBoard;
+    return {
+      preview: { ...base, operation: op.kind, fields: boardUpdateFieldDiffs(board, op.changes) },
+      equivalent: equivalentForBoard(plan, board),
+    };
+  }
+  return { preview: null, equivalent: { equivalent: false } };
+}
+
+function equivalentForIssue(
+  plan: PlanArtifact,
+  issue: GitLabIssue,
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "issue.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyIssue(issue, op.changes);
+  return verification.passed && verification.checks.length > 0
+    ? { equivalent: true, reason: "issue already matches the planned changes" }
+    : { equivalent: false };
+}
+
+function equivalentForIssueIteration(
+  plan: PlanArtifact,
+  issue: GitLabIssue,
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "issue.iteration.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyIssueIteration(issue, op);
+  return verification.passed && verification.checks.length > 0
+    ? { equivalent: true, reason: "issue iteration already matches" }
+    : { equivalent: false };
+}
+
+function equivalentForBulkIssueIteration(
+  plan: PlanArtifact,
+  issues: GitLabIssue[],
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "issues.iteration.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyBulkIssueIteration(issues, op);
+  return verification.passed
+    ? { equivalent: true, reason: "every targeted issue iteration already matches" }
+    : { equivalent: false };
+}
+
+function equivalentForBulkIssueLabels(
+  plan: PlanArtifact,
+  issues: GitLabIssue[],
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "issues.labels.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyBulkIssueLabels(issues, op);
+  return verification.passed
+    ? { equivalent: true, reason: "every targeted issue already has the planned labels" }
+    : { equivalent: false };
+}
+
+function equivalentForBulkIssuePlanning(
+  plan: PlanArtifact,
+  issues: GitLabIssue[],
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "issues.planning.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyBulkIssuePlanning(issues, op);
+  return verification.passed
+    ? { equivalent: true, reason: "every targeted issue already matches the planned changes" }
+    : { equivalent: false };
+}
+
+function equivalentForLabel(
+  plan: PlanArtifact,
+  labels: GitLabLabel[],
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "label.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyLabel(labels, op, op.labelId);
+  return verification.passed && verification.checks.length > 0
+    ? { equivalent: true, reason: "label already matches the planned changes" }
+    : { equivalent: false };
+}
+
+function equivalentForMilestone(
+  plan: PlanArtifact,
+  milestone: GitLabMilestone,
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "milestone.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyMilestone(milestone, op);
+  return verification.passed && verification.checks.length > 0
+    ? { equivalent: true, reason: "milestone already matches the planned changes" }
+    : { equivalent: false };
+}
+
+function equivalentForBoard(
+  plan: PlanArtifact,
+  board: GitLabBoard,
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "board.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyBoard(board, op);
+  return verification.passed && verification.checks.length > 0
+    ? { equivalent: true, reason: "board already matches the planned changes" }
+    : { equivalent: false };
+}
+
+function issueUpdateFieldDiffs(
+  issue: GitLabIssue,
+  changes: GitLabIssueUpdate,
+): ApplyPreviewFieldDiff[] {
+  const diffs: ApplyPreviewFieldDiff[] = [];
+  if (changes.title !== undefined) {
+    diffs.push({ field: "title", before: issue.title ?? null, after: changes.title });
+  }
+  if (changes.description !== undefined) {
+    diffs.push({ field: "description", before: issue.description ?? null, after: changes.description });
+  }
+  if (changes.issue_type !== undefined) {
+    diffs.push({ field: "issue_type", before: issue.issue_type ?? null, after: changes.issue_type });
+  }
+  if (changes.state_event !== undefined) {
+    const expected = changes.state_event === "close" ? "closed" : "opened";
+    diffs.push({ field: "state", before: issue.state ?? null, after: expected });
+  }
+  if (changes.labels !== undefined) {
+    const expected = normalizeLabels(changes.labels).join(", ");
+    const actual = normalizeLabels((issue.labels ?? []).join(", ")).join(", ");
+    diffs.push({ field: "labels", before: actual || null, after: expected || null });
+  }
+  if (changes.add_labels !== undefined) {
+    const before = normalizeLabels((issue.labels ?? []).join(", "));
+    const added = normalizeLabels(changes.add_labels);
+    const after = normalizeLabels(before.concat(added).join(", "));
+    diffs.push({ field: "labels.add", before: before.join(", ") || null, after: after.join(", ") || null });
+  }
+  if (changes.remove_labels !== undefined) {
+    const before = normalizeLabels((issue.labels ?? []).join(", "));
+    const removed = normalizeLabels(changes.remove_labels);
+    const after = normalizeLabels(before.filter((label) => !removed.includes(label)).join(", "));
+    diffs.push({ field: "labels.remove", before: before.join(", ") || null, after: after.join(", ") || null });
+  }
+  if (changes.milestone !== undefined) {
+    diffs.push({ field: "milestone", before: namedValue(issue.milestone), after: changes.milestone });
+  }
+  if (changes.milestone_id !== undefined) {
+    const expected = changes.milestone_id === 0 ? null : String(changes.milestone_id);
+    diffs.push({ field: "milestone_id", before: issueMilestoneId(issue) || null, after: expected });
+  }
+  if (changes.epic_id !== undefined) {
+    const expected = changes.epic_id === 0 ? null : String(changes.epic_id);
+    diffs.push({ field: "epic_id", before: issueParentId(issue) || null, after: expected });
+  }
+  if (changes.due_date !== undefined) {
+    diffs.push({ field: "due_date", before: issue.due_date ?? null, after: changes.due_date });
+  }
+  if (changes.weight !== undefined) {
+    const before = issue.weight === null || issue.weight === undefined ? null : String(issue.weight);
+    diffs.push({ field: "weight", before, after: String(changes.weight) });
+  }
+  if (changes.assignee_ids !== undefined) {
+    const before = (issue.assignees ?? [])
+      .map((assignee) => assignee.id)
+      .filter((id): id is number => typeof id === "number")
+      .sort((left, right) => left - right)
+      .join(",");
+    const after = [...new Set(changes.assignee_ids)].sort((left, right) => left - right).join(",");
+    diffs.push({ field: "assignees", before: before || null, after: after || null });
+  }
+  return diffs;
+}
+
+function iterationUpdateFieldDiffs(
+  issue: GitLabIssue,
+  op: { iterationId: string | null; iterationIid: number | null; iterationTitle: string | null },
+): ApplyPreviewFieldDiff[] {
+  return [{
+    field: "iteration",
+    before: namedValue(issue.iteration),
+    after: op.iterationTitle ?? null,
+  }];
+}
+
+function labelUpdateFieldDiffs(
+  label: GitLabLabel | undefined,
+  changes: { new_name?: string; color?: string; description?: string | null },
+): ApplyPreviewFieldDiff[] {
+  const diffs: ApplyPreviewFieldDiff[] = [];
+  diffs.push({ field: "name", before: label?.name ?? null, after: changes.new_name ?? label?.name ?? null });
+  if (changes.color !== undefined) {
+    diffs.push({ field: "color", before: label?.color ?? null, after: changes.color });
+  }
+  if (changes.description !== undefined) {
+    diffs.push({ field: "description", before: label?.description ?? null, after: changes.description });
+  }
+  return diffs;
+}
+
+function milestoneUpdateFieldDiffs(
+  milestone: GitLabMilestone,
+  changes: { title?: string; description?: string | null; due_date?: string | null; start_date?: string | null; state_event?: "close" | "activate" },
+): ApplyPreviewFieldDiff[] {
+  const diffs: ApplyPreviewFieldDiff[] = [];
+  if (changes.title !== undefined) {
+    diffs.push({ field: "title", before: milestone.title ?? null, after: changes.title });
+  }
+  if (changes.description !== undefined) {
+    diffs.push({ field: "description", before: milestone.description ?? null, after: changes.description });
+  }
+  if (changes.due_date !== undefined) {
+    diffs.push({ field: "due_date", before: milestone.due_date ?? null, after: changes.due_date });
+  }
+  if (changes.start_date !== undefined) {
+    diffs.push({ field: "start_date", before: milestone.start_date ?? null, after: changes.start_date });
+  }
+  if (changes.state_event !== undefined) {
+    const expected = changes.state_event === "close" ? "closed" : "active";
+    diffs.push({ field: "state", before: milestone.state ?? null, after: expected });
+  }
+  return diffs;
+}
+
+function boardUpdateFieldDiffs(
+  board: GitLabBoard,
+  changes: { name?: string; hide_backlog_list?: boolean; hide_closed_list?: boolean; assignee_id?: number | null; milestone_id?: number | null; labels?: string[]; weight?: number | null },
+): ApplyPreviewFieldDiff[] {
+  const diffs: ApplyPreviewFieldDiff[] = [];
+  if (changes.name !== undefined) {
+    diffs.push({ field: "name", before: board.name ?? null, after: changes.name });
+  }
+  if (changes.hide_backlog_list !== undefined) {
+    diffs.push({ field: "hide_backlog_list", before: String(Boolean(board.hide_backlog_list)), after: String(changes.hide_backlog_list) });
+  }
+  if (changes.hide_closed_list !== undefined) {
+    diffs.push({ field: "hide_closed_list", before: String(Boolean(board.hide_closed_list)), after: String(changes.hide_closed_list) });
+  }
+  return diffs;
+}
+
+export function formatApplyPreviewMarkdown(preview: ApplyPreview): string {
+  const lines = [
+    "Pre-apply preview (" + preview.operation + " on " +
+      preview.host + "/" + preview.projectPath + ")",
+    preview.iid !== undefined ? "  Target IID: " + String(preview.iid) : "",
+    preview.currentTitle !== undefined && preview.currentTitle !== null
+      ? "  Current title: " + preview.currentTitle
+      : "",
+    preview.fields.length > 0 ? "  Field diff:" : "  Field diff: (no changes)",
+    ...preview.fields.map((entry) => {
+      const before = entry.before ?? "(unset)";
+      const after = entry.after ?? "(unset)";
+      return "    - " + entry.field + ": " + before + " → " + after;
+    }),
+    "  Fetched at: " + preview.fetchedAt,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
 /**
  * Postcondition verification for a delegated merge_request.create: find
  * the MR by source branch (the agent runtime chose the iid) and confirm
