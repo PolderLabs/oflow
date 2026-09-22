@@ -322,7 +322,10 @@ wrapper before the P0 contract and identity tests are green.
   title, and field diff, equivalent-state no-op short-circuits to
   `verified`, mutation still fires when state does not match,
   `formatPlanMarkdown` renders the preview and no-op notice, JSON output
-  exposes `plan.preview` and `plan.noOp`.
+  exposes `plan.preview` and `plan.noOp`, sentinel equivalence
+  (`milestone_id: 0` ↔ null milestone, `assignee_ids: []` ↔ no assignees,
+  label order-insensitivity), non-equivalence against a real milestone,
+  and the no-op apply → `verifyPlan` roundtrip.
 
 **Documentation / example**
 - `docs/ROADMAP.md` — F1 acceptance items all checked with implementation
