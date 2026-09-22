@@ -202,11 +202,11 @@ export async function getCapabilities(options: CapabilitiesOptions = {}): Promis
       ),
       capability(
         "merge-requests.write",
-        "planned",
-        "plan-only",
+        "implemented",
+        "apply",
         "Merge Request",
         "REST, glab, or MCP",
-        "Merge Request: Create/Update",
+        "Merge Request: Update (direct); Create stays delegated to the agent runtime",
       ),
       capability(
         "glab.fallback",

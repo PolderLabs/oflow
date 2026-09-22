@@ -184,6 +184,8 @@ function formatAuditTarget(operation: PlanArtifact["operation"]): string {
       return "board #" + String(operation.boardId) + " list #" + String(operation.listId);
     case "merge_request.create":
       return "merge request from " + operation.sourceBranch + " for story #" + String(operation.storyIid);
+    case "merge_request.update":
+      return "merge request !" + String(operation.iid);
   }
 }
 

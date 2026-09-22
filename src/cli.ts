@@ -74,6 +74,7 @@ import {
   applyPlanDelegated,
   ingestExecutionReceipt,
   createMergeRequestCreatePlan,
+  createMergeRequestUpdatePlan,
 } from "./plan.js";
 import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.js";
 import {
@@ -107,6 +108,7 @@ import { isCanonicalActionName } from "./actions.js";
 interface CliOptions {
   command: string;
   authAction?: string;
+  mrAction?: string;
   cacheAction?: string;
   glabAction?: string;
   glabEndpoint?: string;
@@ -131,6 +133,7 @@ interface CliOptions {
   planPath?: string;
   title?: string;
   description?: string;
+  descriptionFile?: string;
   sourceBranch?: string;
   targetBranch?: string;
   issueType?: string;
@@ -740,14 +743,32 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             sourceBranch: options.sourceBranch,
             targetBranch: options.targetBranch,
             title: options.title,
-            description: options.description,
+            description: await resolveDescription(options),
+          });
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.planResource === "merge-request" && options.planOperation === "update") {
+          if (options.iid === undefined) {
+            throw new OflowError(
+              "plan merge-request update requires --iid <merge request IID>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createMergeRequestUpdatePlan({
+            root,
+            iid: parsePositiveInteger(options.iid, "merge request IID"),
+            title: options.title,
+            description: await resolveDescription(options),
+            stateEvent: normalizeMergeRequestUpdateState(options.state),
+            targetBranch: options.targetBranch,
           });
           print(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         {
           throw new OflowError(
-            "Use oflow plan issue create/update/note, plan issues labels, plan label create/update, plan milestone create/update, plan board create/update, plan board-list create/update, or plan merge-request create with the required fields.",
+            "Use oflow plan issue create/update/note, plan issues labels, plan label create/update, plan milestone create/update, plan board create/update, plan board-list create/update, or plan merge-request create/update with the required fields.",
             "UNSUPPORTED_PLAN",
           );
         }
@@ -871,6 +892,49 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         return 0;
       }
       case "mr": {
+        if (options.mrAction === "create") {
+          if (options.story === undefined) {
+            throw new OflowError(
+              "mr create requires --story <iid>.",
+              "MISSING_STORY",
+            );
+          }
+          const storyIid = await resolveStoryIid(root, options.story);
+          const stored = await createMergeRequestCreatePlan({
+            root,
+            storyIid,
+            sourceBranch: options.sourceBranch,
+            targetBranch: options.targetBranch,
+            title: options.title,
+            description: await resolveDescription(options),
+          });
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.mrAction === "update") {
+          if (options.iid === undefined) {
+            throw new OflowError(
+              "mr update requires --iid <merge request IID>.",
+              "MISSING_FLAG_VALUE",
+            );
+          }
+          const stored = await createMergeRequestUpdatePlan({
+            root,
+            iid: parsePositiveInteger(options.iid, "merge request IID"),
+            title: options.title,
+            description: await resolveDescription(options),
+            stateEvent: normalizeMergeRequestUpdateState(options.state),
+            targetBranch: options.targetBranch,
+          });
+          print(options.json, stored, formatPlanMarkdown(stored));
+          return 0;
+        }
+        if (options.mrAction !== undefined) {
+          throw new OflowError(
+            "Unknown mr action \"" + options.mrAction + "\". Use create, update, or no subcommand to read.",
+            "UNKNOWN_MR_ACTION",
+          );
+        }
         if (options.iid !== undefined) {
           const mergeRequest = await loadMergeRequest(
             root,
@@ -1029,6 +1093,9 @@ function parseArgs(argv: string[]): CliOptions {
   } else if (command === "cache" && argv[1] && !argv[1].startsWith("-")) {
     options.cacheAction = argv[1];
     firstOptionIndex = 2;
+  } else if (command === "mr" && argv[1] && !argv[1].startsWith("-")) {
+    options.mrAction = argv[1];
+    firstOptionIndex = 2;
   } else if (command === "plan") {
     options.planResource = argv[1];
     if (options.planResource === "list") {
@@ -1101,6 +1168,7 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--target-branch" ||
       argument === "--receipt" ||
       argument === "--description" ||
+      argument === "--description-file" ||
       argument === "--issue-type" ||
       argument === "--type" ||
       argument === "--body" ||
@@ -1156,6 +1224,8 @@ function parseArgs(argv: string[]): CliOptions {
         options.receipt = value;
       } else if (argument === "--description") {
         options.description = value;
+      } else if (argument === "--description-file") {
+        options.descriptionFile = value;
       } else if (argument === "--issue-type" || argument === "--type") {
         options.issueType = value;
       } else if (argument === "--body") {
@@ -1239,6 +1309,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.title = argument.slice("--title=".length);
     } else if (argument.startsWith("--description=")) {
       options.description = argument.slice("--description=".length);
+    } else if (argument.startsWith("--description-file=")) {
+      options.descriptionFile = argument.slice("--description-file=".length);
     } else if (argument.startsWith("--issue-type=")) {
       const value = argument.slice("--issue-type=".length);
       if (!value) {
@@ -1497,6 +1569,46 @@ function normalizeIssueUpdateState(
   throw new OflowError(
     "Unknown issue update state \"" + value + "\". Use opened or closed.",
     "INVALID_ISSUE_UPDATE_STATE",
+  );
+}
+
+async function resolveDescription(
+  options: Pick<CliOptions, "description" | "descriptionFile">,
+): Promise<string | undefined> {
+  if (options.descriptionFile !== undefined && options.description !== undefined) {
+    throw new OflowError(
+      "Pass either --description or --description-file, not both.",
+      "CONFLICTING_FLAGS",
+    );
+  }
+  if (options.descriptionFile === undefined) {
+    return options.description;
+  }
+  const content = await readText(options.descriptionFile);
+  if (content === null) {
+    throw new OflowError(
+      "Description file not found: " + options.descriptionFile,
+      "MISSING_DESCRIPTION_FILE",
+    );
+  }
+  return content;
+}
+
+function normalizeMergeRequestUpdateState(
+  value: string | undefined,
+): "close" | "reopen" | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === "closed") {
+    return "close";
+  }
+  if (value === "opened") {
+    return "reopen";
+  }
+  throw new OflowError(
+    "Unknown merge request state \"" + value + "\". Use opened or closed.",
+    "INVALID_MR_UPDATE_STATE",
   );
 }
 

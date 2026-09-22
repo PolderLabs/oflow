@@ -25,6 +25,7 @@ import type {
   GitLabMilestoneCreate,
   GitLabMilestoneUpdate,
   GitLabNote,
+  GitLabMergeRequest,
   GitLabIteration,
 } from "./types.js";
 
@@ -193,6 +194,29 @@ export interface MergeRequestCreateOperation {
   squash?: boolean;
 }
 
+/**
+ * Direct-execution update for an existing merge request (F3): the MR must
+ * already exist.  Description is the canonical body, optionally supplied via
+ * --description-file on the CLI; both paths preserve multiline text.  The
+ * pre-apply diff + no-op detection path applies automatically because
+ * loadApplySnapshot already covers every read-backed op kind.
+ */
+export interface MergeRequestUpdateOperation {
+  kind: "merge_request.update";
+  host: string;
+  projectPath: string;
+  iid: number;
+  /** Captured at plan time so --force can prove absence of drift. */
+  expectedUpdatedAt?: string | null;
+  changes: {
+    title?: string;
+    description?: string;
+    state_event?: "close" | "reopen";
+    target_branch?: string;
+  };
+}
+
+
 export type PlanOperation =
   | IssueCreateOperation
   | IssueUpdateOperation
@@ -209,7 +233,9 @@ export type PlanOperation =
   | BoardUpdateOperation
   | BoardListCreateOperation
   | BoardListUpdateOperation
-  | MergeRequestCreateOperation;
+  | MergeRequestCreateOperation
+  | MergeRequestUpdateOperation;
+
 
 export const DELEGATED_ONLY_OPERATIONS = ["merge_request.create"] as const;
 
@@ -1349,6 +1375,20 @@ export async function applyPlan(root: string, input: string, options: { force?: 
         stored.plan.operation.changes,
       );
       stored.plan.result = compactMilestone(result, "milestone.update");
+    } else if (stored.plan.operation.kind === "merge_request.update") {
+      const op = stored.plan.operation;
+      const result = await client.updateMergeRequest(
+        op.projectPath,
+        op.iid,
+        op.changes,
+      );
+      stored.plan.result = {
+        kind: "merge_request.update",
+        iid: result.iid,
+        title: result.title,
+        state: result.state ?? null,
+      };
+      stored.plan.execution = { backend: "rest" };
     }
   }
   stored.plan.state = "applied";
@@ -1417,6 +1457,69 @@ export async function createMergeRequestCreatePlan(
         "",
         "Closes #" + input.storyIid,
       ].join("\n"),
+  });
+}
+
+export interface MergeRequestUpdatePlanInput {
+  root: string;
+  iid: number;
+  title?: string;
+  description?: string;
+  stateEvent?: "close" | "reopen";
+  targetBranch?: string;
+}
+
+/**
+ * Plan a direct merge_request.update (F3). Reads the live MR once to capture
+ * expectedUpdatedAt (for the --force recheck) and to reject updates that
+ * would be no-ops with an explicit signal. The description may come from
+ * --description-file; both paths preserve multiline text verbatim.
+ */
+export async function createMergeRequestUpdatePlan(
+  input: MergeRequestUpdatePlanInput,
+): Promise<StoredPlan> {
+  const config = await loadConfig(input.root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateIssueIid(input.iid);
+  const changes: MergeRequestUpdateOperation["changes"] = {};
+  let fields = 0;
+  if (input.title !== undefined) {
+    changes.title = input.title;
+    fields += 1;
+  }
+  if (input.description !== undefined) {
+    changes.description = input.description;
+    fields += 1;
+  }
+  if (input.stateEvent !== undefined) {
+    changes.state_event = input.stateEvent;
+    fields += 1;
+  }
+  if (input.targetBranch !== undefined) {
+    changes.target_branch = input.targetBranch;
+    fields += 1;
+  }
+  if (fields === 0) {
+    throw new OflowError(
+      "Nothing to update: pass --title, --description/--description-file, --state, or --target-branch.",
+      "INVALID_PLAN_OPTION",
+    );
+  }
+  const remote = await getGitLabRemote(input.root);
+  const client = new GitLabClient(remote.host);
+  const mr = await client.getMergeRequest(remote.projectPath, input.iid);
+  return writePlan(input.root, {
+    kind: "merge_request.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    iid: input.iid,
+    expectedUpdatedAt: mr.updated_at ?? null,
+    changes,
   });
 }
 
@@ -1658,16 +1761,24 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
               ),
               stored.plan.operation,
             )
-          : verifyBoardList(
-              await client.getBoardList(
-                stored.plan.operation.projectPath,
-                stored.plan.operation.boardId,
-                stored.plan.operation.kind === "board-list.create"
-                  ? resultListId(stored.plan.result?.listId)
-                  : stored.plan.operation.listId,
-              ),
-              stored.plan.operation,
-            );
+          : stored.plan.operation.kind === "merge_request.update"
+            ? verifyMergeRequestUpdate(
+                await client.getMergeRequest(
+                  stored.plan.operation.projectPath,
+                  stored.plan.operation.iid,
+                ),
+                stored.plan.operation,
+              )
+            : verifyBoardList(
+                await client.getBoardList(
+                  stored.plan.operation.projectPath,
+                  stored.plan.operation.boardId,
+                  stored.plan.operation.kind === "board-list.create"
+                    ? resultListId(stored.plan.result?.listId)
+                    : stored.plan.operation.listId,
+                ),
+                stored.plan.operation,
+              );
   stored.plan.verification = verification;
   if (verification.passed) {
     stored.plan.state = "verified";
@@ -1766,11 +1877,15 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
                             "- label_id: " + plan.operation.labelId,
                             "- label: " + plan.operation.labelName,
                           ].join("\n")
-                        : [
-                            "- board_id: " + plan.operation.boardId,
-                            "- list_id: " + plan.operation.listId,
-                            "- position: " + plan.operation.position,
-                          ].join("\n");
+                        : plan.operation.kind === "merge_request.update"
+                          ? Object.entries(plan.operation.changes)
+                              .map(([key, value]) => "- " + key + ": " + String(value))
+                              .join("\n")
+                          : [
+                              "- board_id: " + plan.operation.boardId,
+                              "- list_id: " + plan.operation.listId,
+                              "- position: " + plan.operation.position,
+                            ].join("\n");
   const lines = [
     "# oflow plan",
     "",
@@ -1962,6 +2077,16 @@ async function recheckPlanTarget(plan: PlanArtifact): Promise<string[]> {
         "Cannot recheck merge-request branch targets with the current provider; create a fresh plan.",
         "PLAN_RECHECK_UNSUPPORTED",
       );
+    case "merge_request.update": {
+      // Without captured revision metadata a stale forced apply cannot prove
+      // the MR did not drift; with it, prove the MR is unchanged live.
+      requireTarget(op.expectedUpdatedAt !== undefined && op.expectedUpdatedAt !== null);
+      const mr = await client.getMergeRequest(op.projectPath, op.iid);
+      requireTarget(mr.iid === op.iid);
+      requireTarget((mr.updated_at ?? null) === (op.expectedUpdatedAt ?? null));
+      checks.push("merge-request-identity:" + String(op.iid), "merge-request-updated-at:" + String(op.iid));
+      break;
+    }
     case "label.create": {
       const page = await client.listLabelsPage(op.projectPath);
       requireTarget(!page.pagination.hasNextPage);
@@ -2208,6 +2333,18 @@ function isSupportedOperation(
       typeof operation.targetBranch === "string" && operation.targetBranch.trim().length > 0 &&
       typeof operation.title === "string" && operation.title.trim().length > 0 &&
       typeof operation.description === "string";
+  }
+  if (operation.kind === "merge_request.update") {
+    return Number.isSafeInteger(operation.iid) && operation.iid > 0 &&
+      Boolean(operation.changes && typeof operation.changes === "object") &&
+      Object.keys(operation.changes).length > 0 &&
+      Object.keys(operation.changes).every((key) =>
+        key === "title" || key === "description" ||
+        key === "state_event" || key === "target_branch") &&
+      (operation.changes.state_event === undefined ||
+        operation.changes.state_event === "close" ||
+        operation.changes.state_event === "reopen") &&
+      validExpectedUpdatedAt(operation.expectedUpdatedAt);
   }
   return operation.kind === "board-list.update" &&
     Number.isSafeInteger(operation.boardId) && operation.boardId > 0 &&
@@ -2893,6 +3030,10 @@ async function loadApplySnapshot(
     const milestone = await client.getMilestone(op.projectPath, op.milestoneIid);
     return buildSnapshotResult(plan, milestone);
   }
+  if (op.kind === "merge_request.update") {
+    const mr = await client.getMergeRequest(op.projectPath, op.iid);
+    return buildSnapshotResult(plan, mr);
+  }
   if (op.kind === "board.update") {
     const board = await client.getBoard(op.projectPath, op.boardId);
     return buildSnapshotResult(plan, board);
@@ -2902,7 +3043,13 @@ async function loadApplySnapshot(
 
 function buildSnapshotResult(
   plan: PlanArtifact,
-  remote: GitLabIssue | GitLabIssue[] | GitLabLabel[] | GitLabMilestone | GitLabBoard,
+  remote:
+    | GitLabIssue
+    | GitLabIssue[]
+    | GitLabLabel[]
+    | GitLabMilestone
+    | GitLabBoard
+    | GitLabMergeRequest,
 ): ApplyPreviewResult {
   const op = plan.operation;
   const fetchedAt = new Date().toISOString();
@@ -3009,6 +3156,19 @@ function buildSnapshotResult(
     return {
       preview: { ...base, operation: op.kind, fields: milestoneUpdateFieldDiffs(milestone, op.changes) },
       equivalent: equivalentForMilestone(plan, milestone),
+    };
+  }
+  if (op.kind === "merge_request.update") {
+    const mr = remote as GitLabMergeRequest;
+    return {
+      preview: {
+        ...base,
+        operation: op.kind,
+        iid: op.iid,
+        currentTitle: mr.title ?? null,
+        fields: mergeRequestUpdateFieldDiffs(mr, op.changes),
+      },
+      equivalent: equivalentForMergeRequestUpdate(plan, mr),
     };
   }
   if (op.kind === "board.update") {
@@ -3130,6 +3290,20 @@ function equivalentForBoard(
   const verification = verifyBoard(board, op);
   return verification.passed && verification.checks.length > 0
     ? { equivalent: true, reason: "board already matches the planned changes" }
+    : { equivalent: false };
+}
+
+function equivalentForMergeRequestUpdate(
+  plan: PlanArtifact,
+  mr: GitLabMergeRequest,
+): { equivalent: boolean; reason?: string } {
+  const op = plan.operation;
+  if (op.kind !== "merge_request.update") {
+    return { equivalent: false };
+  }
+  const verification = verifyMergeRequestUpdate(mr, op);
+  return verification.passed && verification.checks.length > 0
+    ? { equivalent: true, reason: "merge request already matches the planned changes" }
     : { equivalent: false };
 }
 
@@ -3265,6 +3439,27 @@ function boardUpdateFieldDiffs(
   return diffs;
 }
 
+function mergeRequestUpdateFieldDiffs(
+  mr: GitLabMergeRequest,
+  changes: MergeRequestUpdateOperation["changes"],
+): ApplyPreviewFieldDiff[] {
+  const diffs: ApplyPreviewFieldDiff[] = [];
+  if (changes.title !== undefined) {
+    diffs.push({ field: "title", before: mr.title ?? null, after: changes.title });
+  }
+  if (changes.description !== undefined) {
+    diffs.push({ field: "description", before: mr.description ?? null, after: changes.description });
+  }
+  if (changes.target_branch !== undefined) {
+    diffs.push({ field: "target_branch", before: mr.target_branch ?? null, after: changes.target_branch });
+  }
+  if (changes.state_event !== undefined) {
+    const expected = changes.state_event === "close" ? "closed" : "opened";
+    diffs.push({ field: "state", before: mr.state ?? null, after: expected });
+  }
+  return diffs;
+}
+
 export function formatApplyPreviewMarkdown(preview: ApplyPreview): string {
   const lines = [
     "Pre-apply preview (" + preview.operation + " on " +
@@ -3331,6 +3526,34 @@ async function verifyMergeRequestCreate(
     reasons: passed
       ? ["Merge request !" + match.iid + " matches the approved plan."]
       : ["Merge request !" + match.iid + " does not match the approved plan."],
+  };
+}
+
+function verifyMergeRequestUpdate(
+  mr: GitLabMergeRequest,
+  operation: MergeRequestUpdateOperation,
+): PlanVerification {
+  const checks: PlanVerification["checks"] = [];
+  if (operation.changes.title !== undefined) {
+    checks.push(check("title", operation.changes.title, mr.title));
+  }
+  if (operation.changes.description !== undefined) {
+    checks.push(check("description", operation.changes.description, mr.description ?? ""));
+  }
+  if (operation.changes.target_branch !== undefined) {
+    checks.push(check("target_branch", operation.changes.target_branch, mr.target_branch ?? ""));
+  }
+  if (operation.changes.state_event !== undefined) {
+    const expected = operation.changes.state_event === "close" ? "closed" : "opened";
+    checks.push(check("state", expected, mr.state ?? ""));
+  }
+  const passed = checks.length > 0 && checks.every((entry) => entry.passed);
+  return {
+    passed,
+    checks,
+    reasons: passed
+      ? ["Merge request !" + operation.iid + " matches the approved update."]
+      : ["Merge request !" + operation.iid + " does not match the approved update."],
   };
 }
 function verifyIssue(
@@ -4072,6 +4295,9 @@ function formatTarget(operation: PlanOperation): string {
   }
   if (operation.kind === "merge_request.create") {
     return "merge request " + JSON.stringify(operation.sourceBranch) + " -> " + operation.targetBranch;
+  }
+  if (operation.kind === "merge_request.update") {
+    return "merge request !" + operation.iid;
   }
   return "board #" + operation.boardId + " list #" + operation.listId;
 }

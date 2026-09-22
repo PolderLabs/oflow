@@ -411,6 +411,31 @@ export class GitLabClient {
     );
   }
 
+  async updateMergeRequest(
+    projectPath: string,
+    iid: number,
+    changes: {
+      title?: string;
+      description?: string;
+      state_event?: "close" | "reopen";
+      target_branch?: string;
+    },
+  ): Promise<GitLabMergeRequest> {
+    return this.request<GitLabMergeRequest>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/merge_requests/" +
+        String(iid),
+      {
+        method: "PUT",
+        form: changes as unknown as Record<
+          string,
+          string | number | boolean | undefined
+        >,
+      },
+    );
+  }
+
   async createIssue(
     projectPath: string,
     issue: GitLabIssueCreate,
