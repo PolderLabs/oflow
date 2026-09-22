@@ -4,9 +4,17 @@ import {
   compactMergeRequest,
   compactWorkItems,
   formatMergeRequestMarkdown,
+  formatWorkItemTypeCoverageWarning,
   formatWorkItemsMarkdown,
   selectVerificationEvidence,
 } from "../dist/context.js";
+
+test("type-coverage warning names the exact hidden count", () => {
+  const text = formatWorkItemTypeCoverageWarning({ graphqlCount: 132, restTotal: 95, hiddenCount: 37 });
+  assert.match(text, /37 of 132 project work items are invisible/);
+  assert.match(text, /User Story or EPIC/);
+  assert.match(text, /not complete/);
+});
 
 test("merge request summaries stay compact unless full description is requested", () => {
   const mergeRequest = {

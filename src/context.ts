@@ -42,6 +42,42 @@ export async function listWorkItemsPage(
   return new GitLabClient(remote.host).listIssuesPage(remote.projectPath, state, limit, filters);
 }
 
+/**
+ * Type-coverage census for a repository's GitLab project. REST `/issues`
+ * lists only `issue` and `task` work-item types; the GraphQL project
+ * work-item count sees all types. Returns null when either side is
+ * unavailable (pagination headers absent or GraphQL unreachable): a missing
+ * census is a skip, never evidence of full coverage.
+ */
+export async function workItemTypeCoverage(
+  root: string,
+  restTotal: number | null,
+  state: IssueState = "all",
+): Promise<{ graphqlCount: number; restTotal: number; hiddenCount: number } | null> {
+  if (restTotal === null) return null;
+  const config = await loadConfig(root);
+  if (!config) return null;
+  const remote = await getGitLabRemote(root);
+  const graphqlCount = await new GitLabClient(remote.host)
+    .countProjectWorkItems(remote.projectPath, state)
+    .catch(() => null);
+  if (graphqlCount === null) return null;
+  return { graphqlCount, restTotal, hiddenCount: Math.max(0, graphqlCount - restTotal) };
+}
+
+export function formatWorkItemTypeCoverageWarning(
+  coverage: { graphqlCount: number; restTotal: number; hiddenCount: number },
+): string {
+  return (
+    "Type coverage: REST lists issue and task types only; " +
+    coverage.hiddenCount +
+    " of " +
+    coverage.graphqlCount +
+    " project work items are invisible to oflow's REST reads (custom types such as User Story or EPIC). " +
+    "Listings and label-coverage audits are not complete for those items."
+  );
+}
+
 export async function getCurrentGitLabUser(root: string): Promise<GitLabUser> {
   const config = await loadConfig(root);
   if (!config) {

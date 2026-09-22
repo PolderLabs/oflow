@@ -505,3 +505,47 @@ test("redacts tokens from API errors", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("counts all project work-item types through GraphQL without selecting workItemType", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody = "";
+  globalThis.fetch = async (_input, init) => {
+    requestBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({
+        data: { project: { workItems: { count: 132 } } },
+      }),
+    };
+  };
+  try {
+    const count = await new GitLabClient("gitlab.example.test", "test-token")
+      .countProjectWorkItems("team/project", "opened");
+    const body = JSON.parse(requestBody);
+    assert.match(body.query, /workItems\(state: \$state\)/);
+    assert.doesNotMatch(body.query, /workItemType/);
+    assert.deepEqual(body.variables, { fullPath: "team/project", state: "opened" });
+    assert.equal(count, 132);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("returns null work-item census when GraphQL cannot resolve the project", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: new Headers(),
+    text: async () => JSON.stringify({ data: { project: null } }),
+  });
+  try {
+    const count = await new GitLabClient("gitlab.example.test", "test-token")
+      .countProjectWorkItems("team/project");
+    assert.equal(count, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

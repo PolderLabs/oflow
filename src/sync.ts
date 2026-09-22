@@ -10,6 +10,7 @@ import { loadConfig } from "./config.js";
 import { parseAcceptanceCriteria } from "./criteria.js";
 import { GitLabClient } from "./gitlab.js";
 import type { GitLabListPage, GitLabPagination } from "./gitlab.js";
+import { formatWorkItemTypeCoverageWarning } from "./context.js";
 import { OflowError } from "./errors.js";
 import { saveSyncReadModel } from "./read-model.js";
 import type {
@@ -412,6 +413,29 @@ export async function syncProject(
         )
         : Promise.resolve(emptyEpicPage),
     ]);
+
+  // Type-coverage census: same contract as the work command. REST /issues
+  // lists only issue+task types, so a board using custom types would make
+  // planning-health reads claim completeness they do not have. Unfiltered
+  // queries only: the GraphQL count is project-wide.
+  if (!Object.values(issueFilters).some((value) => value !== undefined)) {
+    const graphqlCount = await client
+      .countProjectWorkItems(remote.projectPath, state)
+      .catch(() => null);
+    if (
+      graphqlCount !== null &&
+      issuesPage.pagination.total !== null &&
+      graphqlCount > issuesPage.pagination.total
+    ) {
+      warnings.push(
+        formatWorkItemTypeCoverageWarning({
+          graphqlCount,
+          restTotal: issuesPage.pagination.total,
+          hiddenCount: graphqlCount - issuesPage.pagination.total,
+        }),
+      );
+    }
+  }
 
   const story = options.storyIid
     ? await loadStorySummary(

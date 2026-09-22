@@ -391,6 +391,36 @@ export class GitLabClient {
     return (await this.listIssuesPage(projectPath, state, limit, filters)).items;
   }
 
+  /**
+   * Type-coverage census: REST `/issues` only lists `issue` and `task` work
+   * items, so projects using custom work-item types (User Story, EPIC) have
+   * items invisible to every REST-based command. The GraphQL project work-item
+   * count sees all types. `workItemType` is deliberately never selected: the
+   * field is non-nullable and returns null for story-type items under
+   * granular PATs, which nulls the whole node.
+   */
+  async countProjectWorkItems(
+    projectPath: string,
+    state: IssueState = "all",
+  ): Promise<number | null> {
+    const data = await this.requestGraphQL(
+      `query ProjectWorkItemCount($fullPath: ID!, $state: IssuableState) {
+        project(fullPath: $fullPath) {
+          workItems(state: $state) {
+            count
+          }
+        }
+      }`,
+      // IssuableState uses GitLab's lowercase REST values (opened/closed/all);
+      // a null variable omits the filter, which also counts all states.
+      { fullPath: projectPath, state: state === "all" ? null : state },
+    );
+    const count = isRecord(data) && isRecord(data.project) && isRecord(data.project.workItems)
+      ? data.project.workItems.count
+      : undefined;
+    return typeof count === "number" ? count : null;
+  }
+
   async updateIssue(
     projectPath: string,
     iid: number,

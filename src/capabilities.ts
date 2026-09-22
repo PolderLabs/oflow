@@ -11,6 +11,8 @@ export interface Capability {
   resource: string;
   backend: string;
   permission: string;
+  /** Qualification surfaced in rendered output (e.g. type-coverage limits). */
+  note?: string;
 }
 
 export interface CapabilitiesOptions {
@@ -63,6 +65,7 @@ export async function getCapabilities(options: CapabilitiesOptions = {}): Promis
         "Work Item",
         "REST",
         "Work Item: Read",
+        "Covers issue and task types only; custom work-item types (e.g. User Story, EPIC) are invisible to REST listings. oflow emits a type-coverage warning when a GraphQL census finds items REST cannot see.",
       ),
       capability(
         "story.context",
@@ -159,6 +162,7 @@ export async function getCapabilities(options: CapabilitiesOptions = {}): Promis
         "Work Item labels",
         "REST",
         "Work Item: Update; Label: Read is recommended for planning",
+        "Operates on issue and task types only; custom work-item types are not reachable through REST issue endpoints.",
       ),
       capability(
         "work-items.bulk-planning.update",
@@ -287,10 +291,8 @@ export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
       (result.backends.glab.available
         ? "available" + (result.backends.glab.version ? " (" + result.backends.glab.version + ")" : "")
         : "not installed"),
-    "MCP: agent-runtime optional",
-    "",
-    "| Capability | State | Access | Resource | Backend | Permission |",
-    "| --- | --- | --- | --- | --- | --- |",
+    "| Capability | State | Access | Resource | Backend | Permission | Note |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
     ...result.capabilities.map(
       (item) =>
         "| " +
@@ -305,6 +307,8 @@ export function formatCapabilitiesMarkdown(result: CapabilitiesResult): string {
         item.backend +
         " | " +
         item.permission +
+        " | " +
+        (item.note ?? "") +
         " |",
     ),
   ];
@@ -331,6 +335,7 @@ function capability(
   resource: string,
   backend: string,
   permission: string,
+  note?: string,
 ): Capability {
-  return { id, state, access, resource, backend, permission };
+  return note === undefined ? { id, state, access, resource, backend, permission } : { id, state, access, resource, backend, permission, note };
 }

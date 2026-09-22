@@ -198,8 +198,17 @@ test("sync reads group epics only when explicitly requested", async () => {
     );
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
-      requests.push({ path: url.pathname, method: init?.method ?? "GET" });
+      requests.push({ path: url.pathname, method: init?.method ?? "GET", body: String(init?.body ?? "") });
       if (url.pathname === "/api/graphql") {
+        const requestBody = JSON.parse(String(init?.body ?? "{}"));
+        if (String(requestBody.query ?? "").includes("ProjectWorkItemCount")) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            text: async () => JSON.stringify({ data: { project: null } }),
+          };
+        }
         return {
           ok: true,
           status: 200,
@@ -250,7 +259,18 @@ test("sync reads group epics only when explicitly requested", async () => {
     const normal = await syncProject(root);
     assert.equal(normal.query.includeEpics, false);
     assert.deepEqual(normal.planning.epics, []);
-    assert.equal(requests.some((request) => request.path === "/api/graphql"), false);
+    // The type-coverage census issues one project work-item count query, but
+    // no epic listing happens unless epics are explicitly requested. The
+    // GraphQL mock only serves group epic queries, so any census request
+    // resolves to a null count and is skipped without a warning.
+    assert.equal(
+      requests.some((request) =>
+        request.path === "/api/graphql" &&
+        request.method === "POST" &&
+        request.body?.includes?.("epic") === true
+      ),
+      false,
+    );
 
     const withEpics = await syncProject(root, { includeEpics: true });
     assert.equal(withEpics.query.includeEpics, true);
@@ -262,7 +282,14 @@ test("sync reads group epics only when explicitly requested", async () => {
     }]);
     assert.equal(withEpics.planning.epicsMayBeTruncated, false);
     assert.equal(withEpics.stats.epics, 1);
-    assert.equal(requests.filter((request) => request.path === "/api/graphql").length, 1);
+    assert.equal(
+      requests.filter(
+        (request) =>
+          request.path === "/api/graphql" &&
+          request.body?.includes?.("types: [EPIC]") === true
+      ).length,
+      1,
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

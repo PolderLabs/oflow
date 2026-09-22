@@ -33,6 +33,8 @@ import {
   formatContextMarkdown,
   formatMergeRequestMarkdown,
   formatMergeRequestTemplate,
+  workItemTypeCoverage,
+  formatWorkItemTypeCoverageWarning,
   formatWorkItemSummariesMarkdown,
   getCurrentGitLabUser,
   loadMergeRequest,
@@ -280,6 +282,18 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const issuePage = await listWorkItemsPage(root, state, effectiveFilters, limit);
         const items = compactWorkItems(issuePage.items);
         const warnings: string[] = [];
+        // One cheap GraphQL count per live work read: REST /issues lists only
+        // issue+task types, so boards using custom types (User Story, EPIC)
+        // would otherwise produce silently incomplete listings and audits.
+        // Filtered queries compare against a project-wide count, so the
+        // census only runs for unfiltered reads.
+        const hasActiveFilters = Object.values(effectiveFilters).some(value => value !== undefined);
+        const coverage = hasActiveFilters
+          ? null
+          : await workItemTypeCoverage(root, issuePage.pagination.total, state);
+        if (coverage && coverage.hiddenCount > 0) {
+          warnings.push(formatWorkItemTypeCoverageWarning(coverage));
+        }
         let savedAt = new Date().toISOString();
         try {
           const saved = await saveWorkItemsCache({
