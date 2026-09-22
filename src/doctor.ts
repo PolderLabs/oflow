@@ -105,7 +105,7 @@ const GUARDED_WRITE_CHECKS: Array<{
     id: "merge-requests.write",
     backend: "REST + GraphQL",
     required: false,
-    detail: "Planned only; oflow has no merge-request apply path yet.",
+    detail: "Not probed: doctor never runs a write mutation. The apply path covers REST + glab + delegated git push; a 403 is normalized to the right transport by `normalizeForbidden`.",
   },
 ];
 

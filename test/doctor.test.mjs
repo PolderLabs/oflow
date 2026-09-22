@@ -298,3 +298,75 @@ test("doctor --check-api marks writes usable when the MCP runtime is configured"
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("doctor merge-requests.write row names the apply path (no stale 'no apply path yet' text)", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-mrwrite-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "test-token";
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    let body = [];
+    if (url.endsWith("/user")) {
+      body = { id: 7, username: "test-user" };
+    } else if (url.endsWith("/personal_access_tokens/self")) {
+      body = { scopes: ["api", "read_api"], active: true, revoked: false, expires_at: null };
+    } else if (url.endsWith("/projects/team%2Fproduct")) {
+      body = { id: 11, path_with_namespace: "team/product", web_url: "https://gitlab.com/team/product" };
+    } else if (url.includes("/boards?")) {
+      body = [{ id: 9, name: "Planning" }];
+    } else if (url.includes("/api/graphql")) {
+      const query = JSON.parse(String(init?.body ?? "{}")).query;
+      body = {
+        data: {
+          group: query.includes("iterationCadences")
+            ? { iterationCadences: { nodes: [], pageInfo: { hasNextPage: false } } }
+            : { workItems: { nodes: [], pageInfo: { hasNextPage: false } } },
+        },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify(body),
+    };
+  };
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "git@gitlab.com:team/product.git",
+    ]);
+
+    const report = await doctor(root, { checkApi: true });
+    const row = report.apiChecks.find((check) => check.id === "merge-requests.write");
+    assert.ok(row, "doctor must name merge-requests.write in its write checks");
+    assert.equal(row.access, "write");
+    assert.equal(row.backend, "REST + GraphQL");
+    assert.equal(row.required, false);
+    assert.equal(row.status, "not-probed");
+    assert.ok(
+      !/no merge-request apply path yet/.test(row.detail),
+      "the stale 'no apply path yet' copy must be gone",
+    );
+    assert.match(
+      row.detail,
+      /REST\s*\+\s*glab\s*\+\s*delegated git push/,
+      "doctor must list all three transports in the merge-requests.write detail",
+    );
+
+    const output = formatDoctor(report);
+    assert.ok(output.includes("merge-requests.write"));
+    assert.ok(!output.includes("no merge-request apply path yet"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});

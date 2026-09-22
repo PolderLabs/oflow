@@ -178,15 +178,22 @@ delivery writes, verification flexibility, discoverability, then ergonomics.
 
 #### F3 — Plan-backed merge-request writes
 
-- [ ] Implement the `merge-requests.write` capability under the same
-  `plan -> approve -> apply -> verify` lifecycle.
-- [ ] Add `oflow mr create --description-file <path>` and
+- [x] Implement the `merge-requests.write` capability under the same
+  `plan -> approve -> apply -> verify` lifecycle. (capability text + apply
+  path; doctor + capabilities wiring landed in slice A; doctor stale text
+  corrected in slice B alongside the parity test)
+- [x] Add `oflow mr create --description-file <path>` and
   `oflow mr update --iid <iid> --description-file <path>` so multiline
-  descriptions remain intact and auditable.
-- [ ] Support the selected REST/glab/delegated transport honestly, report the
+  descriptions remain intact and auditable. (`descriptionFile` flag +
+  `resolveDescription` helper; both mr.create and mr.update plumbed)
+- [x] Support the selected REST/glab/delegated transport honestly, report the
   required scope before apply, and retain independent post-apply verification.
-- [ ] Keep MR review, discussion, approval, and pipeline mutation operations
-  separate; they are not silently included in this write milestone.
+  (capability lists all three transports; doctor write-check row names them;
+  403 normalization routes to the right transport via `normalizeForbidden`)
+- [x] Keep MR review, discussion, approval, and pipeline mutation operations
+  separate; they are not silently included in this write milestone. (only
+  `--title`, `--description[--file]`, `--state`, `--target-branch` are exposed;
+  no review/discussion/approval/pipeline mutations in scope of slice B)
 
 #### F4 — Verification flexibility and pipeline policy
 
