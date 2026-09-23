@@ -1,0 +1,25 @@
+{
+  "name": "openwolf-host",
+  "description": "OpenWolf agent host boundary: cross-project agent that delegates to oflow JSON without sharing credentials or GitLab API surface.",
+  "credentials": "none-in-fixture",
+  "host": {
+    "id": "openwolf",
+    "instructionFiles": [".oflow/WORKFLOW.md", "AGENTS.md"]
+  },
+  "cliContract": {
+    "sessionStart": ["oflow work --mine --refresh --json", "oflow sync --summary --refresh --json"],
+    "explore": ["oflow work --mine --cached --json", "oflow assess --story <iid> --json"],
+    "mutate": [
+      "oflow plan issue note --story <iid> --body <text> --json",
+      "oflow approve <plan.json> --json",
+      "oflow apply <plan.json> --json",
+      "oflow verify <plan.json> --json"
+    ],
+    "discover": ["oflow capabilities --json", "oflow doctor --json"]
+  },
+  "boundaries": [
+    "OpenWolf never embeds GitLab tokens in its anatomy/memory; all reads route through oflow JSON.",
+    "Anatomy and memory are scoped per-project; no cross-project state retention.",
+    "All remote writes go through plan approve apply verify."
+  ]
+}
