@@ -759,7 +759,7 @@ test("plan JSON responses include a stable top-level planPath", async () => {
       ]), 0);
       const parsed = JSON.parse(out.read());
       assert.equal(typeof parsed.planPath, "string");
-      assert.match(parsed.planPath, /\.oflow\/state\/plans\/.+\.json$/);
+      assert.match(parsed.planPath, /[\\/]\.oflow[\\/]state[\\/]plans[\\/].+\.json$/);
       assert.equal(parsed.plan.operation.kind, "issue.note.create");
       assert.equal(parsed.path, parsed.planPath);
     } finally {
