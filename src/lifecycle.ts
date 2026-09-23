@@ -341,6 +341,26 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
   );
   const mergeRequest = assessment.remote.mergeRequest;
   const pipeline = assessment.remote.pipeline;
+  const pipelinePolicy = assessment.pipelinePolicy;
+  const pipelineGate = pipelinePolicy === "disabled"
+    ? {
+        id: "pipeline",
+        passed: true,
+        detail: "Pipeline policy is disabled for this project.",
+      }
+    : pipeline === null && assessment.ciConfigPresent === false
+      ? {
+          id: "pipeline",
+          passed: true,
+          detail: "Pipeline evidence is unknown because no .gitlab-ci.yml or pipeline was found; treated as a warning.",
+        }
+      : {
+          id: "pipeline",
+          passed: pipeline !== null && pipeline.status?.toLowerCase() === "success",
+          detail: pipeline
+            ? "Pipeline #" + pipeline.id + " status: " + (pipeline.status ?? "unknown") + "."
+            : "No pipeline evidence found.",
+        };
   const gates = [
     {
       id: "acceptance-criteria",
@@ -359,13 +379,7 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
         ? "!" + mergeRequest.iid + " (" + mergeRequest.state + (mergeRequest.draft ? ", draft" : "") + "); finish requires merged."
         : "No merge request references this story yet.",
     },
-    {
-      id: "pipeline",
-      passed: pipeline !== null && pipeline.status === "success",
-      detail: pipeline
-        ? "Pipeline #" + pipeline.id + " status: " + (pipeline.status ?? "unknown") + "."
-        : "No pipeline evidence found.",
-    },
+    pipelineGate,
     {
       id: "local-git",
       passed: assessment.local.clean,
@@ -382,7 +396,12 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
     gates,
     nextCommand:
       "oflow plan issue update --story " + story.iid + " --state closed",
-    warnings: assessment.warnings,
+    warnings: [
+      ...assessment.warnings,
+      ...(pipelinePolicy === "enabled" && pipeline === null && assessment.ciConfigPresent === false
+        ? ["Pipeline evidence is unknown because no .gitlab-ci.yml or pipeline was found."]
+        : []),
+    ],
   };
 }
 

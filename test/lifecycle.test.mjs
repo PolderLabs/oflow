@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -218,7 +218,34 @@ test("finish gates completion on criteria, merge request, pipeline, and clean gi
   }
 });
 
-test("finish reports READY when every gate passes", async () => {
+test("finish passes the pipeline gate when pipeline policy is disabled", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-finish-pipeline-disabled-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "finish-pipeline-disabled-token";
+  try {
+    await initStoryRepo(root);
+    const configPath = join(root, ".oflow", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.workflow = { ...(config.workflow ?? {}), pipeline: "disabled" };
+    await writeFile(configPath, JSON.stringify(config));
+    await writeFile(join(root, ".gitignore"), ".oflow/\n");
+    await run("git", ["-C", root, "commit", "-q", "--allow-empty", "-m", "wip"]);
+    globalThis.fetch = gitlabFetchStub();
+
+    const result = await finishStory({ root });
+    const pipelineGate = result.gates.find((gate) => gate.id === "pipeline");
+    assert.equal(pipelineGate.passed, true);
+    assert.match(pipelineGate.detail, /disabled/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("finish reports READY without CI configuration or pipeline evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "oflow-finish-ready-"));
   const originalFetch = globalThis.fetch;
   const previousToken = process.env.GITLAB_TOKEN;
@@ -239,6 +266,7 @@ test("finish reports READY when every gate passes", async () => {
     "- [x] AC-2: Vacant transition propagates\n  Evidence: unit test passes\n";
   try {
     await initStoryRepo(root);
+    // F4: without .gitlab-ci.yml, enabled policy treats absent pipeline evidence as a warning.
     await writeFile(join(root, ".gitignore"), ".oflow/\n");
     await run("git", ["-C", root, "add", "."]);
     await run("git", ["-C", root, "commit", "-q", "-m", "wip"]);
@@ -271,13 +299,7 @@ test("finish reports READY when every gate passes", async () => {
         }]);
       }
       if (path.startsWith("/api/v4/projects/team%2Fproject/merge_requests/9/pipelines")) {
-        return json([{
-          id: 30,
-          status: "success",
-          ref: "work/42-occupancy",
-          sha: "abc123",
-          web_url: "https://gitlab.example.test/team/project/-/pipelines/30",
-        }]);
+        return json([]);
       }
       if (path === "/api/v4/projects/team%2Fproject/issues/42") {
         return json(story);
@@ -299,6 +321,7 @@ test("finish reports READY when every gate passes", async () => {
     };
 
     const result = await finishStory({ root });
+    assert.match(result.warnings.join("\n"), /Pipeline evidence is unknown/);
     assert.equal(result.story, 42);
     assert.equal(result.ready, true);
     for (const gate of result.gates) {

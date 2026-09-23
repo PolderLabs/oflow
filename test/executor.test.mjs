@@ -50,7 +50,15 @@ test("issue update executes through glab when no direct token exists", {
       host: "gitlab.example.test",
       projectPath: "team/project",
       issueIid: 42,
-      changes: { add_labels: "In Progress", issue_type: "task" },
+      changes: {
+        add_labels: "In Progress",
+        issue_type: "task",
+        labels: "Ready",
+        epic_id: 9,
+        due_date: "2026-10-01",
+        weight: 3,
+        milestone: "Sprint 1",
+      },
       expectedUpdatedAt: "2026-09-17T10:00:00Z",
       createRestClient: () => {
         throw new Error("REST client must not be constructed without a token");
@@ -69,6 +77,12 @@ test("issue update executes through glab when no direct token exists", {
     assert.ok(apiCalls[1].includes("projects/team%2Fproject/issues/42"));
     assert.ok(apiCalls[1].includes("--field") && apiCalls[1].includes("add_labels=In Progress"));
     assert.ok(apiCalls[1].includes("issue_type=task"));
+    // Field parity: glab path must forward the same issue update fields REST accepts.
+    assert.ok(apiCalls[1].includes("--field") && apiCalls[1].includes("labels=Ready"));
+    assert.ok(apiCalls[1].includes("--field") && apiCalls[1].includes("epic_id=9"));
+    assert.ok(apiCalls[1].includes("--field") && apiCalls[1].includes("due_date=2026-10-01"));
+    assert.ok(apiCalls[1].includes("--field") && apiCalls[1].includes("weight=3"));
+    assert.ok(apiCalls[1].includes("--field") && apiCalls[1].includes("milestone=Sprint 1"));
     // No token ever appears in any subprocess argv.
     for (const entry of logged) {
       assert.equal(entry.some((arg) => /token/i.test(arg)), false);

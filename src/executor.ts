@@ -35,6 +35,7 @@ function changesToFields(changes: GitLabIssueUpdate): Record<string, string> {
   if (changes.description !== undefined) fields.description = changes.description;
   if (changes.state_event !== undefined) fields.state_event = changes.state_event;
   if (changes.issue_type !== undefined) fields.issue_type = changes.issue_type;
+  if (changes.labels !== undefined) fields.labels = changes.labels;
   if (changes.add_labels !== undefined) {
     fields.add_labels = Array.isArray(changes.add_labels)
       ? changes.add_labels.join(",")
@@ -45,9 +46,13 @@ function changesToFields(changes: GitLabIssueUpdate): Record<string, string> {
       ? changes.remove_labels.join(",")
       : changes.remove_labels;
   }
+  if (changes.milestone !== undefined) fields.milestone = changes.milestone;
   if (changes.milestone_id !== undefined) {
     fields.milestone_id = String(changes.milestone_id);
   }
+  if (changes.epic_id !== undefined) fields.epic_id = String(changes.epic_id);
+  if (changes.due_date !== undefined) fields.due_date = changes.due_date;
+  if (changes.weight !== undefined) fields.weight = String(changes.weight);
   if (changes.assignee_ids !== undefined) {
     fields.assignee_ids = changes.assignee_ids.join(",");
   }

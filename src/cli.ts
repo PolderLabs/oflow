@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { realpathSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   clearGitLabToken,
@@ -40,6 +40,7 @@ import {
   loadMergeRequest,
   listWorkItemsPage,
   loadStoryContext,
+  loadWorkItemByIid,
   selectVerificationEvidence,
 } from "./context.js";
 import { OflowError } from "./errors.js";
@@ -59,9 +60,11 @@ import {
   discardPlan,
   createBulkIssueIterationPlan,
   createBulkIssueLabelsPlan,
+  createBulkIssueNotesPlan,
   createBulkIssuePlanningPlan,
   createLabelCreatePlan,
   createLabelUpdatePlan,
+  createIssueConvertAcPlan,
   createIssueCreatePlan,
   createIssueIterationUpdatePlan,
   createIssueNotePlan,
@@ -78,6 +81,7 @@ import {
   ingestExecutionReceipt,
   createMergeRequestCreatePlan,
   createMergeRequestUpdatePlan,
+  loadPlanArtifact,
 } from "./plan.js";
 import { resolveOptionalStoryIid, resolveStoryIid, startSession } from "./state.js";
 import {
@@ -87,6 +91,7 @@ import {
   syncProject,
 } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
+import { loadConfig, resolvePipelinePolicy } from "./config.js";
 import {
   formatReadModelStatusMarkdown,
   markReadModelStale,
@@ -173,6 +178,8 @@ interface CliOptions {
   delegate: boolean;
   force: boolean;
   withEmail: boolean;
+  convertAc: boolean;
+  yes: boolean;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -240,6 +247,25 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             "Use either --mine or --assignee, not both.",
             "CONFLICTING_WORK_ASSIGNEE_FILTERS",
           );
+        }
+        if (options.iid !== undefined) {
+          const iid = parsePositiveInteger(options.iid, "work item IID");
+          const issue = await loadWorkItemByIid(root, iid);
+          const [summary] = compactWorkItems([issue]);
+          print(
+            options.json,
+            {
+              source: "normalized-issue-read",
+              state: summary.state ?? "unknown",
+              issue: summary,
+            },
+            formatWorkItemSummariesMarkdown([summary], "all", {
+              issueLimit: 1,
+              issueFilters: {},
+              mayBeTruncated: false,
+            }),
+          );
+          return 0;
         }
         const state = normalizeIssueState(options.state);
         const filters = collectIssueFilters(options);
@@ -511,7 +537,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               recommendations: assessment.nextActions,
             },
           );
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "issues" && options.planOperation === "labels") {
@@ -529,7 +555,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               remove_labels: options.removeLabels,
             },
           );
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "issues" && options.planOperation === "update") {
@@ -546,7 +572,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               parseIssueIids(options.stories),
               options.iteration,
             );
-            print(options.json, stored, formatPlanMarkdown(stored));
+            printPlan(options.json, stored, formatPlanMarkdown(stored));
             return 0;
           }
           assertBulkPlanningOptions(options);
@@ -556,7 +582,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             normalizeIssueMilestone(options.milestone),
             options.assignee,
           );
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "issue" && options.planOperation === "create") {
@@ -580,12 +606,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               ? undefined
               : parseNonNegativeInteger(options.weight, "issue weight"),
           }, options.assignee);
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "issue" &&
           (options.planOperation === "update" || options.planOperation === "note")) {
-          const storyIid = await resolveStoryIid(root, options.story);
           if (options.planOperation === "note") {
             if (options.body === undefined) {
               throw new OflowError(
@@ -593,8 +618,24 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
                 "MISSING_FLAG_VALUE",
               );
             }
-            const stored = await createIssueNotePlan(root, storyIid, options.body);
-            print(options.json, stored, formatPlanMarkdown(stored));
+            if (options.stories !== undefined) {
+              const stored = await createBulkIssueNotesPlan(
+                root,
+                parseIssueIids(options.stories),
+                options.body,
+              );
+              printPlan(options.json, stored, formatPlanMarkdown(stored));
+              return 0;
+            }
+            const singleStoryIid = await resolveStoryIid(root, options.story);
+            const stored = await createIssueNotePlan(root, singleStoryIid, options.body);
+            printPlan(options.json, stored, formatPlanMarkdown(stored));
+            return 0;
+          }
+          const storyIid = await resolveStoryIid(root, options.story);
+          if (options.convertAc) {
+            const stored = await createIssueConvertAcPlan(root, storyIid);
+            printPlan(options.json, stored, formatPlanMarkdown(stored));
             return 0;
           }
           if (options.iteration !== undefined) {
@@ -604,7 +645,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
               storyIid,
               options.iteration,
             );
-            print(options.json, stored, formatPlanMarkdown(stored));
+            printPlan(options.json, stored, formatPlanMarkdown(stored));
             return 0;
           }
           const changes: GitLabIssueUpdate = {
@@ -625,7 +666,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             state_event: normalizeIssueUpdateState(options.state),
           };
           const stored = await createIssueUpdatePlan(root, storyIid, changes, options.assignee);
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "label" && options.planOperation === "create") {
@@ -640,7 +681,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             color: options.color,
             description: options.description,
           });
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "label" && options.planOperation === "update") {
@@ -656,7 +697,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             description: options.description,
           };
           const stored = await createLabelUpdatePlan(root, options.label, changes);
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "milestone" && options.planOperation === "create") {
@@ -672,7 +713,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             start_date: options.startDate,
             due_date: options.dueDate,
           });
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "milestone" && options.planOperation === "update") {
@@ -691,7 +732,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             state_event: normalizeMilestoneUpdateState(options.state),
           };
           const stored = await createMilestoneUpdatePlan(root, milestoneIid, changes);
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "board" && options.planOperation === "create") {
@@ -702,7 +743,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             );
           }
           const stored = await createBoardCreatePlan(root, options.name);
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "board" && options.planOperation === "update") {
@@ -718,7 +759,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             parsePositiveInteger(options.board, "board ID"),
             changes,
           );
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "board-list" && options.planOperation === "create") {
@@ -733,7 +774,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             parsePositiveInteger(options.board, "board ID"),
             options.label,
           );
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "board-list" && options.planOperation === "update") {
@@ -749,7 +790,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             parsePositiveInteger(options.list, "board list ID"),
             parsePosition(options.position),
           );
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "merge-request" && options.planOperation === "create") {
@@ -768,7 +809,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             title: options.title,
             description: await resolveDescription(options),
           });
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.planResource === "merge-request" && options.planOperation === "update") {
@@ -786,7 +827,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             stateEvent: normalizeMergeRequestUpdateState(options.state),
             targetBranch: options.targetBranch,
           });
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         {
@@ -803,8 +844,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             "MISSING_PLAN_PATH",
           );
         }
+        if (options.yes) {
+          throw new OflowError(
+            "--yes is only supported for issue.note.create plans.",
+            "INVALID_YES_OPTION",
+          );
+        }
         const stored = await approvePlan(root, options.planPath, { force: options.force });
-        print(options.json, stored, formatPlanMarkdown(stored));
+        printPlan(options.json, stored, formatPlanMarkdown(stored));
         return 0;
       }
       case "apply": {
@@ -818,7 +865,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           const receipt = parseExecutionReceipt(await readText(resolve(options.receipt)));
           const stored = await ingestExecutionReceipt(root, options.planPath, receipt, { force: options.force });
           await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.delegate) {
@@ -843,9 +890,25 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           );
           return 0;
         }
+        if (options.yes) {
+          const loaded = await loadPlanArtifact(root, options.planPath);
+          if (loaded.plan.operation.kind !== "issue.note.create") {
+            throw new OflowError(
+              "--yes is only supported for issue.note.create plans; use the explicit two-step approve/apply for other operations.",
+              "INVALID_YES_OPTION",
+            );
+          }
+          if (loaded.plan.state === "draft") {
+            const approved = await approvePlan(root, options.planPath, { force: options.force });
+            const stored = await applyPlan(root, approved.path, { force: options.force });
+            await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
+            printPlan(options.json, stored, formatPlanMarkdown(stored));
+            return 0;
+          }
+        }
         const stored = await applyPlan(root, options.planPath, { force: options.force });
         await markReadModelStale(root, "A remote plan was applied; refresh before trusting cached planning data.");
-        print(options.json, stored, formatPlanMarkdown(stored));
+        printPlan(options.json, stored, formatPlanMarkdown(stored));
         return 0;
       }
       case "dashboard": {
@@ -931,7 +994,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             title: options.title,
             description: await resolveDescription(options),
           });
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.mrAction === "update") {
@@ -949,7 +1012,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             stateEvent: normalizeMergeRequestUpdateState(options.state),
             targetBranch: options.targetBranch,
           });
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
         }
         if (options.mrAction !== undefined) {
@@ -976,7 +1039,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       case "verify": {
         if (options.planPath) {
           const stored = await verifyPlan(root, options.planPath);
-          print(options.json, stored, formatPlanMarkdown(stored));
+          printPlan(options.json, stored, formatPlanMarkdown(stored));
           return stored.plan.verification?.passed ? 0 : 1;
         }
         const storyIid = await resolveStoryIid(root, options.story);
@@ -984,18 +1047,37 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const verificationEvidence = selectVerificationEvidence(context);
         const mergeRequest = verificationEvidence.mergeRequest;
         const pipelineStatus = verificationEvidence.pipeline?.status ?? null;
+        const config = await loadConfig(root);
+        const pipelinePolicy = resolvePipelinePolicy(config);
+        let ciConfigPresent = true;
+        try {
+          statSync(join(root, ".gitlab-ci.yml"));
+        } catch {
+          ciConfigPresent = false;
+        }
         const result = evaluateCriteria(
           context.criteria,
           mergeRequest?.description,
           pipelineStatus,
+          { pipelinePolicy, ciConfigPresent },
         );
         const output = {
           storyIid,
           mergeRequest,
           pipeline: verificationEvidence.pipeline,
+          pipelinePolicy,
+          ciConfigPresent,
           warnings: [
             ...context.warnings,
             ...(verificationEvidence.warning ? [verificationEvidence.warning] : []),
+            ...(pipelinePolicy === "disabled"
+              ? ["Pipeline policy is disabled for this project; the pipeline gate is skipped."]
+              : []),
+            ...(pipelinePolicy === "enabled" &&
+            pipelineStatus === null &&
+            ciConfigPresent === false
+              ? ["No .gitlab-ci.yml and no pipeline evidence; treated as a warning, not a permanent block."]
+              : []),
           ].filter((warning, index, warnings) => warnings.indexOf(warning) === index),
           result,
         };
@@ -1109,6 +1191,8 @@ function parseArgs(argv: string[]): CliOptions {
     delegate: false,
     withEmail: false,
     force: false,
+    convertAc: false,
+    yes: false,
   };
 
   if (command === "auth" && argv[1] && !argv[1].startsWith("-")) {
@@ -1121,21 +1205,26 @@ function parseArgs(argv: string[]): CliOptions {
     options.mrAction = argv[1];
     firstOptionIndex = 2;
   } else if (command === "plan") {
-    options.planResource = argv[1];
-    if (options.planResource === "list") {
+    if (argv[1] === "--help" || argv[1] === "-h" || argv[1] === "help") {
+      options.command = "help";
       firstOptionIndex = 2;
-    } else if (options.planResource === "discard") {
-      firstOptionIndex = 2;
-      if (argv[2] && !argv[2].startsWith("-")) {
-        options.planPath = argv[2];
-        firstOptionIndex = 3;
-      }
-    } else if (argv[2] && !argv[2].startsWith("-")) {
-      options.planOperation = argv[2];
-      firstOptionIndex = 3;
     } else {
-      options.planOperation = "update";
-      firstOptionIndex = 2;
+      options.planResource = argv[1];
+      if (options.planResource === "list") {
+        firstOptionIndex = 2;
+      } else if (options.planResource === "discard") {
+        firstOptionIndex = 2;
+        if (argv[2] && !argv[2].startsWith("-")) {
+          options.planPath = argv[2];
+          firstOptionIndex = 3;
+        }
+      } else if (argv[2] && !argv[2].startsWith("-")) {
+        options.planOperation = argv[2];
+        firstOptionIndex = 3;
+      } else {
+        options.planOperation = "update";
+        firstOptionIndex = 2;
+      }
     }
   } else if (command === "glab") {
     options.glabAction = argv[1];
@@ -1180,6 +1269,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.withGitLabMcp = true;
     } else if (argument === "--delegate") {
       options.delegate = true;
+    } else if (argument === "--convert-ac") {
+      options.convertAc = true;
+    } else if (argument === "--yes" || argument === "-y") {
+      options.yes = true;
     } else if (argument === "--with-email") {
       options.withEmail = true;
     } else if (
@@ -1464,11 +1557,34 @@ function parseArgs(argv: string[]): CliOptions {
   if (options.force && command !== "approve" && command !== "apply") {
     throw new OflowError("--force is only supported with approve and apply.", "INVALID_FORCE_OPTION");
   }
+  if (options.yes && command !== "apply") {
+    throw new OflowError(
+      "--yes is only supported with apply for issue.note.create plans.",
+      "INVALID_YES_OPTION",
+    );
+  }
+  if (options.convertAc && (command !== "plan" || options.planResource !== "issue")) {
+    throw new OflowError(
+      "--convert-ac is only supported with plan issue update.",
+      "INVALID_CONVERT_AC_OPTION",
+    );
+  }
   return options;
 }
 
 function print(json: boolean, value: unknown, markdown: string): void {
   process.stdout.write(json ? JSON.stringify(value, null, 2) + "\n" : markdown);
+}
+
+/** Stable top-level planPath for every plan-producing JSON response. */
+function printPlan(json: boolean, stored: { path: string; plan: unknown }, markdown: string): void {
+  if (json) {
+    process.stdout.write(
+      JSON.stringify({ planPath: stored.path, ...stored }, null, 2) + "\n",
+    );
+    return;
+  }
+  process.stdout.write(markdown);
 }
 
 function parseDashboardPort(value: string): number {
@@ -1841,6 +1957,8 @@ function formatVerification(output: {
   storyIid: number;
   mergeRequest: { iid: number; web_url?: string; title: string } | null;
   pipeline: { id: number; status?: string; web_url?: string } | null;
+  pipelinePolicy?: "enabled" | "disabled";
+  ciConfigPresent?: boolean;
   warnings: string[];
   result: ReturnType<typeof evaluateCriteria>;
 }): string {
@@ -1856,6 +1974,8 @@ function formatVerification(output: {
       (output.pipeline
         ? "#" + output.pipeline.id + " " + (output.pipeline.status ?? "unknown")
         : "none"),
+    "Pipeline policy: " + (output.pipelinePolicy ?? "enabled"),
+    "CI config present: " + (output.ciConfigPresent === false ? "no" : "yes"),
     "",
     output.result.passed ? "PASS" : "BLOCKED",
     "",
@@ -2004,7 +2124,8 @@ function helpText(): string {
     "  check [--story <iid>] [--json]         unified story, evidence, and policy check",
     "  finish [--story <iid>] [--json]        gated completion check with close command",
     "  handoff [--story <iid>] [--json]       compact context for the next agent",
-    "  work [filters] [--json]             list current GitLab work items",
+    "  work [filters] [--state opened|closed|all] [--json] list current GitLab work items",
+    "  work --iid <iid> [--json]           read one normalized work item by IID",
     "  epic [--iid <iid>] [--limit <n>]    list or inspect group epics",
     "  iteration [--group] [--state <state>] list project or group sprints",
     "  cadence [--limit <n>]               list parent-group iteration cadences",
@@ -2020,11 +2141,13 @@ function helpText(): string {
     "  plan issue create --title <title> [--type <type>] prepare an auditable work-item create",
     "  plan issue update --story <iid> [--type <type>] prepare an auditable work-item update",
     "  plan issue update --story <iid> --iteration <title|iid|none>",
+    "  plan issue update --story <iid> --convert-ac  convert eligible bullets to checklist AC-n",
     "  plan issues labels --stories 1,2    prepare guarded bulk label changes",
     "  plan issues update --stories 1,2    prepare guarded owner/timebox changes",
     "  plan issues update --stories 1,2 --iteration <title|iid|none>",
     "  plan assess --story <iid>           prepare owner/timebox plan from assessment",
     "  plan issue note --story <iid>       prepare an auditable issue note",
+    "  plan issue note --story <iid> --stories 1,2  prepare a bounded bulk note (max 50)",
     "  plan label create --name --color    prepare an auditable label create",
     "  plan label update --label <name>    prepare an auditable label update",
     "  plan milestone create --title       prepare an auditable milestone create",
@@ -2037,6 +2160,7 @@ function helpText(): string {
     "  plan discard <id>                   discard an unexecuted draft/approved plan (audited)",
     "  approve <plan.json>                  approve a local plan artifact",
     "  apply <plan.json>                    apply an approved plan",
+    "  apply <plan.json> --yes              approve+apply only for issue.note.create",
     "  apply <plan.json> --delegate         emit a delegated GitLab MCP action",
     "  apply <plan.json> --receipt <file>   ingest an executed delegated action receipt",
     "  verify <plan.json>                   independently verify an applied plan",
@@ -2051,6 +2175,10 @@ function helpText(): string {
     "--force on approve/apply overrides legacy/expired/cross-session guards with an audit event.",
     "Force requires a live target recheck; it never bypasses state, digest or remote preconditions.",
     "Only explicit session IDs are compared. Receipts and verification are not TTL/session-gated.",
+    "JSON plan responses always include a top-level planPath alongside the full plan object.",
+    "pipeline=disabled in .oflow/config.json skips the pipeline gate; missing .gitlab-ci.yml",
+    "with no pipeline evidence is a warning under pipeline=enabled, not a permanent block.",
+    "Bulk plans cap at 50 issue IIDs (--stories).",
     "",
     "Options:",
     "  --root <path>  run against a repository below this path",
@@ -2058,9 +2186,12 @@ function helpText(): string {
     "  --dry-run      preview install changes",
     "  --token-stdin  read a token without putting it in shell history",
     "  --plan <path>  verify a plan artifact instead of a story",
+    "  --state opened|closed|all  work/iteration state filter (default opened for work)",
     "  --epic <id|none> assign or clear a Premium/Ultimate epic on an issue",
     "  --type/--issue-type issue|incident|test_case|task set the GitLab work-item type",
-    "  --stories 1,2 use with plan issues labels/update for bounded bulk changes",
+    "  --convert-ac   plan issue update only: turn eligible bullets into AC-n checklists",
+    "  --yes, -y      apply only: approve+apply a draft issue.note.create plan",
+    "  --stories 1,2 use with plan issues labels/update/note for bounded bulk changes (max 50)",
     "  issue labels: --labels replaces; --add-labels/--remove-labels preserve other labels",
     "  filters: --label, --milestone, --iteration, --epic, --assignee, --mine, --author, --search, --updated-after, --updated-before, --limit 1..100",
     "  sync --stale-days <n>  add an advisory stale-work-item finding without extra API calls",

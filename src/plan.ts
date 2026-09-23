@@ -6,8 +6,9 @@ import { loadConfig } from "./config.js";
 import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
 import { getCurrentBranch, getGitLabRemote } from "./git.js";
-import { GitLabClient } from "./gitlab.js";
+import { GitLabApiError, GitLabClient } from "./gitlab.js";
 import { executeIssueUpdate } from "./executor.js";
+import { convertBulletsToAcceptanceCriteria } from "./criteria.js";
 import { isIssueType } from "./types.js";
 import type { DelegatedActionRequest, ExecutionReceipt } from "./actions.js";
 import type {
@@ -104,6 +105,15 @@ export interface IssueNoteCreateOperation {
   projectPath: string;
   issueIid: number;
   body: string;
+}
+
+export interface BulkIssueNotesCreateOperation {
+  kind: "issues.notes.create";
+  host: string;
+  projectPath: string;
+  issueIids: number[];
+  body: string;
+  expectedUpdatedAt?: Record<string, string | null>;
 }
 
 export interface LabelCreateOperation {
@@ -225,6 +235,7 @@ export type PlanOperation =
   | BulkIssuePlanningUpdateOperation
   | BulkIssueIterationUpdateOperation
   | IssueNoteCreateOperation
+  | BulkIssueNotesCreateOperation
   | LabelCreateOperation
   | LabelUpdateOperation
   | MilestoneCreateOperation
@@ -282,6 +293,8 @@ export interface PlanArtifact {
       iterationId?: string | null;
       iterationIid?: number | null;
       iterationTitle?: string | null;
+      noteId?: number;
+      noteReused?: boolean;
     }>;
   };
   execution?: {
@@ -489,12 +502,39 @@ export async function createIssueIterationUpdatePlan(
   const remote = await getGitLabRemote(root);
   const client = new GitLabClient(remote.host);
   const currentIssue = await client.getIssue(remote.projectPath, issueIid);
-  const target = isIterationClearReference(reference)
-    ? { iterationId: null, iterationIid: null, iterationTitle: null }
-    : resolveIterationTarget(
-        await client.listProjectIterations(remote.projectPath, "all", 100),
-        reference,
+  if (isIterationClearReference(reference)) {
+    return writePlan(root, {
+      kind: "issue.iteration.update",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      issueIid,
+      iterationId: null,
+      iterationIid: null,
+      iterationTitle: null,
+      expectedUpdatedAt: currentIssue.updated_at ?? null,
+    });
+  }
+  const target = resolveIterationTargetSafe(
+    await safeProjectIterations(client, remote.projectPath),
+    reference,
+  );
+  if (target === null) {
+    // F6: group-only / unsupported iteration lookup — accept an already
+    // equivalent project milestone as the timebox instead of failing.
+    const milestoneTitle = namedValue(currentIssue.milestone);
+    if (milestoneTitle && milestoneTitle.trim().toLowerCase() === reference.trim().toLowerCase()) {
+      throw new OflowError(
+        "Iteration " + JSON.stringify(reference) + " is not project-visible, but issue #" +
+          String(issueIid) + " already has equivalent milestone " + JSON.stringify(milestoneTitle) +
+          "; no mutation is required.",
+        "TIMEBOX_ALREADY_EQUIVALENT",
       );
+    }
+    throw new OflowError(
+      "Could not find project-visible iteration " + JSON.stringify(reference) + ". Use its exact title, IID, or none.",
+      "ITERATION_NOT_FOUND",
+    );
+  }
   return writePlan(root, {
     kind: "issue.iteration.update",
     host: remote.host,
@@ -595,15 +635,43 @@ export async function createBulkIssueIterationPlan(
   const reference = requiredText(iterationReference, "Iteration");
   const remote = await getGitLabRemote(root);
   const client = new GitLabClient(remote.host);
-  const target = isIterationClearReference(reference)
-    ? { iterationId: null, iterationIid: null, iterationTitle: null }
-    : resolveIterationTarget(
-        await client.listProjectIterations(remote.projectPath, "all", 100),
-        reference,
-      );
   const currentIssues = await Promise.all(
     normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)),
   );
+  if (isIterationClearReference(reference)) {
+    return writePlan(root, {
+      kind: "issues.iteration.update",
+      host: remote.host,
+      projectPath: remote.projectPath,
+      issueIids: normalizedIids,
+      iterationId: null,
+      iterationIid: null,
+      iterationTitle: null,
+      expectedUpdatedAt: expectedUpdatedAtFor(currentIssues),
+    });
+  }
+  const target = resolveIterationTargetSafe(
+    await safeProjectIterations(client, remote.projectPath),
+    reference,
+  );
+  if (target === null) {
+    const allEquivalent = currentIssues.every((issue) => {
+      const milestoneTitle = namedValue(issue.milestone);
+      return Boolean(milestoneTitle) &&
+        milestoneTitle!.trim().toLowerCase() === reference.trim().toLowerCase();
+    });
+    if (allEquivalent) {
+      throw new OflowError(
+        "Iteration " + JSON.stringify(reference) + " is not project-visible, but every targeted issue " +
+          "already has an equivalent milestone; no mutation is required.",
+        "TIMEBOX_ALREADY_EQUIVALENT",
+      );
+    }
+    throw new OflowError(
+      "Could not find project-visible iteration " + JSON.stringify(reference) + ". Use its exact title, IID, or none.",
+      "ITERATION_NOT_FOUND",
+    );
+  }
   return writePlan(root, {
     kind: "issues.iteration.update",
     host: remote.host,
@@ -640,30 +708,84 @@ export async function createIssueNotePlan(
   const client = new GitLabClient(remote.host);
   await client.getIssue(remote.projectPath, issueIid);
 
-  const now = new Date().toISOString();
-  const plan: PlanArtifact = {
-    managedBy: "oflow",
-    version: 2,
-    id: randomUUID(),
-    createdAt: now,
-    sessionId: currentPlanSession(),
-    expiresAt: new Date(Date.parse(now) + PLAN_TTL_MS).toISOString(),
-    updatedAt: now,
-    state: "draft",
-    digest: "",
-    operation: {
-      kind: "issue.note.create",
-      host: remote.host,
-      projectPath: remote.projectPath,
-      issueIid,
-      body,
-    },
-  };
-  plan.digest = planDigest(plan);
-  const path = join(root, PLAN_DIRECTORY, plan.id + ".json");
-  await writeJson(path, plan);
-  await recordPlanEvent(root, plan, "created");
-  return { path, plan };
+  return writePlan(root, {
+    kind: "issue.note.create",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIid,
+    body,
+  });
+}
+
+export async function createBulkIssueNotesPlan(
+  root: string,
+  issueIids: number[],
+  body: string,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  const normalizedIids = validateIssueIids(issueIids);
+  if (!body.trim()) {
+    throw new OflowError(
+      "Note body cannot be empty. Use --body with the shared progress or blocker update.",
+      "EMPTY_PLAN",
+    );
+  }
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const currentIssues = await Promise.all(
+    normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)),
+  );
+  return writePlan(root, {
+    kind: "issues.notes.create",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIids: normalizedIids,
+    body,
+    expectedUpdatedAt: expectedUpdatedAtFor(currentIssues),
+  });
+}
+
+/**
+ * F4: explicit acceptance-criteria conversion. Loads the live description,
+ * turns eligible plain bullets into stable checklist criteria, and plans a
+ * description update. Never rewrites descriptions on its own.
+ */
+export async function createIssueConvertAcPlan(
+  root: string,
+  issueIid: number,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateIssueIid(issueIid);
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const currentIssue = await client.getIssue(remote.projectPath, issueIid);
+  const conversion = convertBulletsToAcceptanceCriteria(currentIssue.description);
+  if (!conversion.changed) {
+    throw new OflowError(
+      "No eligible plain bullets found to convert under Acceptance criteria, Done when, or equivalent headings.",
+      "EMPTY_PLAN",
+    );
+  }
+  return writePlan(root, {
+    kind: "issue.update",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIid,
+    changes: { description: conversion.description },
+    expectedUpdatedAt: currentIssue.updated_at ?? null,
+  });
 }
 
 export async function createLabelCreatePlan(
@@ -1266,6 +1388,38 @@ export async function applyPlan(root: string, input: string, options: { force?: 
       operation.issueIid,
       existing !== undefined,
     );
+  } else if (stored.plan.operation.kind === "issues.notes.create") {
+    const operation = stored.plan.operation;
+    const results = existingBulkResults(stored.plan, "issues.notes.create");
+    try {
+      for (const issueIid of pendingBulkIssueIids(operation.issueIids, results)) {
+        await assertIssueFresh(
+          client,
+          operation.projectPath,
+          issueIid,
+          operation.expectedUpdatedAt?.[String(issueIid)],
+        );
+        const existing = (await client.getIssueNotes(
+          operation.projectPath,
+          issueIid,
+        )).find((note) => note.body === operation.body);
+        const note = existing ?? await client.createIssueNote(
+          operation.projectPath,
+          issueIid,
+          { body: operation.body },
+        );
+        results.push({
+          iid: issueIid,
+          noteId: note.id,
+          noteReused: existing !== undefined,
+        });
+      }
+    } catch (error: unknown) {
+      await persistBulkApplyFailure(root, stored, "issues.notes.create", results, error);
+      throw error;
+    }
+    stored.plan.result = { kind: "issues.notes.create", issues: results };
+    delete stored.plan.applyError;
   } else if (stored.plan.operation.kind === "label.create") {
     const operation = stored.plan.operation;
     const existing = findUniqueNamedResource(
@@ -1724,7 +1878,7 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
           ),
           stored.plan.operation,
         )
-    : stored.plan.operation.kind === "issue.note.create"
+      : stored.plan.operation.kind === "issue.note.create"
       ? verifyIssueNote(
           await client.getIssueNotes(
             stored.plan.operation.projectPath,
@@ -1733,6 +1887,8 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
           stored.plan.operation.body,
           stored.plan.result?.noteId,
         )
+      : stored.plan.operation.kind === "issues.notes.create"
+      ? await verifyBulkIssueNotes(client, stored)
       : stored.plan.operation.kind === "merge_request.create"
         ? await verifyMergeRequestCreate(client, stored.plan.operation)
       : stored.plan.operation.kind === "label.create" || stored.plan.operation.kind === "label.update"
@@ -1829,6 +1985,11 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
           ].join("\n")
       : plan.operation.kind === "issue.note.create"
         ? "- body: " + plan.operation.body
+        : plan.operation.kind === "issues.notes.create"
+        ? [
+            "- issue_iids: " + plan.operation.issueIids.join(", "),
+            "- body: " + plan.operation.body,
+          ].join("\n")
         : plan.operation.kind === "merge_request.create"
           ? [
               "- story_iid: " + plan.operation.storyIid,
@@ -1921,6 +2082,8 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
         ? "Bulk planning changes:"
       : plan.operation.kind === "issue.note.create"
         ? "Note:"
+        : plan.operation.kind === "issues.notes.create"
+        ? "Bulk note changes:"
         : plan.operation.kind === "label.create"
           ? "Create label:"
           : plan.operation.kind === "label.update"
@@ -2061,6 +2224,7 @@ async function recheckPlanTarget(plan: PlanArtifact): Promise<string[]> {
     case "issues.labels.update":
     case "issues.planning.update":
     case "issues.iteration.update":
+    case "issues.notes.create":
       for (const iid of pendingBulkIssueIids(op.issueIids, existingBulkResults(plan, op.kind))) {
         requireTarget(op.expectedUpdatedAt?.[String(iid)] !== undefined);
         await issue(iid, op.expectedUpdatedAt?.[String(iid)]);
@@ -2218,6 +2382,11 @@ async function loadPlan(root: string, input: string): Promise<StoredPlan> {
   return { path, plan };
 }
 
+/** Public read-only plan loader for CLI preconditions (e.g. --yes). */
+export async function loadPlanArtifact(root: string, input: string): Promise<StoredPlan> {
+  return loadPlan(root, input);
+}
+
 function isSupportedOperation(
   operation: PlanArtifact["operation"] | undefined,
 ): operation is PlanOperation {
@@ -2289,6 +2458,16 @@ function isSupportedOperation(
     return validIssueOperation(operation) &&
       typeof operation.body === "string" &&
       operation.body.trim().length > 0;
+  }
+  if (operation.kind === "issues.notes.create") {
+    return Array.isArray(operation.issueIids) &&
+      operation.issueIids.length > 0 &&
+      operation.issueIids.length <= MAX_BULK_ISSUES &&
+      new Set(operation.issueIids).size === operation.issueIids.length &&
+      operation.issueIids.every((issueIid) => Number.isSafeInteger(issueIid) && issueIid > 0) &&
+      typeof operation.body === "string" &&
+      operation.body.trim().length > 0 &&
+      validExpectedUpdatedAtMap(operation.expectedUpdatedAt);
   }
   if (operation.kind === "label.create") {
     return typeof operation.name === "string" &&
@@ -2452,7 +2631,7 @@ type BulkResultIssues = NonNullable<NonNullable<PlanArtifact["result"]>["issues"
 
 function existingBulkResults(
   plan: PlanArtifact,
-  kind: "issues.labels.update" | "issues.planning.update" | "issues.iteration.update",
+  kind: "issues.labels.update" | "issues.planning.update" | "issues.iteration.update" | "issues.notes.create",
 ): BulkResultIssues {
   if (plan.result === undefined) {
     return [];
@@ -2488,7 +2667,7 @@ function existingBulkResults(
 async function persistBulkApplyFailure(
   root: string,
   stored: StoredPlan,
-  kind: "issues.labels.update" | "issues.planning.update" | "issues.iteration.update",
+  kind: "issues.labels.update" | "issues.planning.update" | "issues.iteration.update" | "issues.notes.create",
   results: NonNullable<NonNullable<PlanArtifact["result"]>["issues"]>,
   error: unknown,
 ): Promise<void> {
@@ -3779,6 +3958,48 @@ function verifyIssueNote(
   };
 }
 
+async function verifyBulkIssueNotes(
+  client: GitLabClient,
+  stored: StoredPlan,
+): Promise<PlanVerification> {
+  const operation = stored.plan.operation;
+  if (operation.kind !== "issues.notes.create") {
+    throw new OflowError("Bulk note verification requires an issues.notes.create plan.", "INVALID_PLAN");
+  }
+  const results = stored.plan.result?.issues ?? [];
+  const resultByIid = new Map(results.map((result) => [result.iid, result]));
+  const checks: PlanVerification["checks"] = [];
+  let missingTargets = 0;
+  for (const issueIid of operation.issueIids) {
+    const notes = await client.getIssueNotes(operation.projectPath, issueIid);
+    const verification = verifyIssueNote(
+      notes,
+      operation.body,
+      resultByIid.get(issueIid)?.noteId,
+    );
+    checks.push(...verification.checks.map((item) => ({
+      ...item,
+      field: "issue #" + String(issueIid) + "." + item.field,
+    })));
+    if (!verification.passed) {
+      missingTargets += 1;
+    }
+  }
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: missingTargets === 0 && checks.length === operation.issueIids.length && failed.length === 0,
+    checks,
+    reasons: [
+      ...(missingTargets === 0
+        ? []
+        : ["GitLab did not report the shared note body on every targeted issue."]),
+      ...failed.map(
+        (item) => "GitLab did not report the requested " + item.field + " value.",
+      ),
+    ],
+  };
+}
+
 function verifyLabel(
   labels: GitLabLabel[],
   operation: LabelCreateOperation | LabelUpdateOperation,
@@ -4139,6 +4360,37 @@ function isIterationClearReference(value: string): boolean {
   return ["none", "null", "unassigned"].includes(value.toLowerCase());
 }
 
+async function safeProjectIterations(
+  client: GitLabClient,
+  projectPath: string,
+): Promise<GitLabIteration[]> {
+  try {
+    return await client.listProjectIterations(projectPath, "all", 100);
+  } catch (error: unknown) {
+    if (error instanceof GitLabApiError && error.status === 404) {
+      // A missing project-iteration endpoint may mean the project exposes its
+      // timebox only as a milestone. Authorization, transport, and server
+      // failures must remain visible to the caller.
+      return [];
+    }
+    throw error;
+  }
+}
+
+function resolveIterationTargetSafe(
+  iterations: GitLabIteration[],
+  reference: string,
+): Pick<IssueIterationUpdateOperation, "iterationId" | "iterationIid" | "iterationTitle"> | null {
+  try {
+    return resolveIterationTarget(iterations, reference);
+  } catch (error: unknown) {
+    if (error instanceof OflowError && error.code === "ITERATION_NOT_FOUND") {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function resolveIterationTarget(
   iterations: GitLabIteration[],
   reference: string,
@@ -4263,13 +4515,10 @@ function formatTarget(operation: PlanOperation): string {
   ) {
     return "issue #" + operation.issueIid;
   }
-  if (operation.kind === "issues.labels.update") {
-    return "issues #" + operation.issueIids.join(", #");
-  }
-  if (operation.kind === "issues.planning.update") {
-    return "issues #" + operation.issueIids.join(", #");
-  }
-  if (operation.kind === "issues.iteration.update") {
+  if (operation.kind === "issues.labels.update" ||
+    operation.kind === "issues.planning.update" ||
+    operation.kind === "issues.iteration.update" ||
+    operation.kind === "issues.notes.create") {
     return "issues #" + operation.issueIids.join(", #");
   }
   if (operation.kind === "label.create") {

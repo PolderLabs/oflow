@@ -1,0 +1,58 @@
+{
+  "name": "glab-only",
+  "description": "No direct token; glab is authenticated. Writes go through glab api with the same field set as REST.",
+  "credentials": "none-in-fixture",
+  "auth": {
+    "sources": [{ "source": "glab", "authenticated": true }],
+    "preferredReadBackend": "glab",
+    "preferredWriteBackend": "glab"
+  },
+  "capabilities": [
+    { "id": "work_item.read", "usable": true, "backend": "glab" },
+    { "id": "work_item.update", "usable": true, "backend": "glab" },
+    { "id": "work_item.comment", "usable": false, "backend": null, "reason": "note create not mapped on glab path in this slice" },
+    { "id": "merge_requests.write", "usable": false, "backend": null, "reason": "delegated MCP preferred without REST token" }
+  ],
+  "reads": {
+    "glab api projects/team%2Fproject/issues/42": {
+      "iid": 42,
+      "title": "Choose a pod",
+      "state": "opened",
+      "issue_type": "task",
+      "labels": ["User Story"],
+      "milestone": { "title": "Sprint 1" },
+      "iteration": null,
+      "due_date": "2026-10-01",
+      "weight": 3,
+      "updated_at": "2026-09-17T10:00:00Z",
+      "web_url": "https://gitlab.example.test/team/project/-/issues/42"
+    }
+  },
+  "writes": {
+    "glab api PUT projects/team%2Fproject/issues/42": {
+      "fields": [
+        "title",
+        "description",
+        "labels",
+        "add_labels",
+        "remove_labels",
+        "milestone",
+        "milestone_id",
+        "epic_id",
+        "issue_type",
+        "due_date",
+        "weight",
+        "assignee_ids",
+        "state_event"
+      ],
+      "coercions": {
+        "milestone_id": "string",
+        "epic_id": "string",
+        "weight": "string",
+        "assignee_ids": "comma-joined",
+        "add_labels": "comma-joined",
+        "remove_labels": "comma-joined"
+      }
+    }
+  }
+}

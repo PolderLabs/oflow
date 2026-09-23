@@ -1,0 +1,20 @@
+{
+  "name": "omp-bridge",
+  "description": "OMP bridge installation: generated commands call oflow; runtime owns MCP configuration.",
+  "credentials": "none-in-fixture",
+  "host": {
+    "id": "omp",
+    "bridgePath": ".omp/",
+    "instructionFiles": [".omp/commands/", ".oflow/WORKFLOW.md"]
+  },
+  "cliContract": {
+    "handoff": ["oflow handoff --story <iid> --json"],
+    "check": ["oflow check --story <iid> --json"],
+    "finish": ["oflow finish --story <iid> --json"]
+  },
+  "boundaries": [
+    "OMP does not receive GitLab tokens from oflow.",
+    "Handoff JSON matches oflow handoff --json exactly.",
+    "MCP server registration stays runtime-owned."
+  ]
+}

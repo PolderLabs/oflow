@@ -1,0 +1,25 @@
+{
+  "name": "claude-code-host",
+  "description": "Claude Code agent host boundary: instructions point at oflow JSON; no GitLab credentials in the host layer.",
+  "credentials": "none-in-fixture",
+  "host": {
+    "id": "claude-code",
+    "instructionFiles": [".oflow/WORKFLOW.md", "AGENTS.md", "CLAUDE.md"]
+  },
+  "cliContract": {
+    "sessionStart": ["oflow work --mine --refresh --json", "oflow sync --summary --refresh --json"],
+    "explore": ["oflow work --mine --cached --json", "oflow assess --story <iid> --json"],
+    "mutate": [
+      "oflow plan issue note --story <iid> --body <text> --json",
+      "oflow approve <plan.json> --json",
+      "oflow apply <plan.json> --json",
+      "oflow verify <plan.json> --json"
+    ],
+    "discover": ["oflow capabilities --json", "oflow help"]
+  },
+  "boundaries": [
+    "Host never stores GITLAB_TOKEN in repo files.",
+    "All remote writes go through plan approve apply verify.",
+    "JSON plan responses always include planPath."
+  ]
+}

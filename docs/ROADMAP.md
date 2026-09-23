@@ -94,12 +94,20 @@ kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
   probes. (probeTransport heuristic + CapabilitiesTransport/DoctorReport
   surfaces; commit 79e3159)
 
-- [ ] Reconcile generated Claude, Codex, OMP, Copilot/VS Code, and OpenWolf
+- [x] Reconcile generated Claude, Codex, OMP, Copilot/VS Code, and OpenWolf
   contracts with the actual JSON commands and approval gates.
-- [ ] Audit REST, `glab`, and delegated field parity for labels, epic links,
+  *(Implemented: help text documents approve/apply/--yes/--convert-ac;
+  `docs/JSON-COOKBOOK.md` is the machine contract; host fixtures under
+  `test/fixtures/compat/` pin instruction-file + CLI boundaries.)*
+- [x] Audit REST, `glab`, and delegated field parity for labels, epic links,
   dates, weight, and milestone identifiers.
-- [ ] Add synthetic compatibility fixtures and release gates for all supported
+  *(Implemented: `docs/FIELD-PARITY.md` matrix; glab `changesToFields` now
+  forwards `labels`, `milestone`, `epic_id`, `due_date`, `weight`;
+  `test/executor.test.mjs` asserts the glab field set.)*
+- [x] Add synthetic compatibility fixtures and release gates for all supported
   host/transport combinations; never use real credentials in fixtures.
+  *(Implemented: `test/fixtures/compat/*.json` + `test/compat-fixtures.test.mjs`
+  covering direct-token, glab-only, runtime MCP delegated, Claude, Codex, OMP.)*
 
 ### Mandatory session-friction closure
 
@@ -197,42 +205,66 @@ delivery writes, verification flexibility, discoverability, then ergonomics.
 
 #### F4 — Verification flexibility and pipeline policy
 
-- [ ] Treat `Done when` and equivalent description bullet sections as
+- [x] Treat `Done when` and equivalent description bullet sections as
   acceptance criteria when no checklist heading exists, while preserving
   conservative evidence semantics.
-- [ ] Add an explicit `oflow plan issue update --convert-ac` operation for
+  *(Implemented: `findAcceptanceSections`/`parseAcceptanceCriteria` in
+  `src/criteria.ts`; `test/criteria.test.mjs`.)*
+- [x] Add an explicit `oflow plan issue update --convert-ac` operation for
   turning eligible bullets into stable task/checklist criteria; never rewrite
   descriptions implicitly.
-- [ ] Detect projects without `.gitlab-ci.yml` and report missing pipeline
+  *(Implemented: `createIssueConvertAcPlan`; CLI `--convert-ac`; CLI + plan
+  tests.)*
+- [x] Detect projects without `.gitlab-ci.yml` and report missing pipeline
   evidence as `unknown`/warning rather than a permanent completion block.
-- [ ] Add `pipeline=disabled` (or equivalent) project configuration with clear
+  *(Implemented: `EvaluateCriteriaOptions.ciConfigPresent` in `evaluateCriteria`;
+  `verify --story` sets `ciConfigPresent` and emits a warning.)*
+- [x] Add `pipeline=disabled` (or equivalent) project configuration with clear
   policy output and tests for enabled, absent, and disabled pipeline modes.
+  *(Implemented: `.oflow/config.json` `workflow.pipeline`; `resolvePipelinePolicy`;
+  finish/assess/verify honor disabled mode; criteria + lifecycle tests.)*
 
 #### F5 — CLI discoverability and machine contracts
 
-- [ ] Make `oflow help` and `oflow plan --help` document the actual top-level
+- [x] Make `oflow help` and `oflow plan --help` document the actual top-level
   `approve <plan>` and `apply <plan>` commands, including `--state closed`.
-- [ ] Make every plan-producing `--json` response expose a stable top-level
+  *(Implemented: `helpText()` documents approve/apply, `--yes`, `--convert-ac`,
+  `work --state`, `work --iid`; help assertions in `test/cli.test.mjs`.)*
+- [x] Make every plan-producing `--json` response expose a stable top-level
   `planPath` (while preserving the full plan object for compatibility).
-- [ ] Publish JSON schemas/examples or a concise cookbook for `work`, `sync`,
+  *(Implemented: `printPlan` in `src/cli.ts`; planPath test.)*
+- [x] Publish JSON schemas/examples or a concise cookbook for `work`, `sync`,
   `audit.jsonl`, plans, receipts, and verification output.
-- [ ] Add `oflow work --state closed|all`; make the effective state filter
+  *(Implemented: `docs/JSON-COOKBOOK.md`.)*
+- [x] Add `oflow work --state closed|all`; make the effective state filter
   visible in JSON and text output.
+  *(Implemented: `normalizeIssueState` accepts closed/all; JSON includes
+  `state` and `query.state`; `issueType` included on work summaries;
+  `test/cli.test.mjs`.)*
 
 #### F6 — Batch, normalized work-item, and low-risk ergonomics
 
-- [ ] Add one bulk-note plan/apply flow for
+- [x] Add one bulk-note plan/apply flow for
   `plan issue note --stories <iid,...>` with bounded targets, shared-body
   verification, and partial-progress recovery.
-- [ ] Expose one normalized read path per IID for issue-backed and Work Item
+  *(Implemented: `createBulkIssueNotesPlan` / `issues.notes.create`;
+  `MAX_BULK_ISSUES = 50`; `verifyBulkIssueNotes`; plan + CLI tests.)*
+- [x] Expose one normalized read path per IID for issue-backed and Work Item
   resources; do not force agents to probe `/issues/` and Work Item endpoints
   separately.
-- [ ] Add a safe milestone/iteration fallback: when the equivalent milestone
-  already expresses the requested timebox, report a no-op/note rather than
-  failing after an unsupported group-iteration lookup.
-- [ ] Add `--yes` only for `issue.note.create`, preserving the audit event,
+  *(Implemented: `loadWorkItemByIid` + `oflow work --iid <iid>` with
+  `source: "normalized-issue-read"`.)*
+- [x] Add a safe milestone/iteration fallback: when the equivalent milestone
+  already expresses the requested timebox, report a no-op/note after a
+  documented unavailable project-iteration lookup. Authentication, permission,
+  network, and server errors remain visible.
+  *(Implemented: only `GitLabApiError` 404 enters the equivalent-milestone
+  fallback; 401/403/5xx and network errors propagate; plan regression test.)*
+- [x] Add `--yes` only for `issue.note.create`, preserving the audit event,
   target summary, verification, and explicit two-step approval for all other
   remote mutations.
+  *(Implemented: CLI rejects `--yes` outside apply and non-note plans with
+  `INVALID_YES_OPTION`; approve always rejects `--yes`.)*
 
 The release checklist must trace every F1–F6 item to implementation,
 regression tests, documentation, and a compatible JSON example before the
@@ -455,11 +487,15 @@ shows the explicit CLI command required to contact GitLab.
 - [x] Backend/auth selection diagnostics
 - [ ] Separate configured, authenticated, readable, mutable, and verifiable
   states for each backend; make core reads honor the selected read transport
-  or report explicit reduced mode
-- [ ] Add `oflow identity --json` (or `auth whoami`) with GitLab principal and
-  credential/backend metadata; make `work --mine` ID/server based
-- [ ] Make capabilities and doctor report live backend/permission availability
-  without probing writes
+  or report explicit reduced mode. Transport/capability reporting exists, but
+  `src/context.ts` still constructs the REST client directly.
+- [ ] Add `oflow identity --json` with GitLab principal and
+  credential/backend metadata; make `work --mine` ID/server based. The identity
+  command exists, but `work --mine` still filters by resolved username and the
+  JSON cookbook lacks an identity example.
+- [x] Make capabilities and doctor report live backend/permission availability
+  without probing writes. *(Implemented with shared capability probes; write
+  paths remain `not-probed` in capability and doctor tests.)*
 
 ### Phase 4d — glab execution adapter
 
@@ -491,7 +527,8 @@ shows the explicit CLI command required to contact GitLab.
 - [x] Ingest execution receipts from agent-executed MCP calls
   (`oflow apply <plan> --receipt <file>`)
 - [x] Independent verification through a read transport
-- [ ] Clear reduced-mode reporting when no independent read transport exists
+- [ ] Clear reduced-mode reporting when no independent read transport exists;
+  capability reporting is present, but core context reads still require REST.
 
 ### Phase 4g — Agent lifecycle commands
 
@@ -520,9 +557,10 @@ the same plan -> approve -> apply -> verify gates:
 - [x] Merge-request creation through delegated GitLab MCP actions
   (`plan merge-request create` -> `approve` -> `apply --delegate` ->
   `apply --receipt` -> `verify`); review/discussion state remains deferred
-- [ ] Implement `merge-requests.write` with plan-backed REST/glab/delegated
+- [x] Implement `merge-requests.write` with plan-backed REST/glab/delegated
   create and update operations, multiline description files, permission
-  diagnostics, and independent verification
+  diagnostics, and independent verification. *(Implemented under F3; covered
+  by plan and CLI lifecycle tests.)*
 - [ ] Branch and repository operations (optional; local Git preferred)
 - [ ] Pipeline inspection and controlled trigger/cancel/retry operations
 - [ ] Delivery evidence linked back to acceptance criteria

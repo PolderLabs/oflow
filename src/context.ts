@@ -113,6 +113,29 @@ export async function loadMergeRequest(
   return new GitLabClient(remote.host).getMergeRequest(remote.projectPath, mergeRequestIid);
 }
 
+/**
+ * F6: one normalized read path per IID. REST `/issues/<iid>` is the single
+ * source of truth for issue-backed work items; agents should not also probe
+ * Work Item GraphQL endpoints for the same IID.
+ */
+export async function loadWorkItemByIid(
+  root: string,
+  iid: number,
+): Promise<GitLabIssue> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  if (!Number.isSafeInteger(iid) || iid < 1) {
+    throw new OflowError("Issue IID must be a positive integer.", "INVALID_ISSUE_IID");
+  }
+  const remote = await getGitLabRemote(root);
+  return new GitLabClient(remote.host).getIssue(remote.projectPath, iid);
+}
+
 export interface MergeRequestSummary {
   iid: number;
   title: string;
@@ -189,6 +212,7 @@ export interface WorkItemSummary {
   iid: number;
   title: string;
   state: string | null;
+  issueType: string | null;
   labels: string[];
   milestone: string | null;
   iteration: string | null;
@@ -214,6 +238,7 @@ export function compactWorkItems(issues: GitLabIssue[]): WorkItemSummary[] {
     iid: issue.iid,
     title: oneLine(issue.title),
     state: issue.state ?? null,
+    issueType: typeof issue.issue_type === "string" ? issue.issue_type : null,
     labels: issue.labels ?? [],
     milestone: namedValue(issue.milestone),
     iteration: namedValue(issue.iteration),
@@ -288,6 +313,7 @@ export function formatWorkItemSummariesMarkdown(
           : "";
         const details = [
           labels.trim() ? labels.trim().replace(/^·\s*/, "") : "",
+          item.issueType ? "type: " + item.issueType : "",
           item.assignees.length > 0 ? "assignee: " + item.assignees.join(", ") : "",
           item.milestone ? "milestone: " + item.milestone : "",
           item.iteration ? "iteration: " + item.iteration : "",

@@ -163,6 +163,7 @@ function formatAuditTarget(operation: PlanArtifact["operation"]): string {
     case "issues.labels.update":
     case "issues.planning.update":
     case "issues.iteration.update":
+    case "issues.notes.create":
       return operation.issueIids.map((iid) => "#" + String(iid)).join(", ");
     case "issue.note.create":
       return "issue #" + String(operation.issueIid) + " note";

@@ -24,3 +24,5 @@ export * from "./work-cache.js";
 export * from "./state.js";
 export * from "./templates.js";
 export * from "./types.js";
+
+export type { PipelinePolicy } from "./criteria.js";

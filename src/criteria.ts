@@ -7,23 +7,66 @@ import type {
 export const criterionPattern =
   /^\s*[-*]\s*\[([ xX])\]\s*(?:(?:([A-Za-z]+-\d+))\s*[:.)\-–—]\s*)?(.+?)\s*$/i;
 
-export function acceptanceLines(description: string | null | undefined): string[] {
-  const lines = normalizeDescription(description).split(/\r?\n/);
-  const headingIndex = lines.findIndex(
-    (line) => isAcceptanceHeading(line),
-  );
-  if (headingIndex < 0) {
-    return [];
-  }
+/** Plain bullet under a fallback acceptance heading (no checkbox yet). */
+export const plainBulletPattern = /^\s*[-*]\s+(?![([])(.+?)\s*$/;
 
-  const result: string[] = [];
-  for (let index = headingIndex + 1; index < lines.length; index += 1) {
-    if (isSectionHeading(lines[index])) {
+const ACCEPTANCE_HEADINGS: Array<{
+  test: (line: string) => boolean;
+  source: "acceptance-criteria" | "done-when" | "equivalent";
+}> = [
+  { test: isAcceptanceHeading, source: "acceptance-criteria" },
+  { test: isDoneWhenHeading, source: "done-when" },
+  { test: isEquivalentBulletHeading, source: "equivalent" },
+];
+
+export interface AcceptanceSection {
+  heading: string;
+  source: "acceptance-criteria" | "done-when" | "equivalent";
+  lines: string[];
+}
+
+function findAcceptanceSections(description: string | null | undefined): AcceptanceSection[] {
+  const lines = normalizeDescription(description).split(/\r?\n/);
+  const sections: AcceptanceSection[] = [];
+  let primary: AcceptanceSection | null = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = ACCEPTANCE_HEADINGS.find((entry) => entry.test(lines[index]));
+    if (!match) {
+      continue;
+    }
+    const sectionLines: string[] = [];
+    for (let next = index + 1; next < lines.length; next += 1) {
+      if (isSectionHeading(lines[next]) || ACCEPTANCE_HEADINGS.some((entry) => entry.test(lines[next]))) {
+        break;
+      }
+      sectionLines.push(lines[next]);
+    }
+    const section: AcceptanceSection = {
+      heading: lines[index].trim(),
+      source: match.source,
+      lines: sectionLines,
+    };
+    if (match.source === "acceptance-criteria") {
+      // An explicit Acceptance criteria heading wins; ignore fallbacks.
+      primary = section;
       break;
     }
-    result.push(lines[index]);
+    if (!primary) {
+      primary = section;
+    }
   }
-  return result;
+  return primary ? [primary] : [];
+}
+
+export function acceptanceLines(description: string | null | undefined): string[] {
+  return findAcceptanceSections(description)[0]?.lines ?? [];
+}
+
+export function acceptanceSectionSource(
+  description: string | null | undefined,
+): AcceptanceSection["source"] | null {
+  return findAcceptanceSections(description)[0]?.source ?? null;
 }
 
 export function parseAcceptanceCriteria(
@@ -32,14 +75,34 @@ export function parseAcceptanceCriteria(
   const criteria: AcceptanceCriterion[] = [];
   const usedIds = new Set<string>();
   let nextNumber = 1;
+  const section = findAcceptanceSections(description)[0];
 
-  for (const line of acceptanceLines(description)) {
+  for (const line of section?.lines ?? []) {
     const match = line.match(criterionPattern);
-    if (!match) {
-      continue;
+    let id: string | undefined;
+    let text: string | undefined;
+    let checked = false;
+
+    if (match) {
+      id = match[2]?.toUpperCase();
+      text = match[3].trim();
+      checked = match[1].toLowerCase() === "x";
+    } else if (section && section.source !== "acceptance-criteria") {
+      // Conservative: under Done when / equivalent headings only, treat plain
+      // bullets as unchecked criteria so agents still see explicit scope.
+      const plain = line.match(plainBulletPattern);
+      if (plain) {
+        text = plain[1].trim().replace(/^(?:AC-\d+)\s*[:.)\-–—]\s*/i, "");
+        const explicitId = /^(?:AC-\d+)\b/i.exec(plain[1])?.[0];
+        if (explicitId) {
+          id = explicitId.toUpperCase();
+        }
+      }
     }
 
-    let id = match[2]?.toUpperCase();
+    if (!text) {
+      continue;
+    }
     if (!id || usedIds.has(id)) {
       do {
         id = "AC-" + nextNumber;
@@ -47,13 +110,106 @@ export function parseAcceptanceCriteria(
       } while (usedIds.has(id));
     }
     usedIds.add(id);
-    criteria.push({
-      id,
-      text: match[3].trim(),
-      checked: match[1].toLowerCase() === "x",
-    });
+    criteria.push({ id, text, checked });
   }
   return criteria;
+}
+
+export interface AcceptanceCriteriaConversion {
+  description: string;
+  converted: number;
+  changed: boolean;
+}
+
+/**
+ * Explicit conversion of eligible plain bullets under Acceptance criteria /
+ * Done when / equivalent headings into stable `- [ ] AC-n:` checklist lines.
+ * Never runs implicitly — only through an approved plan.
+ */
+export function convertBulletsToAcceptanceCriteria(
+  description: string | null | undefined,
+): AcceptanceCriteriaConversion {
+  const original = normalizeDescription(description);
+  const lines = original.split(/\r?\n/);
+  const sections = findAcceptanceSections(original);
+  if (sections.length === 0) {
+    return { description: original, converted: 0, changed: false };
+  }
+  const section = sections[0];
+  const headingIndex = lines.findIndex((line) => line.trim() === section.heading);
+  if (headingIndex < 0) {
+    return { description: original, converted: 0, changed: false };
+  }
+
+  // Reserve only IDs already present as explicit checklist or AC-n bullets.
+  // Plain bullets without an explicit ID must be free to receive AC-1, AC-2, …
+  const usedIds = new Set<string>();
+  for (const line of lines) {
+    const checklist = line.match(criterionPattern);
+    if (checklist?.[2]) {
+      usedIds.add(checklist[2].toUpperCase());
+      continue;
+    }
+    const plain = line.match(plainBulletPattern);
+    if (plain) {
+      const explicitId = /^(AC-\d+)\s*[:.)\-–—]/i.exec(plain[1].trim())?.[1];
+      if (explicitId) {
+        usedIds.add(explicitId.toUpperCase());
+      }
+    }
+  }
+  const emittedIds = new Set<string>();
+  for (const line of lines) {
+    const checklist = line.match(criterionPattern);
+    if (checklist?.[2]) {
+      emittedIds.add(checklist[2].toUpperCase());
+    }
+  }
+  let nextNumber = 1;
+  const allocateId = (): string => {
+    let id: string;
+    do {
+      id = "AC-" + nextNumber;
+      nextNumber += 1;
+    } while (usedIds.has(id));
+    usedIds.add(id);
+    return id;
+  };
+
+  const end = headingIndex + 1 + section.lines.length;
+  let converted = 0;
+  for (let index = headingIndex + 1; index < end; index += 1) {
+    const line = lines[index];
+    if (!line) {
+      continue;
+    }
+    if (line.match(criterionPattern)) {
+      continue;
+    }
+    const plain = line.match(plainBulletPattern);
+    if (!plain) {
+      continue;
+    }
+    const rest = plain[1].trim();
+    const explicit = /^(AC-\d+)\s*[:.)\-–—]\s*(.+)$/i.exec(rest);
+    if (explicit) {
+      const requestedId = explicit[1].toUpperCase();
+      const id = emittedIds.has(requestedId) ? allocateId() : requestedId;
+      emittedIds.add(id);
+      usedIds.add(id);
+      lines[index] = "- [ ] " + id + ": " + explicit[2].trim();
+      converted += 1;
+      continue;
+    }
+    const id = allocateId();
+    lines[index] = "- [ ] " + id + ": " + rest;
+    converted += 1;
+  }
+
+  if (converted === 0) {
+    return { description: original, converted: 0, changed: false };
+  }
+  return { description: lines.join("\n"), converted, changed: true };
 }
 
 export function evidenceFromText(text: string | null | undefined): string[] {
@@ -67,6 +223,20 @@ export function evidenceFromText(text: string | null | undefined): string[] {
     }
   }
   return evidence;
+}
+
+export type PipelinePolicy = "enabled" | "disabled";
+
+export interface EvaluateCriteriaOptions {
+  /**
+   * Project pipeline policy. `disabled` skips the pipeline gate entirely.
+   * `enabled` (default) requires success when pipeline evidence exists, but
+   * missing evidence without a local `.gitlab-ci.yml` is a warning, not a
+   * permanent completion block.
+   */
+  pipelinePolicy?: PipelinePolicy;
+  /** Whether a CI config is known to be present in the repository. */
+  ciConfigPresent?: boolean;
 }
 
 export interface VerificationRecord {
@@ -108,6 +278,7 @@ export function evaluateCriteria(
   criteria: AcceptanceCriterion[],
   mergeRequestDescription: string | null | undefined,
   pipelineStatus: string | null | undefined,
+  options: EvaluateCriteriaOptions = {},
 ): VerificationResult {
   const records = parseVerificationEvidence(mergeRequestDescription);
   const reasons: string[] = [];
@@ -140,15 +311,28 @@ export function evaluateCriteria(
     reasons.unshift("story has no Acceptance criteria checklist");
   }
 
+  const pipelinePolicy = options.pipelinePolicy ?? "enabled";
   const normalizedPipelineStatus = pipelineStatus?.toLowerCase() ?? null;
-  if (normalizedPipelineStatus !== "success") {
+  let pipelineSatisfied: boolean;
+  if (pipelinePolicy === "disabled") {
+    pipelineSatisfied = true;
+  } else if (normalizedPipelineStatus === "success") {
+    pipelineSatisfied = true;
+  } else if (normalizedPipelineStatus === null && options.ciConfigPresent === false) {
+    // Absent CI config + no pipeline evidence: unknown/warning, not a block.
+    pipelineSatisfied = true;
+    reasons.push(
+      "pipeline evidence is unknown (no .gitlab-ci.yml and no pipeline found); treated as a warning under enabled policy",
+    );
+  } else {
+    pipelineSatisfied = false;
     reasons.push(
       "latest pipeline is " + (pipelineStatus ?? "unknown") + "; expected success",
     );
   }
 
   return {
-    passed: criteria.length > 0 && checks.every((check) => check.verified) && normalizedPipelineStatus === "success",
+    passed: criteria.length > 0 && checks.every((check) => check.verified) && pipelineSatisfied,
     pipelineStatus: pipelineStatus ?? null,
     checks,
     reasons,
@@ -169,6 +353,14 @@ function normalizeDescription(description: string | null | undefined): string {
 
 function isAcceptanceHeading(line: string): boolean {
   return /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?acceptance criteria\s*:?(?:\*\*|__)?\s*$/i.test(line);
+}
+
+function isDoneWhenHeading(line: string): boolean {
+  return /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?done when\s*:?(?:\*\*|__)?\s*$/i.test(line);
+}
+
+function isEquivalentBulletHeading(line: string): boolean {
+  return /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?(?:definition of done|success criteria|exit criteria)\s*:?(?:\*\*|__)?\s*$/i.test(line);
 }
 
 function isSectionHeading(line: string): boolean {

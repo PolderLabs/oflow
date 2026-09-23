@@ -83,6 +83,12 @@ export interface OflowConfig {
     acceptanceCriteriaRequired: true;
     requireEvidenceInMergeRequest: true;
     requireSuccessfulPipeline: true;
+    /**
+     * F4 pipeline policy: "enabled" requires success when pipeline evidence
+     * exists; missing evidence without CI config is a warning. "disabled"
+     * skips the pipeline gate with explicit policy output.
+     */
+    pipeline?: "enabled" | "disabled";
   };
 }
 
