@@ -1,6 +1,9 @@
 import { join } from "node:path";
 import { readJson } from "./fs.js";
+import type { PipelinePolicy } from "./criteria.js";
 import type { AgentDetection, GitLabRemote, OflowConfig } from "./types.js";
+
+export type { PipelinePolicy };
 
 export const OFLOW_DIRECTORY = ".oflow";
 export const CONFIG_RELATIVE_PATH = OFLOW_DIRECTORY + "/config.json";
@@ -35,6 +38,12 @@ export function makeConfig(
       acceptanceCriteriaRequired: true,
       requireEvidenceInMergeRequest: true,
       requireSuccessfulPipeline: true,
+      pipeline: "enabled",
     },
   };
+}
+
+export function resolvePipelinePolicy(config: OflowConfig | null): PipelinePolicy {
+  const value = config?.workflow?.pipeline;
+  return value === "disabled" ? "disabled" : "enabled";
 }

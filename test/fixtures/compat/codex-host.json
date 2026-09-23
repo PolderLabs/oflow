@@ -1,0 +1,24 @@
+{
+  "name": "codex-host",
+  "description": "Codex agent host boundary: same oflow CLI JSON contract; no provider-specific GitLab client.",
+  "credentials": "none-in-fixture",
+  "host": {
+    "id": "codex",
+    "instructionFiles": [".oflow/WORKFLOW.md", "AGENTS.md"]
+  },
+  "cliContract": {
+    "sessionStart": ["oflow work --mine --refresh --json", "oflow sync --summary --refresh --json"],
+    "explore": ["oflow work --mine --cached --json", "oflow context --story <iid> --json"],
+    "mutate": [
+      "oflow plan issue update --story <iid> --convert-ac --json",
+      "oflow approve <plan.json> --json",
+      "oflow apply <plan.json> --json"
+    ],
+    "discover": ["oflow capabilities --json", "oflow doctor --check-api --json"]
+  },
+  "boundaries": [
+    "Host never stores GITLAB_TOKEN in repo files.",
+    "Bulk plans cap at 50 issue IIDs.",
+    "apply --yes only for issue.note.create."
+  ]
+}

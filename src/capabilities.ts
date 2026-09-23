@@ -195,8 +195,9 @@ export async function getCapabilities(options: CapabilitiesOptions = {}): Promis
         "Merge Request",
         "REST + glab + delegated git push",
         "Project: Write; optional delegated MR creation via `git push -o merge_request.create`",
-        "Mutations run under plan → approve → apply → verify. The transport is selected per host: REST when scope allows, glab CLI fallback for granular tokens, delegated git when neither transport is available. The Doctor 403 remediation points at the same three paths.",
+        "The REST and glab paths support title/description/state/source/target/topic. The delegated path is limited to MR create/update with description via --description-file; portable issue-update fields (labels, milestone_id, epic_id, due_date, weight, issue_type, assignee_ids) are not advertised for delegated actions.",
       ),
+
       capability(
         "work-items.bulk-labels.update",
         "implemented",

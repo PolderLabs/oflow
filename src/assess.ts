@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { loadConfig, resolvePipelinePolicy } from "./config.js";
 import { loadStoryContext, selectVerificationEvidence } from "./context.js";
 import { evaluateCriteria, parseVerificationEvidence } from "./criteria.js";
 import { OflowError } from "./errors.js";
@@ -58,6 +59,8 @@ export interface AssessmentResult {
   };
   status: AssessmentStatus;
   criteria: AssessmentCriterion[];
+  pipelinePolicy: "enabled" | "disabled";
+  ciConfigPresent: boolean;
   remote: {
     mergeRequest: {
       iid: number;
@@ -97,17 +100,26 @@ export async function assessStory(
   const verificationEvidence = selectVerificationEvidence(context);
   const mergeRequest = verificationEvidence.mergeRequest;
   const pipeline = verificationEvidence.pipeline;
+  const config = await loadConfig(root);
+  const pipelinePolicy = resolvePipelinePolicy(config);
+  const ciConfigPresent = await fileExists(join(root, ".gitlab-ci.yml"));
   const verification = evaluateCriteria(
     context.criteria,
     mergeRequest?.description,
     pipeline?.status,
+    { pipelinePolicy, ciConfigPresent },
   );
   const evidenceRecords = parseVerificationEvidence(mergeRequest?.description);
   const blockerNotes = context.recentNotes.filter((note) => isBlockerNote(note.body));
+  const pipelineBlocks =
+    pipelinePolicy === "enabled" &&
+    (pipeline
+      ? pipeline.status?.toLowerCase() !== "success"
+      : !(ciConfigPresent === false && pipeline === null));
   const blockers = [
     ...blockerNotes.slice(0, 3).map((note) => "GitLab note: " + compact(note.body, 180)),
-    ...(pipeline && pipeline.status?.toLowerCase() !== "success"
-      ? ["Latest pipeline is " + (pipeline.status ?? "unknown") + "; expected success."]
+    ...(pipelineBlocks
+      ? ["Latest pipeline is " + (pipeline?.status ?? "unknown") + "; expected success."]
       : []),
   ];
   const collectedLocal = await collectLocalEvidence(
@@ -131,7 +143,10 @@ export async function assessStory(
       reason: check.reason,
     };
   });
-  const status = overallStatus(criteria, verification.pipelineStatus, blockers);
+  const status = overallStatus(criteria, verification.pipelineStatus, blockers, {
+    pipelinePolicy,
+    ciConfigPresent,
+  });
   const milestone = namedValue(context.story.milestone);
   const iteration = namedValue(context.story.iteration);
   const assignees = usernamesFrom(context.story.assignees);
@@ -153,6 +168,7 @@ export async function assessStory(
     },
     status,
     criteria,
+    pipelinePolicy,
     remote: {
       mergeRequest: mergeRequest
         ? {
@@ -190,11 +206,13 @@ export async function assessStory(
       local,
       assignees.length > 0,
       milestone !== null || iteration !== null,
+      { pipelinePolicy, ciConfigPresent },
     ),
     warnings: unique([
       ...context.warnings,
       ...(verificationEvidence.warning ? [verificationEvidence.warning] : []),
     ]),
+    ciConfigPresent,
   };
 }
 
@@ -281,14 +299,19 @@ function overallStatus(
   criteria: AssessmentCriterion[],
   pipelineStatus: string | null,
   blockers: string[],
+  options: { pipelinePolicy: "enabled" | "disabled"; ciConfigPresent: boolean },
 ): AssessmentStatus {
   if (blockers.length > 0) {
     return "blocked";
   }
+  const pipelineSatisfied =
+    options.pipelinePolicy === "disabled" ||
+    pipelineStatus?.toLowerCase() === "success" ||
+    (pipelineStatus === null && options.ciConfigPresent === false);
   if (
     criteria.length > 0 &&
     criteria.every((criterion) => criterion.status === "satisfied") &&
-    pipelineStatus?.toLowerCase() === "success"
+    pipelineSatisfied
   ) {
     return "satisfied";
   }
@@ -306,6 +329,7 @@ function nextActions(
   local: LocalEvidence,
   hasAssignee: boolean,
   hasTimebox: boolean,
+  options: { pipelinePolicy: "enabled" | "disabled"; ciConfigPresent: boolean },
 ): string[] {
   const actions: string[] = [];
   if (!hasAssignee) {
@@ -320,8 +344,16 @@ function nextActions(
   if (criteria.some((criterion) => criterion.status !== "satisfied")) {
     actions.push("Complete the missing acceptance-criterion checklist and concrete Evidence: lines.");
   }
-  if (!pipeline || pipeline.status?.toLowerCase() !== "success") {
+  if (options.pipelinePolicy === "disabled") {
+    actions.push("Pipeline policy is disabled; the pipeline gate is skipped by configuration.");
+  } else if (
+    pipeline
+      ? pipeline.status?.toLowerCase() !== "success"
+      : !(options.ciConfigPresent === false)
+  ) {
     actions.push("Run or fix the relevant pipeline before claiming completion.");
+  } else if (pipeline === null && options.ciConfigPresent === false) {
+    actions.push("No .gitlab-ci.yml and no pipeline evidence; treated as a warning, not a permanent block.");
   }
   if (!local.clean) {
     actions.push("Review the local changes and capture their test evidence.");
@@ -332,6 +364,15 @@ function nextActions(
     actions.push("Run oflow verify --story <iid> and prepare handoff evidence.");
   }
   return unique(actions);
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function collectLocalEvidence(

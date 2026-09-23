@@ -11,7 +11,9 @@ import {
   approvePlan,
   createBulkIssueIterationPlan,
   createBulkIssueLabelsPlan,
+  createBulkIssueNotesPlan,
   createBulkIssuePlanningPlan,
+  createIssueConvertAcPlan,
   createIssueCreatePlan,
   createIssueIterationUpdatePlan,
   createLabelCreatePlan,
@@ -255,7 +257,7 @@ test("issue iteration plans resolve, guard, apply, and verify assignment", async
       return response(issue);
     };
 
-    const created = await createIssueIterationUpdatePlan(root, 42, "sprint 2");
+    const created = await createIssueIterationUpdatePlan(root, 42, "Sprint 2");
     assert.equal(created.plan.state, "draft");
     assert.deepEqual(created.plan.operation, {
       kind: "issue.iteration.update",
@@ -861,6 +863,19 @@ test("plan paths cannot escape the repository plan directory", async () => {
   }
 });
 
+test("resolvePlanPath refuses cross-platform parent-escape attempts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-plan-path-cross-"));
+  try {
+    const escaped = join(root, "..", "escape.json");
+    await assert.rejects(
+      () => approvePlan(root, escaped),
+      { code: "UNSAFE_PLAN_PATH" },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("issue note plans create a note once and verify its body", async () => {
   const root = await mkdtemp(join(tmpdir(), "oflow-note-plan-"));
   const originalFetch = globalThis.fetch;
@@ -967,6 +982,277 @@ test("issue note apply reuses an exact existing note during recovery", async () 
     const verified = await verifyPlan(root, created.path);
     assert.equal(verified.plan.state, "verified");
     assert.equal(verified.plan.verification.passed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("bulk note plans apply shared body across issues with partial recovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-bulk-note-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "bulk-note-test-token";
+  const notes = { 42: [], 43: [] };
+  let nextNoteId = 100;
+  const body = "Progress: contract confirmed for both stories.";
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const match = url.pathname.match(/\/issues\/(\d+)(\/notes)?$/);
+      if (match && match[2] === "/notes" && (init?.method ?? "GET") === "POST") {
+        const iid = Number(match[1]);
+        const noteBody = new URLSearchParams(String(init.body)).get("body");
+        const note = { id: nextNoteId++, body: noteBody, noteable_iid: iid };
+        notes[iid].unshift(note);
+        return response(note);
+      }
+      if (match && match[2] === "/notes") {
+        return response(notes[Number(match[1])] ?? []);
+      }
+      if (match && !match[2]) {
+        const iid = Number(match[1]);
+        return response({
+          iid,
+          title: "Story " + String(iid),
+          state: "opened",
+          labels: [],
+          updated_at: "2026-09-17T10:00:00Z",
+          web_url: "https://gitlab.example.test/team/project/-/issues/" + String(iid),
+        });
+      }
+      return response({});
+    };
+
+    const created = await createBulkIssueNotesPlan(root, [42, 43], body);
+    assert.equal(created.plan.operation.kind, "issues.notes.create");
+    assert.deepEqual(created.plan.operation.issueIids, [42, 43]);
+    assert.equal(created.plan.operation.body, body);
+    assert.match(formatPlanMarkdown(created), /Bulk note changes:/);
+    assert.match(formatPlanMarkdown(created), /issues #42, #43/);
+
+    await approvePlan(root, created.path);
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.state, "applied");
+    assert.deepEqual(applied.plan.result, {
+      kind: "issues.notes.create",
+      issues: [
+        { iid: 42, noteId: 100, noteReused: false },
+        { iid: 43, noteId: 101, noteReused: false },
+      ],
+    });
+    assert.equal(notes[42][0].body, body);
+    assert.equal(notes[43][0].body, body);
+
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+    const fields = verified.plan.verification.checks.map((check) => check.field);
+    assert.ok(fields.includes("issue #42.note.body"));
+    assert.ok(fields.includes("issue #43.note.body"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("bulk note plans reject empty IIDs and empty bodies", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-bulk-note-invalid-"));
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    await assert.rejects(
+      () => createBulkIssueNotesPlan(root, [], "body"),
+      { code: "INVALID_ISSUE_IIDS" },
+    );
+    await assert.rejects(
+      () => createBulkIssueNotesPlan(root, [42], "   "),
+      { code: "EMPTY_PLAN" },
+    );
+    await assert.rejects(
+      () => createBulkIssueNotesPlan(root, [0, -1], "body"),
+      { code: "INVALID_ISSUE_IIDS" },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("convert-ac plan rewrites eligible bullets into checklist criteria", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-convert-ac-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "convert-ac-test-token";
+  let issue = {
+    iid: 42,
+    title: "Choose a pod",
+    state: "opened",
+    description: "## Done when\n\n- the door locks on close\n",
+    labels: [],
+    updated_at: "2026-09-17T10:00:00Z",
+    web_url: "https://gitlab.example.test/team/project/-/issues/42",
+  };
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if ((init?.method ?? "GET") === "PUT" && url.pathname.endsWith("/issues/42")) {
+        const form = new URLSearchParams(String(init.body));
+        issue = { ...issue, description: form.get("description") ?? issue.description };
+        return response(issue);
+      }
+      return response(issue);
+    };
+
+    const created = await createIssueConvertAcPlan(root, 42);
+    assert.equal(created.plan.operation.kind, "issue.update");
+    assert.match(created.plan.operation.changes.description, /- \[ \] AC-1: the door locks on close/);
+    assert.match(formatPlanMarkdown(created), /description:/);
+    assert.match(formatPlanMarkdown(created), /AC-1: the door locks on close/);
+
+    await approvePlan(root, created.path);
+    const applied = await applyPlan(root, created.path);
+    assert.equal(applied.plan.state, "applied");
+    assert.match(issue.description, /- \[ \] AC-1: the door locks on close/);
+    const verified = await verifyPlan(root, created.path);
+    assert.equal(verified.plan.state, "verified");
+    assert.equal(verified.plan.verification.passed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("iteration equivalent milestone is a no-op instead of a failed lookup", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-iteration-equiv-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "iteration-equiv-test-token";
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    await mkdir(join(root, ".oflow"), { recursive: true });
+    await writeFile(
+      join(root, ".oflow", "config.json"),
+      JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }),
+    );
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/iterations")) {
+        return {
+          ok: false,
+          status: 404,
+          headers: new Headers(),
+          text: async () => JSON.stringify({ message: "404 Not Found" }),
+        };
+      }
+      return response({
+        iid: 42,
+        title: "Choose a pod",
+        state: "opened",
+        milestone: { title: "Sprint 2" },
+        iteration: null,
+        updated_at: "2026-09-17T10:00:00Z",
+      });
+    };
+
+    await assert.rejects(
+      () => createIssueIterationUpdatePlan(root, 42, "Sprint 2"),
+      { code: "TIMEBOX_ALREADY_EQUIVALENT" },
+    );
+    await assert.rejects(
+      () => createBulkIssueIterationPlan(root, [42], "Sprint 2"),
+      { code: "TIMEBOX_ALREADY_EQUIVALENT" },
+    );
+    await assert.rejects(
+      () => createIssueIterationUpdatePlan(root, 42, "Unknown sprint"),
+      { code: "ITERATION_NOT_FOUND" },
+    );
+
+    for (const status of [401, 403, 500]) {
+      globalThis.fetch = async (input) => {
+        const url = new URL(String(input));
+        if (url.pathname.endsWith("/iterations")) {
+          return {
+            ok: false,
+            status,
+            headers: new Headers(),
+            text: async () => JSON.stringify({ message: "iteration failure" }),
+          };
+        }
+        return response({
+          iid: 42,
+          title: "Choose a pod",
+          state: "opened",
+          milestone: { title: "Sprint 2" },
+          iteration: null,
+          updated_at: "2026-09-17T10:00:00Z",
+        });
+      };
+      await assert.rejects(
+        () => createIssueIterationUpdatePlan(root, 42, "Sprint 2"),
+        (error) => error?.code === "GITLAB_API_ERROR" && error.status === status,
+      );
+    }
+
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/iterations")) {
+        throw new TypeError("network unavailable");
+      }
+      return response({
+        iid: 42,
+        title: "Choose a pod",
+        state: "opened",
+        milestone: { title: "Sprint 2" },
+        iteration: null,
+        updated_at: "2026-09-17T10:00:00Z",
+      });
+    };
+    await assert.rejects(
+      () => createIssueIterationUpdatePlan(root, 42, "Sprint 2"),
+      /network unavailable/,
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;

@@ -1,0 +1,44 @@
+{
+  "name": "runtime-mcp-delegated",
+  "description": "oflow emits a delegated action; the agent runtime owns GitLab MCP. oflow verifies via receipt, never trusts success alone.",
+  "credentials": "none-in-fixture",
+  "auth": {
+    "sources": [{ "source": "mcp", "configured": true, "authenticated": false }],
+    "preferredReadBackend": "rest-or-glab",
+    "preferredWriteBackend": "gitlab-mcp"
+  },
+  "capabilities": [
+    { "id": "merge_request.create", "usable": true, "backend": "gitlab-mcp", "mode": "delegated" },
+    { "id": "merge_request.update", "usable": true, "backend": "gitlab-mcp", "mode": "delegated" },
+    { "id": "work_item.update", "usable": false, "backend": null, "reason": "direct apply preferred when a token exists; delegated issue updates are later milestone" }
+  ],
+  "delegatedAction": {
+    "execution": "delegated",
+    "backendPreference": "gitlab-mcp",
+    "action": {
+      "name": "merge_request.create",
+      "arguments": {
+        "project": "team/project",
+        "sourceBranch": "story/42",
+        "targetBranch": "main",
+        "title": "Implements story #42"
+      }
+    },
+    "afterExecution": {
+      "command": "oflow apply <plan.json> --receipt <file>"
+    }
+  },
+  "receipt": {
+    "backend": "gitlab-mcp",
+    "action": "merge_request.create",
+    "executedAt": "2026-09-22T12:00:00.000Z",
+    "success": true,
+    "result": {
+      "iid": 9,
+      "web_url": "https://gitlab.example.test/team/project/-/merge_requests/9"
+    }
+  },
+  "writes": {
+    "parity": "Delegated path currently ships merge_request.create/update. Issue field parity is REST/glab only; see docs/FIELD-PARITY.md."
+  }
+}

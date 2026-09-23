@@ -362,6 +362,16 @@ export class GitLabClient {
         }
       }
     }
+    if (filters.assigneeId !== undefined) {
+      if (Number.isSafeInteger(filters.assigneeId) && filters.assigneeId > 0) {
+        query.set("assignee_id", String(filters.assigneeId));
+      } else {
+        throw new OflowError(
+          "assigneeId must be a positive integer.",
+          "INVALID_ASSIGNEE_ID",
+        );
+      }
+    }
     if (filters.author !== undefined) {
       query.set("author_username", filters.author.trim());
     }

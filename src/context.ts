@@ -4,6 +4,7 @@ import { parseAcceptanceCriteria } from "./criteria.js";
 import { GitLabClient } from "./gitlab.js";
 import type { GitLabListPage } from "./gitlab.js";
 import { OflowError } from "./errors.js";
+import { resolveAuth, type AuthResolution } from "./auth-resolver.js";
 import type {
   GitLabIssue,
   GitLabIssueFilters,
@@ -14,6 +15,45 @@ import type {
   IssueState,
   StoryContext,
 } from "./types.js";
+
+export interface ContextReadResolution {
+  client: GitLabClient;
+  read: "rest" | "glab" | "graphql";
+  host: string;
+  sources: AuthResolution["sources"];
+}
+
+function notInstalled(): OflowError {
+  return new OflowError(
+    "No .oflow/config.json found. Run oflow install first.",
+    "NOT_INSTALLED",
+  );
+}
+
+export async function resolveContextRead(root: string): Promise<ContextReadResolution> {
+  const config = await loadConfig(root);
+  if (!config) throw notInstalled();
+  const remote = await getGitLabRemote(root);
+  if (remote.host !== config.project.host || remote.projectPath !== config.project.path) {
+    throw new OflowError(
+      "The current Git remote differs from .oflow/config.json.",
+      "CONFIG_REMOTE_MISMATCH",
+    );
+  }
+  const resolution = await resolveAuth({ host: remote.host, root });
+  if (resolution.readBackend === "none") {
+    throw new OflowError(
+      "oflow cannot reach GitLab reads: no usable authentication backend. Run `oflow auth status` and `oflow doctor --check-api`.",
+      "READ_TRANSPORT_UNAVAILABLE",
+    );
+  }
+  return {
+    client: new GitLabClient(remote.host),
+    read: resolution.readBackend === "graphql" ? "graphql" : "rest",
+    host: remote.host,
+    sources: resolution.sources,
+  };
+}
 
 export async function listWorkItems(
   root: string,
@@ -30,16 +70,9 @@ export async function listWorkItemsPage(
   filters: GitLabIssueFilters = {},
   limit = 100,
 ): Promise<GitLabListPage<GitLabIssue>> {
-  const config = await loadConfig(root);
-  if (!config) {
-    throw new OflowError(
-      "No .oflow/config.json found. Run oflow install first.",
-      "NOT_INSTALLED",
-    );
-  }
-
+  const resolution = await resolveContextRead(root);
   const remote = await getGitLabRemote(root);
-  return new GitLabClient(remote.host).listIssuesPage(remote.projectPath, state, limit, filters);
+  return resolution.client.listIssuesPage(remote.projectPath, state, limit, filters);
 }
 
 /**
@@ -111,6 +144,29 @@ export async function loadMergeRequest(
 
   const remote = await getGitLabRemote(root);
   return new GitLabClient(remote.host).getMergeRequest(remote.projectPath, mergeRequestIid);
+}
+
+/**
+ * F6: one normalized read path per IID. REST `/issues/<iid>` is the single
+ * source of truth for issue-backed work items; agents should not also probe
+ * Work Item GraphQL endpoints for the same IID.
+ */
+export async function loadWorkItemByIid(
+  root: string,
+  iid: number,
+): Promise<GitLabIssue> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  if (!Number.isSafeInteger(iid) || iid < 1) {
+    throw new OflowError("Issue IID must be a positive integer.", "INVALID_ISSUE_IID");
+  }
+  const remote = await getGitLabRemote(root);
+  return new GitLabClient(remote.host).getIssue(remote.projectPath, iid);
 }
 
 export interface MergeRequestSummary {
@@ -189,6 +245,7 @@ export interface WorkItemSummary {
   iid: number;
   title: string;
   state: string | null;
+  issueType: string | null;
   labels: string[];
   milestone: string | null;
   iteration: string | null;
@@ -214,6 +271,7 @@ export function compactWorkItems(issues: GitLabIssue[]): WorkItemSummary[] {
     iid: issue.iid,
     title: oneLine(issue.title),
     state: issue.state ?? null,
+    issueType: typeof issue.issue_type === "string" ? issue.issue_type : null,
     labels: issue.labels ?? [],
     milestone: namedValue(issue.milestone),
     iteration: namedValue(issue.iteration),
@@ -288,6 +346,7 @@ export function formatWorkItemSummariesMarkdown(
           : "";
         const details = [
           labels.trim() ? labels.trim().replace(/^·\s*/, "") : "",
+          item.issueType ? "type: " + item.issueType : "",
           item.assignees.length > 0 ? "assignee: " + item.assignees.join(", ") : "",
           item.milestone ? "milestone: " + item.milestone : "",
           item.iteration ? "iteration: " + item.iteration : "",

@@ -1,0 +1,26 @@
+{
+  "name": "copilot-vscode-host",
+  "description": "Copilot Chat and VS Code agent host boundary: instructions mirror Claude/Codex agents and call oflow JSON; no vendor-specific GitLab API surface.",
+  "credentials": "none-in-fixture",
+  "host": {
+    "id": "copilot-vscode",
+    "instructionFiles": [".oflow/WORKFLOW.md", "AGENTS.md", ".github/copilot-instructions.md"]
+  },
+  "cliContract": {
+    "sessionStart": ["oflow work --mine --refresh --json", "oflow sync --summary --refresh --json"],
+    "explore": ["oflow work --mine --cached --json", "oflow context --story <iid> --json"],
+    "mutate": [
+      "oflow plan issue update --story <iid> --convert-ac --json",
+      "oflow approve <plan.json> --json",
+      "oflow apply <plan.json> --json",
+      "oflow verify <plan.json> --json"
+    ],
+    "discover": ["oflow capabilities --json", "oflow help"]
+  },
+  "boundaries": [
+    "Host never stores GITLAB_TOKEN in repo files.",
+    "All remote writes go through plan approve apply verify.",
+    "Copilot/VS Code runs the same oflow CLI JSON contract; the editor stores no additional GitLab credentials.",
+    "Workspace settings and .github/copilot-instructions.md may point at oflow commands but never embed tokens."
+  ]
+}

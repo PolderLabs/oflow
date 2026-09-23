@@ -130,6 +130,8 @@ test("assess does not use an unrelated successful branch pipeline", async () => 
         project: { host: "gitlab.example.test", path: "team/project" },
       }),
     );
+    // F4: with CI config present, a missing MR-bound pipeline must still block.
+    await writeFile(join(root, ".gitlab-ci.yml"), "test:\n  script:\n    - npm test\n");
 
     globalThis.fetch = async (input) => {
       const path = new URL(String(input)).pathname;

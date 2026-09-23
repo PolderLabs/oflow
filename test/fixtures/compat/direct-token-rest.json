@@ -1,0 +1,50 @@
+{
+  "name": "direct-token-rest",
+  "description": "Environment/stored token; REST is the read and write backend.",
+  "credentials": "none-in-fixture",
+  "auth": {
+    "sources": [{ "source": "stored", "authenticated": true }],
+    "preferredReadBackend": "rest",
+    "preferredWriteBackend": "rest"
+  },
+  "capabilities": [
+    { "id": "work_item.read", "usable": true, "backend": "rest" },
+    { "id": "work_item.update", "usable": true, "backend": "rest" },
+    { "id": "work_item.comment", "usable": true, "backend": "rest" },
+    { "id": "merge_requests.write", "usable": true, "backend": "rest" }
+  ],
+  "reads": {
+    "GET /api/v4/projects/team%2Fproject/issues/42": {
+      "iid": 42,
+      "title": "Choose a pod",
+      "state": "opened",
+      "issue_type": "task",
+      "labels": ["User Story"],
+      "milestone": { "title": "Sprint 1" },
+      "iteration": null,
+      "due_date": "2026-10-01",
+      "weight": 3,
+      "updated_at": "2026-09-17T10:00:00Z",
+      "web_url": "https://gitlab.example.test/team/project/-/issues/42"
+    }
+  },
+  "writes": {
+    "PUT /api/v4/projects/team%2Fproject/issues/42": {
+      "formFields": [
+        "title",
+        "description",
+        "labels",
+        "add_labels",
+        "remove_labels",
+        "milestone",
+        "milestone_id",
+        "epic_id",
+        "issue_type",
+        "due_date",
+        "weight",
+        "assignee_ids",
+        "state_event"
+      ]
+    }
+  }
+}
