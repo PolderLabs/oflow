@@ -451,7 +451,8 @@ test("work --mine refreshes once and can then be read from SQLite offline", asyn
       }
       if (url.pathname.endsWith("/issues")) {
         issueRequests += 1;
-        assert.equal(url.searchParams.get("assignee_username[]"), "test-user");
+        assert.equal(url.searchParams.get("assignee_id"), "7");
+        assert.equal(url.searchParams.get("assignee_username[]"), null);
         return {
           ok: true,
           status: 200,

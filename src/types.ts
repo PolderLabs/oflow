@@ -23,6 +23,7 @@ export interface GitLabIssueFilters {
   iteration?: string;
   epic?: string;
   assignee?: string;
+  assigneeId?: number;
   author?: string;
   search?: string;
   updatedAfter?: string;

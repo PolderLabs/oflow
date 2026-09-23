@@ -311,8 +311,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         let effectiveFilters = filters;
         let actorUsername: string | null = null;
         if (options.mine) {
-          actorUsername = (await getCurrentGitLabUser(root)).username;
-          effectiveFilters = { ...filters, assignee: actorUsername };
+          const identity = await resolveIdentity(root, { withEmail: false });
+          actorUsername = identity.username;
+          effectiveFilters = { ...filters, assigneeId: identity.id };
         }
         const issuePage = await listWorkItemsPage(root, state, effectiveFilters, limit);
         const items = compactWorkItems(issuePage.items);
