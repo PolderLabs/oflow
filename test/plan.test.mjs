@@ -863,6 +863,19 @@ test("plan paths cannot escape the repository plan directory", async () => {
   }
 });
 
+test("resolvePlanPath refuses cross-platform parent-escape attempts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-plan-path-cross-"));
+  try {
+    const escaped = join(root, "..", "escape.json");
+    await assert.rejects(
+      () => approvePlan(root, escaped),
+      { code: "UNSAFE_PLAN_PATH" },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("issue note plans create a note once and verify its body", async () => {
   const root = await mkdtemp(join(tmpdir(), "oflow-note-plan-"));
   const originalFetch = globalThis.fetch;

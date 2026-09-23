@@ -2769,7 +2769,7 @@ function resolvePlanPath(root: string, input: string): string {
   const pathRelativeToPlanRoot = relative(planRoot, candidate);
   if (
     !pathRelativeToPlanRoot ||
-    pathRelativeToPlanRoot.startsWith(".." + "/") ||
+    pathRelativeToPlanRoot.split(/[\\/]+/).includes("..") ||
     isAbsolute(pathRelativeToPlanRoot) ||
     !pathRelativeToPlanRoot.endsWith(".json")
   ) {
