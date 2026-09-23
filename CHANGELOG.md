@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.3.0
+
+Reliability and agent-integration release.
+
+### Added
+
+- First-class GitLab identity: `oflow identity --json` returns the authenticated
+  principal with optional email surface; documented in
+  `docs/JSON-COOKBOOK.md`.
+- Transport lifecycle: configured, authenticated, readable, mutable, and
+  verifiable states for REST, `glab`, and runtime-owned MCP. `oflow doctor`
+  and `oflow capabilities --json` agree on backend, permission, and
+  runtime-owned state without probing writes.
+- Live ID-keyed `work --mine`: `--mine` resolves the GitLab principal and
+  filters by `assignee_id=<n>` instead of `assignee_username`. Cached
+  snapshots still key on the prior cache contract — see open v0.4 work.
+- Reduced-mode reporting: `capabilities.reduced` is true when no proven read
+  backend resolves; core context reads route through a transport resolver
+  (`src/context.ts#resolveContextRead`) and emit `READ_TRANSPORT_UNAVAILABLE`
+  rather than silently constructing REST clients.
+- Compatibility fixtures for direct token, glab-only, runtime MCP delegated,
+  Claude Code, Codex, OMP, Copilot/VS Code, and OpenWolf hosts.
+- Capability catalog: `merge-requests.write` documents the delegated MR
+  boundary; portable issue-update fields are explicitly not advertised for
+  delegated MCP.
+
+### Fixed
+
+- `oflow plan --help` is now discoverable; `--help`/`-h`/`help` after
+  `plan` routes to the top-level command help instead of the unsupported
+  plan resource error.
+- `oflow verify` reports a missing `.gitlab-ci.yml` as a warning under
+  enabled policy instead of a permanent completion block.
+- `safeProjectIterations` only falls back to the milestone path on a GitLab
+  API `404`; authentication, permission, transport, and server failures
+  propagate unchanged.
+- F6 duplicate explicit AC ids in `convertBulletsToAcceptanceCriteria`
+  are reallocated instead of colluding on the same ID.
+
+### Known limitations
+
+- Cached `work --mine` snapshots do not yet persist the resolved actor id;
+  the cache contract will be extended in a separate v0.3.x slice.
+
 ## 0.2.1
 
 Hardening follow-up to the delegated action flow.
