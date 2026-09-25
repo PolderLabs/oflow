@@ -26,14 +26,36 @@ unrelated package, so release commands must use `oflow-workflow`.
    git push origin "v$VERSION"
    ```
 
-6. Create the GitHub release after the tag is pushed:
+6. Run the publish workflow, then confirm the registry accepted the version
+   before creating any GitHub release:
+
+   ```bash
+   gh workflow run publish.yml -f tag="v$VERSION"
+   ```
+
+   Wait for the run to succeed, then verify the registry. A GitHub release
+   created before this point advertises a version that npm does not have:
+
+   ```bash
+   npm view oflow-workflow "versions[$VERSION]" gitHead
+   ```
+
+   The printed `gitHead` must be the tagged commit. A missing version means
+   npm is still propagating; wait and re-run rather than publishing again.
+7. Create the GitHub release only after the registry shows the version:
 
    ```bash
    gh release create "v$VERSION" \
      --repo PolderLabs/oflow \
      --target main \
-     --generate-notes
+     --title "oflow $VERSION" \
+     --verify-tag
    ```
+
+   Write release notes from that version's `CHANGELOG.md` section rather than
+   `--generate-notes`, which lists commits instead of user-visible changes. Use
+   `--verify-tag` so a typo cannot create a release on a missing tag, and keep
+   the title as `oflow <version>` so the release list sorts consistently.
 
 ## Publishing from GitHub Actions
 
