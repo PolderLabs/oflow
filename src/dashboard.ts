@@ -164,13 +164,32 @@ function originAllowed(request: IncomingMessage, boundPort: number): boolean {
 }
 
 /**
- * `doctor` reports the machine-local repository root and a token *presence*
- * boolean. Both are reduced here so the browser never renders a specific
- * filesystem path and never receives token material.
+ * An explicit allowlist, not a denylist. `doctor` grows fields over time, and
+ * a denylist would forward anything it does not recognise by name — a new
+ * `tokenValue` would reach the browser unreviewed. Projecting the fields the
+ * Diagnostics view actually renders means a future field is withheld by
+ * default. The remote is reduced to host and project path; `remoteUrl` never
+ * leaves the process.
  */
 export function sanitizeDoctorReport(report: DoctorReport): Record<string, unknown> {
-  const safe = dropSecretFields({ ...report, root: redactLocalPath(report.root) });
-  return safe as Record<string, unknown>;
+  const safe: Record<string, unknown> = {
+    root: redactLocalPath(report.root),
+    remote: report.remote == null
+      ? null
+      : { host: report.remote.host, projectPath: report.remote.projectPath },
+    configFound: report.configFound,
+    agent: report.agent,
+    tokenConfigured: report.tokenConfigured,
+    tokenSource: report.tokenSource,
+    apiCheck: report.apiCheck,
+    apiChecks: report.apiChecks,
+    capabilities: report.capabilities,
+    backends: report.backends,
+    requiredFiles: report.requiredFiles,
+    transport: report.transport,
+    warnings: report.warnings,
+  };
+  return dropSecretFields(safe);
 }
 
 async function checkApiReport(root: string): Promise<Record<string, unknown>> {

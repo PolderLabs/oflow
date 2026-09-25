@@ -248,3 +248,50 @@ test("error status is keyed on the specific code, not the error class", async ()
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("the doctor report is projected by allowlist, not filtered by denylist", () => {
+  // A denylist forwards any field it does not recognise by name, so a field a
+  // future DoctorReport grows could reach the browser unreviewed. The
+  // projection must withhold it, and must never carry remoteUrl.
+  const report = {
+    root: "/srv/synthetic-workspace/projects/demo",
+    configFound: true,
+    remote: {
+      host: "gitlab.example.test",
+      projectPath: "group/project",
+      remoteUrl: "https://oauth2:OPAQUE-CREDENTIAL@gitlab.example.test/group/project.git",
+    },
+    agent: { mode: "both" },
+    tokenConfigured: true,
+    tokenSource: "stored",
+    apiCheck: "passed",
+    apiChecks: [],
+    backends: { rest: { available: true } },
+    requiredFiles: [],
+    warnings: [],
+    // A field a future DoctorReport could grow, carrying secret material.
+    tokenValue: "OPAQUE-CREDENTIAL-SHOULD-NOT-LEAK",
+  };
+
+  const safe = sanitizeDoctorReport(report);
+  const serialized = JSON.stringify(safe);
+
+  assert.equal("remoteUrl" in (safe.remote ?? {}), false, "remoteUrl must not be forwarded");
+  assert.equal(safe.remote.host, "gitlab.example.test");
+  assert.equal(safe.remote.projectPath, "group/project");
+  assert.equal(serialized.includes("OPAQUE-CREDENTIAL"), false, "embedded credential must not leak");
+  assert.equal(serialized.includes("SHOULD-NOT-LEAK"), false, "unknown field must be withheld");
+  assert.equal(serialized.includes("/srv/synthetic-workspace"), false, "root must be redacted");
+  // Health signals the Diagnostics view renders must survive.
+  assert.equal(safe.tokenConfigured, true);
+  assert.equal(safe.tokenSource, "stored");
+  assert.equal(safe.apiCheck, "passed");
+
+  // The Diagnostics view reads these; dropping them would silently blank it.
+  assert.ok(Array.isArray(safe.apiChecks), "apiChecks must survive");
+  assert.ok("transport" in safe, "transport must survive");
+  assert.ok(Array.isArray(safe.warnings), "warnings must survive");
+  assert.ok(Array.isArray(safe.requiredFiles), "requiredFiles must survive");
+  assert.ok(safe.capabilities === undefined || Array.isArray(safe.capabilities));
+  assert.ok(safe.backends !== undefined, "backends must survive");
+});

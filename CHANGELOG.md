@@ -29,6 +29,10 @@ Dashboard v2 release.
   `__html` string key, so a `__html` field in a GitLab-sourced API response
   can no longer be promoted to raw markup without passing through
   `rawCell()`.
+- The doctor report sent to the browser is now an explicit allowlist
+  projection rather than a denylist filter, so a field added to
+  `DoctorReport` in future is withheld by default instead of being forwarded
+  unreviewed. The remote is reduced to host and project path.
 
 ### Fixed
 
@@ -45,6 +49,11 @@ Dashboard v2 release.
   repository that has never synced reads "no snapshot yet" instead of
   "unknown", and an uncreated database reads "not created yet" instead of
   "sqlite ready".
+- The generated agent contract now says the dashboard never *sends* GitLab
+  credentials to the browser, rather than never receives them. The dashboard
+  process does resolve a token locally for an explicit API check. Re-run
+  `oflow install` to refresh the wording in an existing checkout; the managed
+  block is replaced in place, so no user content is lost.
 
 ## 0.3.0
 
