@@ -2776,27 +2776,23 @@ function resolvePlanPath(root: string, input: string): string {
     return !!rest && !rest.split(/[\\/]+/).includes("..") && !isAbsolute(rest) && rest.endsWith(".json");
   };
   // The lexical comparison above is the guard. It can also fail for a path
-  // that never left the plan root, because git and the filesystem can spell
-  // one directory two ways: on Windows the temp directory may use the 8.3
-  // short form while `git rev-parse` reports the long form, and `relative`
-  // turns that mismatch into a ".." chain.
-  // Only when the lexical check fails do we retry against the canonical
-  // paths, which expand short names and resolve symlinks. A real
-  // traversal fails both comparisons, so this widens nothing.
+  // that never left the plan root, because git and the filesystem spell one
+  // directory two ways: `git rev-parse` reports a forward-slash long path
+  // while a Windows temp path is a backslash 8.3 short name, and `relative`
+  // reports that mismatch as a ".." chain. Only when the lexical check fails
+  // do we retry on canonical paths, so a real traversal fails both
+  // comparisons and this widens nothing.
   if (insidePlanRoot(planRoot, candidate)) {
     return candidate;
   }
-  if (process.platform === "win32") {
-    process.stderr.write("PROBE " + JSON.stringify({
-      root, input, candidate, planRoot,
-      rel: relative(planRoot, candidate),
-      planRootReal: (() => { try { return realpathSync(planRoot); } catch (e) { return "ERR:" + String(e); } })(),
-      candReal: (() => { try { return realpathSync(candidate); } catch (e) { return "ERR:" + String(e); } })(),
-    }) + "\n");
-  }
+  // Retry on canonical paths. `realpathSync.native` is required here: the
+  // JavaScript implementation normalizes the string it was given and keeps an
+  // 8.3 short name intact, while the native binding asks the OS and returns
+  // the long form. A real traversal still fails, because its canonical parent
+  // resolves outside the canonical plan root.
   const canonical = (path: string): string | null => {
     try {
-      return realpathSync(path);
+      return realpathSync.native(path);
     } catch {
       return null;
     }
@@ -2813,7 +2809,7 @@ function resolvePlanPath(root: string, input: string): string {
       "UNSAFE_PLAN_PATH",
     );
   }
-  return canonicalCandidate;
+  return candidate;
 }
 
 function assertState(plan: PlanArtifact, expected: PlanState | PlanState[], action: string): void {
