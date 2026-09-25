@@ -50,13 +50,21 @@ unrelated package, so release commands must use `oflow-workflow`.
 7. Create the GitHub release only after the registry shows the version:
 
    ```bash
+   awk "/^## $VERSION\$/{f=1;next} /^## /{f=0} f" CHANGELOG.md > /tmp/oflow-notes.md
+   test -s /tmp/oflow-notes.md || { echo "no CHANGELOG section for $VERSION"; exit 1; }
+
    gh release create "v$VERSION" \
      --repo PolderLabs/oflow \
      --target main \
      --title "oflow $VERSION" \
      --verify-tag \
-     --notes-file <(awk "/^## $VERSION\$/{f=1;next} /^## /{f=0} f" CHANGELOG.md)
+     --notes-file /tmp/oflow-notes.md
    ```
+
+   The `test -s` guard is load-bearing: `v0.2.0` has no `CHANGELOG.md` section,
+   so the `awk` writes an empty file and `gh` would otherwise create a release
+   with a blank body. Writing a real file is also safer than process
+   substitution, which depends on `gh` accepting a `/dev/fd` path.
 
    Notes come from that version's `CHANGELOG.md` section, not
    `--generate-notes`, which lists commits against the repository's previous
@@ -65,8 +73,11 @@ unrelated package, so release commands must use `oflow-workflow`.
    keeps the list sorting. Add `--latest` to the newest release only, or
    GitHub can move the badge onto an older tag.
 8. A version that never reached npm keeps a **draft** release, never a
-   published one. `v0.2.0` is the current example: it was skipped before
-   publish and `0.2.1` carries the first shipped `0.2.x`.
+   published one, and its body is written by hand: there is no `CHANGELOG.md`
+   section to generate notes from. `v0.2.0` is the current example. It was
+   tagged but skipped before publish, so the note says the version is retired
+   rather than pending, that `0.2.1` carries the first shipped `0.2.x`, and
+   that the number must not be reused.
 
 ## Publishing from GitHub Actions
 
