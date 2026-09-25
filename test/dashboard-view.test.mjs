@@ -140,3 +140,34 @@ test("a __html field in API data cannot forge raw markup", () => {
   // The explicit opt-in still works, which is the only path to raw markup.
   assert.match(cell(rawCell("<b>ok</b>")), /<b>ok<\/b>/);
 });
+
+test("timestamps render compactly and never as injectable markup", () => {
+  // The raw ISO string occupied 246px of a ~1365px viewport. `when` compacts
+  // it, and must degrade to the original text rather than throw or emit
+  // markup when the input is hostile or unparseable.
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+  const start = script.indexOf("const esc = ");
+  const end = script.indexOf("function renderTabs() ");
+  assert.ok(start > -1 && end > start, "helpers not found in the served page");
+  const { esc, cell, when } = new Function(
+    script.slice(start, end) + "; return { esc, cell, when };",
+  )();
+
+  const now = Date.now();
+  assert.equal(when(new Date(now - 30_000).toISOString()), "just now");
+  assert.equal(when(new Date(now - 5 * 60_000).toISOString()), "5m ago");
+  assert.equal(when(new Date(now - 3 * 3_600_000).toISOString()), "3h ago");
+  assert.equal(when(new Date(now - 4 * 86_400_000).toISOString()), "4d ago");
+
+  // Unparseable, empty, and future input must pass through unchanged...
+  assert.equal(when("not-a-date"), "not-a-date");
+  assert.equal(when(""), "");
+  assert.equal(when(undefined), "");
+  assert.equal(when(new Date(now + 86_400_000).toISOString()).includes("ago"), false);
+  // `when` returns text, not markup; the escaping happens at the cell
+  // boundary, which is where every call site routes through. Assert the real
+  // contract: a hostile "timestamp" reaching a table cell stays text.
+  const hostile = when('<img src=x onerror="window.__pwned=1">');
+  assert.equal(cell(hostile).includes("<img"), false, "hostile timestamp must not become markup");
+  assert.ok(cell(hostile).includes("&lt;img"), "hostile timestamp must survive as text");
+});

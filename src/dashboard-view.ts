@@ -16,58 +16,152 @@ export function dashboardViewHtml(): string {
     :root {
       color-scheme: dark;
       font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      --bg: #111318; --panel: rgba(21,25,35,.86); --line: #2d3545;
-      --text: #e8eaf0; --muted: #aeb8cc; --dim: #8994aa;
-      --accent: #6ea8fe; --ok: #57d9a3; --warn: #f2c14e; --bad: #f2777a;
+      --bg: #0d1017; --bg-glow: #1b2333; --panel: #161b25; --panel-2: #1b212e;
+      --line: #29313f; --line-soft: #212936;
+      --text: #eef1f7; --muted: #aab4c7; --dim: #7f8a9e;
+      --accent: #6ea8fe; --accent-soft: rgba(110,168,254,.14);
+      --ok: #57d9a3; --warn: #f2c14e; --bad: #f2777a;
+      --radius: 12px;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: radial-gradient(circle at top right, #253047, #111318 42%); min-height: 100vh; color: var(--text); }
-    .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
-    nav { border-right: 1px solid var(--line); padding: 22px 14px; background: rgba(16,19,26,.6); }
-    nav .brand { font-size: 1.35rem; font-weight: 700; letter-spacing: -.03em; margin-bottom: 4px; }
-    nav .tag { color: var(--dim); font-size: .78rem; margin-bottom: 18px; }
-    nav button {
-      display: block; width: 100%; text-align: left; background: none; border: 1px solid transparent;
-      color: var(--muted); padding: 9px 11px; border-radius: 9px; cursor: pointer; font-size: .93rem; margin-bottom: 3px;
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      background:
+        radial-gradient(1100px 620px at 82% -12%, var(--bg-glow), transparent 62%),
+        radial-gradient(760px 520px at -8% 108%, #171d29, transparent 58%),
+        var(--bg);
+      background-attachment: fixed;
     }
-    nav button:hover { background: rgba(255,255,255,.05); color: var(--text); }
-    nav button[aria-selected="true"] { background: #25314a; border-color: #3c4c6d; color: #fff; }
-    main { padding: 26px 24px 60px; max-width: 1180px; }
-    header { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 20px; flex-wrap: wrap; }
-    h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.2rem); letter-spacing: -.035em; }
-    h2 { margin: 0 0 12px; font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; }
+    .shell { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; }
+    nav {
+      border-right: 1px solid var(--line); padding: 24px 14px; position: sticky; top: 0;
+      height: 100vh; overflow-y: auto; background: rgba(11,14,20,.72);
+      backdrop-filter: blur(8px);
+    }
+    nav .brand {
+      font-size: 1.4rem; font-weight: 700; letter-spacing: -.03em;
+      display: flex; align-items: center; gap: 9px; padding: 0 10px;
+    }
+    nav .brand::before {
+      content: ""; width: 9px; height: 9px; border-radius: 3px;
+      background: linear-gradient(140deg, var(--accent), #9b7bff);
+      box-shadow: 0 0 14px rgba(110,168,254,.55);
+    }
+    nav .tag { color: var(--dim); font-size: .76rem; margin: 3px 0 20px 28px; letter-spacing: .04em; text-transform: uppercase; }
+    nav button {
+      display: block; width: 100%; text-align: left; background: none; border: 0;
+      border-left: 2px solid transparent; color: var(--muted); padding: 9px 12px;
+      border-radius: 0 8px 8px 0; cursor: pointer; font-size: .93rem; font-weight: 500;
+      margin-bottom: 2px; transition: background .12s ease, color .12s ease;
+    }
+    nav button:hover { background: rgba(255,255,255,.045); color: var(--text); }
+    nav button[aria-selected="true"] {
+      background: linear-gradient(90deg, var(--accent-soft), transparent 85%);
+      border-left-color: var(--accent); color: #fff; font-weight: 600;
+    }
+    main { padding: 30px 28px 72px; min-width: 0; }
+    main > section, main > div > section { max-width: 1240px; }
+    header {
+      display: flex; justify-content: space-between; gap: 18px; align-items: flex-end;
+      margin-bottom: 22px; flex-wrap: wrap; padding-bottom: 16px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    h1 { margin: 0; font-size: clamp(1.5rem, 2.6vw, 1.95rem); letter-spacing: -.035em; font-weight: 700; }
+    h2 {
+      margin: 0 0 14px; font-size: .72rem; color: var(--dim); font-weight: 600;
+      text-transform: uppercase; letter-spacing: .1em;
+    }
     p { color: var(--muted); line-height: 1.55; }
-    button.action { cursor: pointer; border: 1px solid #4a5b80; border-radius: 999px; padding: 8px 14px; color: #eef3ff; background: #25314a; font-size: .9rem; }
-    button.action:hover:not(:disabled) { background: #31405e; }
+    header p { margin: 6px 0 0; max-width: 68ch; }
+    button.action {
+      cursor: pointer; border: 1px solid #42527a; border-radius: 999px; padding: 8px 15px;
+      color: #eef3ff; background: #25314a; font-size: .88rem; font-weight: 500;
+      transition: background .12s ease, border-color .12s ease;
+    }
+    button.action:hover:not(:disabled) { background: #31405e; border-color: #56699a; }
     button.action:disabled { opacity: .5; cursor: progress; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-    .card, section { border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 16px; }
-    section { margin-top: 14px; }
-    .metric { font-size: 1.9rem; font-weight: 700; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 12px; }
+    .card, section {
+      border: 1px solid var(--line); background: var(--panel);
+      border-radius: var(--radius); padding: 16px 18px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.28), 0 10px 26px -18px rgba(0,0,0,.9);
+    }
+    section { margin-top: 16px; }
+    .card {
+      display: flex; flex-direction: column; gap: 3px; position: relative; overflow: hidden;
+      border-left: 2px solid var(--line);
+    }
+    .card::after {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.07), transparent);
+    }
+    .metric {
+      font-size: 2rem; font-weight: 700; line-height: 1.1; letter-spacing: -.03em;
+      color: var(--text); font-variant-numeric: tabular-nums;
+    }
+    .card-label {
+      font-size: .8rem; font-weight: 500; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em;
+    }
+    .card-note { color: var(--dim); font-size: .8rem; margin-top: 2px; }
     .muted { color: var(--dim); font-size: .86rem; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .72rem; border: 1px solid var(--line); color: var(--muted); margin-right: 5px; }
+    .badge {
+      display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem;
+      font-weight: 500; border: 1px solid var(--line); color: var(--muted); margin-right: 5px;
+    }
     .badge.ok { color: var(--ok); border-color: #2c5c48; background: rgba(87,217,163,.09); }
     .badge.warn { color: var(--warn); border-color: #5d4c22; background: rgba(242,193,78,.09); }
     .badge.bad { color: var(--bad); border-color: #6b3437; background: rgba(242,119,122,.09); }
     .badge.live { color: var(--accent); border-color: #35507d; background: rgba(110,168,254,.1); }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    th { color: #9eabc1; font-size: .74rem; text-transform: uppercase; letter-spacing: .07em; }
+    .table-wrap {
+      max-height: 560px; overflow: auto; border: 1px solid var(--line-soft);
+      border-radius: 10px; scrollbar-width: thin;
+    }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    th, td { text-align: left; padding: 9px 12px; vertical-align: top; }
+    thead th {
+      position: sticky; top: 0; z-index: 1; color: var(--dim);
+      font-size: .71rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+      background: var(--panel-2); border-bottom: 1px solid var(--line);
+    }
+    tbody td { border-bottom: 1px solid var(--line-soft); font-size: .89rem; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background: rgba(110,168,254,.055); }
+    tbody tr:nth-child(even) td { background: rgba(255,255,255,.012); }
+    tbody tr:hover:nth-child(even) td { background: rgba(110,168,254,.075); }
+    td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
     code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    pre { background: #0d1017; border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; overflow-x: auto; color: #cfe0ff; font-size: .85rem; }
+    pre {
+      background: #0b0e14; border: 1px solid var(--line-soft); border-radius: 9px;
+      padding: 12px 14px; overflow-x: auto; color: #cfe0ff; font-size: .84rem; line-height: 1.5;
+    }
     .hidden { display: none; }
     #notice { min-height: 1.4em; margin-bottom: 10px; color: var(--accent); font-size: .9rem; }
-    #banner { margin-bottom: 14px; border-radius: 10px; padding: 10px 13px; font-size: .9rem; }
+    #banner { margin-bottom: 14px; border-radius: 10px; padding: 11px 14px; font-size: .9rem; }
     #banner.bad { color: var(--bad); background: rgba(242,119,122,.1); border: 1px solid #6b3437; }
-    .tour-step { border-left: 3px solid var(--accent); padding-left: 13px; margin-bottom: 14px; }
-    .tour-step h3 { margin: 0 0 4px; font-size: 1rem; }
-    @media (max-width: 760px) {
+    .tour-step { border-left: 3px solid var(--accent); padding-left: 14px; margin-bottom: 16px; }
+    .tour-step h3 { margin: 0 0 5px; font-size: 1rem; }
+    @media (max-width: 880px) {
       .shell { grid-template-columns: 1fr; }
-      nav { border-right: none; border-bottom: 1px solid var(--line); }
-      nav button { display: inline-block; width: auto; }
+      nav {
+        position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line);
+        display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 14px;
+      }
+      nav .brand, nav .tag { margin: 0 10px 0 0; }
+      nav .tag { display: none; }
+      nav button {
+        width: auto; border-left: 0; border-bottom: 2px solid transparent;
+        border-radius: 8px; padding: 7px 11px;
+      }
+      nav button[aria-selected="true"] {
+        background: var(--accent-soft); border-left-color: transparent;
+        border-bottom-color: var(--accent);
+      }
+      main { padding: 20px 16px 56px; }
+      .table-wrap { max-height: 420px; }
     }
   </style>
 </head>
@@ -95,6 +189,21 @@ export function dashboardViewHtml(): string {
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const link = (title, url) => url ? '<a href="' + esc(url) + '" target="_blank" rel="noreferrer">' + esc(title) + '</a>' : esc(title);
 const age = (seconds) => seconds == null ? 'unknown' : seconds < 60 ? 'under a minute' : Math.floor(seconds / 60) + 'm ago';
+/* A machine timestamp like 2026-09-25T19:55:52.897+02:00 is 246px of a
+ * ~1365px viewport. Parse defensively: anything unparseable, empty, or in the
+ * future is passed through unchanged and still escaped by cell(). */
+const when = (value) => {
+  if (!value) return '';
+  const then = Date.parse(value);
+  if (Number.isNaN(then)) return value;
+  const seconds = Math.floor((Date.now() - then) / 1000);
+  if (seconds < 0) return value;
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+  if (seconds < 2592000) return Math.floor(seconds / 86400) + 'd ago';
+  return value.slice(0, 10);
+};
 
 const VIEWS = [
   { id: 'overview', label: 'Overview', title: 'Overview',
@@ -146,14 +255,17 @@ const cell = (value) => (value !== null && typeof value === 'object' && value[RA
   ? value[RAW]
   : esc(value));
 const table = (headers, rows) =>
-  '<table><thead><tr>' + headers.map((h) => '<th>' + esc(h) + '</th>').join('') +
+  '<div class="table-wrap"><table><thead><tr>' + headers.map((h) => '<th>' + esc(h) + '</th>').join('') +
   '</tr></thead><tbody>' + rows.map((cells) =>
     '<tr>' + cells.map((entry) => '<td>' + cell(entry) + '</td>').join('') + '</tr>').join('') +
-  '</tbody></table>';
+  '</tbody></table></div>';
 
+/* Number, label, and caption are distinct elements so a card never reads as
+ * one run-on string like "100Work itemsunder a minute". */
 const metric = (label, value, note) =>
-  '<div class="card"><div class="metric">' + esc(value) + '</div><div>' + esc(label) + '</div>' +
-  (note ? '<div class="muted">' + esc(note) + '</div>' : '') + '</div>';
+  '<div class="card"><div class="metric">' + esc(value) + '</div>' +
+  '<div class="card-label">' + esc(label) + '</div>' +
+  (note ? '<div class="card-note">' + esc(note) + '</div>' : '') + '</div>';
 
 function renderTabs() {
   const tabs = document.getElementById('tabs');
@@ -190,13 +302,13 @@ async function renderOverview(host) {
     item.state,
     item.type || '',
     item.assignee || 'unassigned',
-    item.updatedAt || '',
+    when(item.updatedAt),
   ]);
   const mrRows = (data.mergeRequests || []).map((mr) => [
     rawCell(link('!' + mr.iid + ' ' + (mr.title || ''), mr.webUrl)),
     mr.state,
     mr.sourceBranch || '',
-    mr.updatedAt || '',
+    when(mr.updatedAt),
   ]);
   const planning = data.planning || {};
   host.innerHTML =
@@ -217,7 +329,7 @@ async function renderOverview(host) {
     '<section><h2>Sync history</h2>' +
       (data.syncHistory && data.syncHistory.length
         ? table(['Generated', 'Branch', 'Source', 'Warnings'], data.syncHistory.map((entry) => [
-            entry.generatedAt, entry.branch || '', entry.source || '', entry.warningCount,
+            when(entry.generatedAt), entry.branch || '', entry.source || '', entry.warningCount,
           ]))
         : '<p class="muted">No sync history yet. Run <code>oflow sync --refresh</code>.</p>') +
     '</section>';
@@ -371,7 +483,7 @@ async function renderLifecycle(host) {
         : '<p class="muted">No local plans. Create one with <code>oflow plan</code>.</p>') + '</section>' +
     '<section><h2>Audit trail</h2>' +
       (events.length ? table(['When', 'Action', 'Plan', 'State'], events.map((event) => [
-        event.at, event.action, rawCell('<code>' + esc(event.planId) + '</code>'), event.state,
+        when(event.at), event.action, rawCell('<code>' + esc(event.planId) + '</code>'), event.state,
       ])) : '<p class="muted">No audit events yet.</p>') + '</section>';
 }
 

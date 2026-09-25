@@ -370,3 +370,86 @@ test("doctor merge-requests.write row names the apply path (no stale 'no apply p
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a fine-grained token without User: Read is not a total API failure", async () => {
+  // A real failure mode: a fine-grained personal access token that can read
+  // the project but lacks User: Read. Only `work --mine` needs the actor, and
+  // pipelines degrade gracefully, so the headline must not report a total
+  // failure while the read commands work. The individual checks must still
+  // surface their own failure so the missing scope stays visible.
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-fine-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "fine-grained-test-token";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    const forbidden = url.endsWith("/user") || url.includes("/pipelines?");
+    return {
+      ok: !forbidden,
+      status: forbidden ? 403 : 200,
+      headers: new Headers(),
+      text: async () =>
+        JSON.stringify(
+          forbidden
+            ? {
+                error: "insufficient_granular_scope",
+                error_description: "Access denied: requires [User: Read].",
+              }
+            : { id: 1, path_with_namespace: "team/product", default_branch: "main" },
+        ),
+    };
+  };
+
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+
+    const report = await doctor(root, { checkApi: true });
+
+    assert.equal(
+      report.apiCheck,
+      "passed",
+      "a token that can read the project is not a total API failure",
+    );
+    // The scope gap must remain visible, not be swallowed by the headline.
+    assert.equal(report.apiChecks.find((c) => c.id === "user.read")?.status, "failed");
+    assert.equal(report.apiChecks.find((c) => c.id === "pipelines.read")?.status, "failed");
+    assert.ok(
+      report.warnings.some((w) => w.includes("user.read")),
+      "the failed check must still be reported as a warning",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an unreadable project is still reported as a total API failure", async () => {
+  // The counterpart: if project.read itself fails, every read path is broken
+  // and the headline must say so.
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-noread-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "unreadable-test-token";
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 403,
+    headers: new Headers(),
+    text: async () => JSON.stringify({ message: "403 Forbidden" }),
+  });
+
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+
+    const report = await doctor(root, { checkApi: true });
+    assert.equal(report.apiCheck, "failed");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});

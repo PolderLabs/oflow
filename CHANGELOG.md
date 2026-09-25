@@ -54,6 +54,22 @@ Dashboard v2 release.
   process does resolve a token locally for an explicit API check. Re-run
   `oflow install` to refresh the wording in an existing checkout; the managed
   block is replaced in place, so no user content is lost.
+- `doctor --check-api` no longer reports a total API failure for a token that
+  can read the project. The headline now reflects core read capability
+  (`project.read`) rather than every optional probe, so a fine-grained token
+  without `User: Read` — which only `work --mine` needs — no longer makes the
+  whole product look broken while `sync` works. A `401` still fails the
+  headline, because a rejected token does break every read path. Every failed
+  probe is still reported individually with its own remediation.
+### Changed
+
+- Dashboard presentation: metric cards now have real internal hierarchy
+  (value, label, caption) instead of reading as one run-on string; tables get a
+  sticky header, row hover, zebra separation, tabular figures, and an internal
+  scroll region; the sidebar has a clear active state with an accent bar; the
+  page gains depth and a responsive layout that stacks below 880px.
+  Timestamps render compactly ("4m ago") instead of as a full ISO string with
+  a timezone offset, falling back to the original text when unparseable.
 
 ## 0.3.0
 

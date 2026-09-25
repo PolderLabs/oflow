@@ -159,11 +159,24 @@ export async function doctor(
   if (options.checkApi) {
     if (remote && tokenSource) {
       apiChecks = await checkApiCapabilities(remote, backends);
-      const failedRequiredChecks = apiChecks.filter(
-        (check) => check.required && check.status === "failed",
+      // The headline answers "can oflow read this project?", not "does every
+      // optional probe succeed?". A fine-grained token legitimately lacks
+      // `User: Read` (only --mine needs it) and `pipelines.read` degrades
+      // gracefully, so folding those into the headline reported a total
+      // failure while sync and the read commands worked. project.read is the
+      // one probe every read path depends on. A 401 is different: it means the
+      // token itself is rejected, which does break every read path, so an
+      // authentication failure still fails the headline regardless of which
+      // probe reported it. Individual checks keep their own status and
+      // remediation either way.
+      const failedChecks = apiChecks.filter((check) => check.status === "failed");
+      const coreReadFailed = apiChecks.some(
+        (check) => check.id === "project.read" && check.status === "failed",
       );
-      apiCheck = failedRequiredChecks.length === 0 ? "passed" : "failed";
-      for (const check of failedRequiredChecks) {
+      const authFailed = failedChecks.some((check) => /\b401\b|unauthorized/i.test(check.detail));
+      apiCheck =
+        coreReadFailed || authFailed || apiChecks.length === 0 ? "failed" : "passed";
+      for (const check of failedChecks) {
         warnings.push(
           "GitLab " + check.backend + " " + check.id + " check failed: " + check.detail,
         );
