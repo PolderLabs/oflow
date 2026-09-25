@@ -61,6 +61,15 @@ Dashboard v2 release.
   whole product look broken while `sync` works. A `401` still fails the
   headline, because a rejected token does break every read path. Every failed
   probe is still reported individually with its own remediation.
+- The dashboard no longer presents an unreadable source as an empty one. `sync`
+  records a warning when an optional read (pipelines, merge requests, labels)
+  is refused by a fine-grained token, but the dashboard dropped that warning,
+  so an Overview reading "0 Pipelines" claimed the project had none when the
+  token simply could not read them. The snapshot's warnings now reach the
+  dashboard, the affected metric carries an amber "N sources not readable"
+  caption, and a "Data sources this token cannot read" section names each
+  one.
+
 ### Changed
 
 - Dashboard presentation: metric cards now have real internal hierarchy

@@ -105,6 +105,9 @@ export function dashboardViewHtml(): string {
       text-transform: uppercase; letter-spacing: .06em;
     }
     .card-note { color: var(--dim); font-size: .8rem; margin-top: 2px; }
+    .card-note.gap { color: var(--warn); }
+    .gap-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: .86rem; }
+    .gap-list li { margin: 5px 0; line-height: 1.5; word-break: break-word; }
     .muted { color: var(--dim); font-size: .86rem; }
     .badge {
       display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem;
@@ -262,10 +265,11 @@ const table = (headers, rows) =>
 
 /* Number, label, and caption are distinct elements so a card never reads as
  * one run-on string like "100Work itemsunder a minute". */
-const metric = (label, value, note) =>
+const metric = (label, value, note, noteClass) =>
   '<div class="card"><div class="metric">' + esc(value) + '</div>' +
   '<div class="card-label">' + esc(label) + '</div>' +
-  (note ? '<div class="card-note">' + esc(note) + '</div>' : '') + '</div>';
+  (note ? '<div class="card-note' + (noteClass ? ' ' + noteClass : '') + '">' + esc(note) + '</div>' : '') +
+  '</div>';
 
 function renderTabs() {
   const tabs = document.getElementById('tabs');
@@ -287,11 +291,23 @@ async function renderOverview(host) {
   const status = data.status || {};
   const counts = status.counts || {};
   const project = data.project;
+  // A source the token could not read yields an empty list, which is
+  // indistinguishable from "none exist". Say so rather than let the cockpit
+  // claim the project has no pipelines.
+  const gaps = Array.isArray(data.warnings) ? data.warnings : [];
+  const gapNote = gaps.length
+    ? gaps.length + ' source' + (gaps.length === 1 ? '' : 's') + ' not readable with this token'
+    : '';
+  const sourceGap = gaps.length
+    ? '<section><h2>Data sources this token cannot read</h2>' +
+      '<p class="muted">Counts above are not evidence of absence for these:</p><ul class="gap-list">' +
+      gaps.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul></section>'
+    : '';
   const metrics = [
     metric('Work items', counts.workItems ?? 0,
       status.latestSync ? age(status.latestSync.ageSeconds) : 'no snapshot yet'),
     metric('Merge requests', counts.mergeRequests ?? 0),
-    metric('Pipelines', counts.pipelines ?? 0),
+    metric('Pipelines', counts.pipelines ?? 0, gapNote || undefined, gaps.length ? 'gap' : ''),
     metric('Iterations', counts.iterations ?? 0),
     metric('Snapshots', counts.syncSnapshots ?? 0),
     metric('Read model', status.state ?? 'unknown',
@@ -315,6 +331,7 @@ async function renderOverview(host) {
     (project ? '<section><h2>Project</h2><p>' + esc(project.host) + ' / ' + esc(project.path) +
       (data.repository && data.repository.branch ? ' · ' + esc(data.repository.branch) : '') + '</p></section>' : '') +
     '<div class="grid">' + metrics.join('') + '</div>' +
+    sourceGap +
     '<section><h2>Work items</h2>' +
       (workRows.length ? table(['Item', 'State', 'Type', 'Assignee', 'Updated'], workRows) : '<p class="muted">No cached work items.</p>') +
     '</section>' +

@@ -144,3 +144,34 @@ test("a legacy SQLite schema is diagnosed and migrated by the next live sync", a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a source the token cannot read is reported, not shown as empty", async () => {
+  // sync records a warning when an optional read 403s. The dashboard used to
+  // drop it, so a project whose token cannot read pipelines rendered a flat
+  // "0 Pipelines" and taught the user the project had none.
+  const root = await mkdtemp(join(tmpdir(), "oflow-read-model-"));
+  try {
+    const result = snapshot();
+    result.pipelines = [];
+    result.stats.pipelines = 0;
+    result.warnings = ["Could not read pipelines: GitLab API 403"];
+    await saveSyncReadModel({ root, host: "gitlab.example.test", projectPath: "team/project", result });
+
+    const data = await readDashboardData(root);
+    assert.equal(data.status.counts.pipelines, 0);
+    assert.deepEqual(data.warnings, ["Could not read pipelines: GitLab API 403"]);
+
+    // A snapshot with nothing unreadable must not manufacture a gap. Use a
+    // second root: two saves in the same second tie on generated_at, so the
+    // "latest snapshot" ordering is not deterministic within one root.
+    const clean = await mkdtemp(join(tmpdir(), "oflow-read-model-"));
+    try {
+      await saveSyncReadModel({ root: clean, host: "gitlab.example.test", projectPath: "team/project", result: snapshot() });
+      assert.deepEqual((await readDashboardData(clean)).warnings, []);
+    } finally {
+      await rm(clean, { recursive: true, force: true });
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

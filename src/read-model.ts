@@ -82,6 +82,13 @@ export interface DashboardData {
     milestones: SyncMilestone[];
     boards: SyncBoard[];
   };
+  /**
+   * Warnings the last sync recorded, e.g. "Could not read pipelines: 403".
+   * Without these a scope gap is indistinguishable from real emptiness: a
+   * project whose token cannot read pipelines reports zero pipelines, and
+   * the cockpit would claim the project has none.
+   */
+  warnings: string[];
   syncHistory: Array<{
     generatedAt: string;
     savedAt: string;
@@ -499,6 +506,10 @@ export async function readDashboardData(root: string): Promise<DashboardData> {
         milestones: snapshot?.planning.milestones ?? [],
         boards: snapshot?.planning.boards ?? [],
       },
+      // A snapshot that could not read a source records a warning. Surface it
+      // so the dashboard can distinguish "no pipelines" from "this token
+      // cannot read pipelines".
+      warnings: snapshot?.warnings ?? [],
       syncHistory: historyRows.map((row) => ({
         generatedAt: stringValue(row.generated_at),
         savedAt: stringValue(row.saved_at),
@@ -635,6 +646,7 @@ function emptyDashboardData(status: ReadModelStatus): DashboardData {
     pipelines: [],
     iterations: [],
     planning: { labels: [], milestones: [], boards: [] },
+    warnings: [],
     syncHistory: [],
   };
 }
