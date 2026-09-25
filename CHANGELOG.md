@@ -6,14 +6,15 @@ Fix the dropped `--description-file` flag on issue create and update.
 
 ### Fixed
 
-- `oflow plan issue update --description-file` and `oflow plan issue create
-  --description-file` silently ignored the flag. The argument parser accepts
-  `--description-file` for every command, but these two sites read
-  `options.description` directly instead of resolving the file. The body was
-  dropped, the change set came out empty, and the command refused with
-  `EMPTY_PLAN` -- which reads as "description editing is blocked" rather than
-  as a dropped flag. Both now resolve the flag the way the merge-request
-  commands already did.
+- The argument parser accepts `--description-file` for every command, but the
+  issue create and issue update sites read `options.description` directly
+  instead of resolving the file, so the flag never reached the plan. The two
+  commands failed differently: `plan issue create` dropped the body silently
+  and planned an issue with no description, while `plan issue update` came
+  out with an empty change set and refused with `EMPTY_PLAN`, naming
+  `--description` rather than the flag actually passed. Both now resolve the
+  flag the way the merge-request commands already did, so an agent can write
+  an issue body from a file on either command.
 
 ## 0.4.2
 
