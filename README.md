@@ -399,17 +399,27 @@ and mutation boundaries, then use cheap local reads while exploring and coding.
 After a successful sync, run:
 
 ```bash
-oflow dashboard
+oflow dashboard            # add --open to launch your default browser
 # open http://127.0.0.1:4173/
 ```
 
-The dashboard displays the latest SQLite snapshot, work items, merge requests,
-pipelines, iterations, planning collections, and recent sync history. It binds
-to `127.0.0.1` only, exposes no GitLab API or credentials, and has no write
-controls for GitLab. **Reload local view** only re-reads SQLite. **Request
-sync** records a local request and tells you to run `oflow sync --refresh`; the
-CLI remains the explicit network boundary. Use `--port 0` in integrations that
-need an available ephemeral port.
+The dashboard has six views: **Overview** (the latest SQLite snapshot, work
+items, merge requests, pipelines, iterations, planning collections, and sync
+history), **Capabilities** (the catalog plus a live probe), **Auth** (token
+state only), **Diagnostics** (`doctor` results), **Lifecycle** (plans,
+verification, audit trail), and a short **Tour**.
+
+It binds to `127.0.0.1` only and never sends GitLab token material to the
+browser. The Auth view cannot accept a token: token entry stays a terminal
+prompt, and the host an auth action applies to is always resolved server-side
+from your Git remote, so no page that reaches the loopback port can point it at
+another GitLab instance. Mutating routes reject a cross-origin `Origin`, and no
+CORS headers are ever sent. **Request sync** records a local request and tells
+you to run `oflow sync --refresh`; the CLI remains the explicit network
+boundary. Use `--port 0` in integrations that need an available ephemeral port.
+
+See [`docs/DASHBOARD-V2.md`](docs/DASHBOARD-V2.md) for the full HTTP surface and
+trust model.
 
 ## Command map
 

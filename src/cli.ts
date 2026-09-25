@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawn } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -172,6 +173,7 @@ interface CliOptions {
   position?: string;
   iid?: string;
   port?: string;
+  open?: boolean;
   full: boolean;
   mine: boolean;
   withGitLabMcp: boolean;
@@ -946,6 +948,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           "oflow dashboard listening at " + dashboard.url + "\n" +
           "Local-only read model; press Ctrl-C to stop.\n",
         );
+        if (options.open) {
+          await openDashboardInBrowser(dashboard.url);
+        }
         await waitForDashboardShutdown(dashboard.close);
         return 0;
       }
@@ -1284,6 +1289,8 @@ function parseArgs(argv: string[]): CliOptions {
       options.refresh = true;
     } else if (argument === "--summary") {
       options.summary = true;
+    } else if (argument === "--open") {
+      options.open = true;
     } else if (argument === "--mine") {
       options.mine = true;
     } else if (argument === "--with-gitlab-mcp") {
@@ -1575,6 +1582,9 @@ function parseArgs(argv: string[]): CliOptions {
   if (options.port !== undefined && options.command !== "dashboard") {
     throw new OflowError("--port is only supported with dashboard.", "INVALID_DASHBOARD_OPTION");
   }
+  if (options.open && options.command !== "dashboard") {
+    throw new OflowError("--open is only supported with dashboard.", "INVALID_DASHBOARD_OPTION");
+  }
   if (options.force && command !== "approve" && command !== "apply") {
     throw new OflowError("--force is only supported with approve and apply.", "INVALID_FORCE_OPTION");
   }
@@ -1623,6 +1633,41 @@ function parseDashboardPort(value: string): number {
     );
   }
   return port;
+}
+
+/**
+ * Best-effort browser launch for `--open`. Opening a window is a convenience,
+ * so a missing or failing opener is reported but never fails the command: the
+ * server is already listening and the URL is already printed.
+ */
+async function openDashboardInBrowser(url: string): Promise<void> {
+  const [command, args] = browserOpener(url);
+  if (!command) {
+    process.stderr.write(
+      "oflow: no browser opener available on this platform; open " + url + " manually.\n",
+    );
+    return;
+  }
+  try {
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    child.unref();
+    child.on("error", () => {
+      process.stderr.write(
+        "oflow: could not launch a browser automatically; open " + url + " manually.\n",
+      );
+    });
+  } catch {
+    process.stderr.write(
+      "oflow: could not launch a browser automatically; open " + url + " manually.\n",
+    );
+  }
+}
+
+/** Windows uses `start`, macOS `open`, and Linux/WSL `xdg-open`. */
+function browserOpener(url: string): [string, string[]] {
+  if (process.platform === "win32") return ["cmd.exe", ["/c", "start", "", url]];
+  if (process.platform === "darwin") return ["open", [url]];
+  return ["xdg-open", [url]];
 }
 
 function parseExecutionReceipt(content: string | null): ExecutionReceipt {
@@ -2158,7 +2203,8 @@ function helpText(): string {
     "  audit [--limit <n>] [--json]         read local plan lifecycle history",
     "  cache status [--json]                inspect local cache age/schema/invalidation",
     "  cache request-refresh                record a local refresh request (no network)",
-    "  dashboard [--port <n>]               serve the local read-only planning dashboard",
+    "  dashboard [--port <n>] [--open]      serve the local read-only planning dashboard",
+    "  --open                               open the dashboard in your default browser",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue create --title <title> [--type <type>] prepare an auditable work-item create",
     "  plan issue update --story <iid> [--type <type>] prepare an auditable work-item update",
@@ -2219,7 +2265,7 @@ function helpText(): string {
     "  sync --stale-days <n>  add an advisory stale-work-item finding without extra API calls",
     "  sync --cached  read the matching local snapshot without GitLab access",
     "  sync --refresh  explicitly refresh the remote snapshot and local cache",
-    "  dashboard       binds only to 127.0.0.1 and never receives GitLab credentials",
+    "  dashboard       binds only to 127.0.0.1 and never sends GitLab credentials to the browser",
     "  work --mine --refresh  refresh work items assigned to the authenticated user",
     "  work --mine --cached   read assigned work items from local SQLite cache",
     "  sync --epics  opt in to bounded group-epic reads (GraphQL)",

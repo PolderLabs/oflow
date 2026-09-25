@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Added
+
+- Dashboard v2: `oflow dashboard` now serves a six-view cockpit (Overview,
+  Capabilities, Auth, Diagnostics, Lifecycle, Tour) with new read-only
+  endpoints `/api/capabilities`, `/api/plans`, `/api/verification`, and
+  `/api/audit`, an explicit `POST /api/check-api` diagnostics probe, and an
+  Auth view that reports token state without ever accepting a token.
+- `oflow dashboard --open` launches the default browser using the platform
+  opener (`open`, `start`, `xdg-open`) and never fails the command when no
+  opener is available.
+
+### Security
+
+- Dashboard responses are redacted: home directories collapse to `~`, other
+  absolute paths fall back to a basename, and secret-looking fields are dropped
+  from doctor reports. Table cells are escaped centrally in the view, so
+  GitLab-controlled strings (issue titles, project paths, capability notes)
+  cannot inject markup into a localhost page.
+- Mutating dashboard routes validate `Origin` and reject any origin other than
+  the server's own `127.0.0.1` address; `POST /api/auth/request` accepts an
+  action only and refuses a browser-supplied host.
+
 ### Fixed
 
 - Cached `work --mine` snapshots are now bound to the authenticated GitLab

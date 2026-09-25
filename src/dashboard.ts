@@ -1,11 +1,22 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { OflowError } from "./errors.js";
+import { dropSecretFields, redactLocalPath } from "./dashboard-redaction.js";
+import { dashboardViewHtml } from "./dashboard-view.js";
+import { getCapabilities } from "./capabilities.js";
+import { loadConfig } from "./config.js";
+import { doctor } from "./doctor.js";
+import { getGitLabTokenSource, listStoredGitLabHosts, credentialsPath } from "./auth.js";
+import { getGitLabRemote } from "./git.js";
+import { listPlans } from "./plan.js";
+import { readAudit } from "./audit.js";
+import { getLocalVerificationStatus } from "./local-verification.js";
 import {
   readDashboardData,
   readReadModelStatus,
   requestReadModelRefresh,
 } from "./read-model.js";
+import type { DoctorReport } from "./types.js";
 
 export interface DashboardOptions {
   port?: number;
@@ -16,6 +27,9 @@ export interface DashboardServer {
   close(): Promise<void>;
 }
 
+/** Mutating routes only; GET routes expose no side effect and no secret. */
+const MUTATING_ROUTES = new Set(["/api/refresh", "/api/check-api", "/api/auth/request"]);
+
 export async function startDashboard(
   root: string,
   options: DashboardOptions = {},
@@ -25,7 +39,7 @@ export async function startDashboard(
     throw new OflowError("Dashboard port must be an integer between 0 and 65535.", "INVALID_DASHBOARD_PORT");
   }
   const server = createServer((request, response) => {
-    void handleRequest(root, request, response);
+    void handleRequest(root, request, response, port);
   });
   await listen(server, port);
   const address = server.address();
@@ -40,26 +54,38 @@ async function handleRequest(
   root: string,
   request: IncomingMessage,
   response: ServerResponse,
+  boundPort: number,
 ): Promise<void> {
   try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'");
-
-    if (request.method === "GET" && url.pathname === "/") {
-      writeText(response, 200, dashboardHtml());
+    // No CORS headers on purpose: a foreign page may not read any response.
+    if (originAllowed(request, boundPort) === false) {
+      writeJson(response, 403, { error: "Cross-origin request rejected." });
       return;
     }
-    if (request.method === "GET" && url.pathname === "/api/status") {
+
+    const method = request.method ?? "GET";
+    if (MUTATING_ROUTES.has(url.pathname) && method !== "POST") {
+      writeJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    if (method === "GET" && url.pathname === "/") {
+      writeText(response, 200, dashboardViewHtml());
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/status") {
       writeJson(response, 200, await readReadModelStatus(root));
       return;
     }
-    if (request.method === "GET" && url.pathname === "/api/data") {
+    if (method === "GET" && url.pathname === "/api/data") {
       writeJson(response, 200, await readDashboardData(root));
       return;
     }
-    if (request.method === "POST" && url.pathname === "/api/refresh") {
+    if (method === "POST" && url.pathname === "/api/refresh") {
       const accepted = await requestReadModelRefresh(root);
       writeJson(response, 202, {
         accepted,
@@ -72,115 +98,175 @@ async function handleRequest(
       });
       return;
     }
+    if (method === "GET" && url.pathname === "/api/capabilities") {
+      writeJson(response, 200, await getCapabilities({}));
+      return;
+    }
+    if (method === "POST" && url.pathname === "/api/check-api") {
+      writeJson(response, 200, await checkApiReport(root));
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/auth/status") {
+      writeJson(response, 200, await authStatus(root));
+      return;
+    }
+    if (method === "POST" && url.pathname === "/api/auth/request") {
+      writeJson(response, 200, await handleAuthRequest(root, request));
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/plans") {
+      writeJson(response, 200, { plans: await listPlans(root) });
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/verification") {
+      const config = await loadConfig(root);
+      writeJson(
+        response,
+        200,
+        await getLocalVerificationStatus(root, config?.workflow?.verification),
+      );
+      return;
+    }
+    if (method === "GET" && url.pathname === "/api/audit") {
+      writeJson(response, 200, await readAudit(root, 50));
+      return;
+    }
     writeJson(response, 404, { error: "Not found" });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
+    // OflowError here means the request itself was wrong (bad body, rejected
+    // option), which is a client fault; anything else is a server fault.
+    if (error instanceof OflowError) {
+      writeJson(response, 400, { error: message, code: error.code });
+      return;
+    }
     writeJson(response, 500, { error: message });
   }
 }
 
-function dashboardHtml(): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>oflow local planning dashboard</title>
-  <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #111318; color: #e8eaf0; }
-    body { margin: 0; background: radial-gradient(circle at top right, #253047, #111318 42%); min-height: 100vh; }
-    main { max-width: 1180px; margin: 0 auto; padding: 36px 22px 64px; }
-    header { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 26px; }
-    h1 { margin: 0; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -0.04em; }
-    h2 { margin: 0 0 12px; font-size: 1rem; color: #aeb8cc; text-transform: uppercase; letter-spacing: .08em; }
-    p { color: #aeb8cc; line-height: 1.55; }
-    button { cursor: pointer; border: 1px solid #60749c; border-radius: 999px; padding: 9px 15px; color: #eef3ff; background: #293852; }
-    button:hover { background: #35496d; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-    .card, section { border: 1px solid #2d3545; background: rgba(21, 25, 35, .86); border-radius: 16px; padding: 18px; box-shadow: 0 12px 32px rgba(0,0,0,.14); }
-    .metric { font-size: 2rem; font-weight: 700; }
-    .muted { color: #8994aa; font-size: .9rem; }
-    section { margin-top: 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #2d3545; vertical-align: top; }
-    th { color: #9eabc1; font-size: .78rem; text-transform: uppercase; letter-spacing: .07em; }
-    a { color: #9fc2ff; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    #notice { min-height: 1.4em; color: #9fc2ff; }
-    @media (max-width: 720px) { header { align-items: start; flex-direction: column; } table { font-size: .9rem; } }
-  </style>
-</head>
-<body>
-<main>
-  <header>
-    <div><div class="muted">oflow · local-only read model</div><h1>Planning cockpit</h1><p id="project">Loading cached project context…</p></div>
-    <div><button id="reload">Reload local view</button> <button id="refresh">Request sync</button></div>
-  </header>
-  <div id="notice" role="status"></div>
-  <div class="grid" id="metrics"></div>
-  <section><h2>Work items</h2><div id="work">Loading…</div></section>
-  <section><h2>Merge requests</h2><div id="mrs">Loading…</div></section>
-  <section><h2>Delivery and planning</h2><div id="delivery">Loading…</div></section>
-  <section><h2>Sync history</h2><div id="history">Loading…</div></section>
-</main>
-<script>
-const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const link = (title, url) => url ? '<a href="' + esc(url) + '" target="_blank" rel="noreferrer">' + esc(title) + '</a>' : esc(title);
-const age = (seconds) => seconds == null ? 'unknown' : seconds < 60 ? 'under a minute' : Math.floor(seconds / 60) + 'm ago';
-async function load() {
-  const response = await fetch('/api/data');
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Could not load local read model');
-  const status = data.status;
-  document.querySelector('#project').textContent = data.project ? data.project.path + ' · cache ' + age(status.latestSync?.ageSeconds) : 'No local sync snapshot yet';
-  const counts = status.counts;
-  document.querySelector('#metrics').innerHTML = [
-    ['Work items', counts.workItems], ['Merge requests', counts.mergeRequests], ['Pipelines', counts.pipelines], ['Iterations', counts.iterations], ['Snapshots', counts.syncSnapshots]
-  ].map(([label, value]) => '<div class="card"><div class="muted">' + esc(label) + '</div><div class="metric">' + esc(value) + '</div></div>').join('');
-  document.querySelector('#work').innerHTML = data.workItems.length ? '<table><tr><th>Story</th><th>State</th><th>Planning</th><th>Owner</th></tr>' + data.workItems.map((item) => '<tr><td>' + link('#' + item.iid + ' ' + item.title, item.webUrl) + '</td><td>' + esc(item.state) + '</td><td>' + esc([item.milestone, item.iteration].filter(Boolean).join(' · ') || 'Unscheduled') + '</td><td>' + esc(item.assignees.join(', ') || 'Unassigned') + '</td></tr>').join('') + '</table>' : '<p class="muted">No work items in the latest snapshot.</p>';
-  document.querySelector('#mrs').innerHTML = data.mergeRequests.length ? '<table><tr><th>MR</th><th>State</th><th>Branches</th></tr>' + data.mergeRequests.map((item) => '<tr><td>' + link('!' + item.iid + ' ' + item.title, item.webUrl) + '</td><td>' + esc((item.draft ? 'Draft · ' : '') + (item.state || 'unknown')) + '</td><td>' + esc((item.sourceBranch || '?') + ' → ' + (item.targetBranch || '?')) + '</td></tr>').join('') + '</table>' : '<p class="muted">No merge requests in the latest snapshot.</p>';
-  document.querySelector('#delivery').innerHTML = '<p><strong>Pipelines:</strong> ' + esc(data.pipelines.map((item) => item.status || 'unknown').join(', ') || 'none') + '</p><p><strong>Iterations:</strong> ' + esc(data.iterations.map((item) => item.title || ('#' + item.iid)).join(', ') || 'none') + '</p><p><strong>Labels:</strong> ' + esc(data.planning.labels.map((item) => item.name).join(', ') || 'none') + '</p><p><strong>Milestones:</strong> ' + esc(data.planning.milestones.map((item) => item.title).join(', ') || 'none') + '</p>';
-  document.querySelector('#history').innerHTML = data.syncHistory.length ? '<table><tr><th>Generated</th><th>Source</th><th>Counts</th><th>Warnings</th></tr>' + data.syncHistory.map((item) => '<tr><td>' + esc(item.generatedAt) + '</td><td>' + esc(item.source) + '</td><td>' + esc(item.stats.workItems + ' work · ' + item.stats.mergeRequests + ' MR · ' + item.stats.pipelines + ' pipelines') + '</td><td>' + esc(item.warningCount) + '</td></tr>').join('') + '</table>' : '<p class="muted">No sync history yet.</p>';
-  document.querySelector('#notice').textContent = status.invalidation.at ? 'Read model marked stale: ' + status.invalidation.reason : status.refreshRequest.at ? 'Sync requested locally; run oflow sync --refresh.' : '';
+/**
+ * A loopback port is reachable by any page the user has open, so a foreign
+ * origin must not be able to drive a mutating route. No `Origin` means a
+ * non-browser client (the CLI or curl), which is allowed.
+ */
+function originAllowed(request: IncomingMessage, boundPort: number): boolean {
+  const origin = request.headers.origin;
+  if (origin === undefined) return true;
+  return origin === "http://127.0.0.1:" + String(boundPort);
 }
-document.querySelector('#reload').addEventListener('click', () => load().catch((error) => { document.querySelector('#notice').textContent = error.message; }));
-document.querySelector('#refresh').addEventListener('click', async () => { const response = await fetch('/api/refresh', { method: 'POST' }); const result = await response.json(); document.querySelector('#notice').textContent = result.message; });
-load().catch((error) => { document.querySelector('#notice').textContent = error.message; });
-</script>
-</body>
-</html>`;
+
+/**
+ * `doctor` reports the machine-local repository root and a token *presence*
+ * boolean. Both are reduced here so the browser never renders a specific
+ * filesystem path and never receives token material.
+ */
+export function sanitizeDoctorReport(report: DoctorReport): Record<string, unknown> {
+  const safe = dropSecretFields({ ...report, root: redactLocalPath(report.root) });
+  return safe as Record<string, unknown>;
+}
+
+async function checkApiReport(root: string): Promise<Record<string, unknown>> {
+  return sanitizeDoctorReport(await doctor(root, { checkApi: true }));
+}
+
+async function authStatus(root: string): Promise<Record<string, unknown>> {
+  const host = await dashboardHost(root);
+  return {
+    host,
+    activeSource: getGitLabTokenSource(host ?? undefined),
+    storedForHost: host === null ? false : listStoredGitLabHosts().includes(host),
+    storedHosts: listStoredGitLabHosts(),
+    credentialsFile: redactLocalPath(credentialsPath()),
+    tokenAcceptedInBrowser: false,
+    loginCommand: "oflow auth login" + (host ? " --host " + host : ""),
+  };
+}
+
+/**
+ * The browser may request an auth action but may never name the host it
+ * applies to: a loopback server must not be steerable by whichever page
+ * happens to reach it. The host comes from the repository's Git remote.
+ */
+async function handleAuthRequest(root: string, request: IncomingMessage): Promise<Record<string, unknown>> {
+  const body = await readJsonBody(request);
+  const action = typeof body?.action === "string" ? body.action : "";
+  if (action !== "login" && action !== "clear") {
+    throw new OflowError(
+      "Auth request requires action \"login\" or \"clear\"; the host is resolved from the repository remote.",
+      "INVALID_AUTH_REQUEST",
+    );
+  }
+  if (body !== null && typeof body === "object" && "host" in body) {
+    throw new OflowError(
+      "The dashboard does not accept a host from the browser; it is resolved from the repository remote.",
+      "DASHBOARD_HOST_NOT_ACCEPTED",
+    );
+  }
+  const host = await dashboardHost(root);
+  return {
+    action,
+    host,
+    applied: false,
+    activeSource: getGitLabTokenSource(host ?? undefined),
+    tokenReturned: false,
+    message:
+      "Token entry stays in your terminal. Run `oflow auth login` in the repository, then reload this view.",
+    nextCommand: action === "login" ? "oflow auth login" : "oflow auth clear",
+  };
+}
+
+async function dashboardHost(root: string): Promise<string | null> {
+  try {
+    const remote = await getGitLabRemote(root);
+    return remote.host;
+  } catch {
+    return null;
+  }
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown> | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 8192) {
+      throw new OflowError("Dashboard request body is too large.", "DASHBOARD_BODY_TOO_LARGE");
+    }
+    chunks.push(chunk as Buffer);
+  }
+  if (chunks.length === 0) return null;
+  const text = Buffer.concat(chunks).toString("utf8").trim();
+  if (!text) return null;
+  const parsed: unknown = JSON.parse(text);
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new OflowError("Dashboard request body must be a JSON object.", "INVALID_DASHBOARD_BODY");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function writeJson(response: ServerResponse, status: number, value: unknown): void {
-  response.statusCode = status;
-  response.setHeader("Content-Type", "application/json; charset=utf-8");
-  response.end(JSON.stringify(value));
+  const body = JSON.stringify(value, null, 2) + "\n";
+  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  response.end(body);
 }
 
 function writeText(response: ServerResponse, status: number, value: string): void {
-  response.statusCode = status;
-  response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.writeHead(status, { "Content-Type": "text/html; charset=utf-8" });
   response.end(value);
 }
 
 function listen(server: Server, port: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const onError = (error: Error) => {
-      server.off("listening", onListening);
-      reject(new OflowError("Could not start the local dashboard: " + error.message, "DASHBOARD_START_FAILED"));
-    };
-    const onListening = () => {
-      server.off("error", onError);
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.removeListener("error", reject);
       resolve();
-    };
-    server.once("error", onError);
-    server.once("listening", onListening);
-    server.listen(port, "127.0.0.1");
+    });
   });
 }
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 }

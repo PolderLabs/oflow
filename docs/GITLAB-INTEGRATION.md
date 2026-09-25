@@ -34,9 +34,18 @@ agent -> oflow intent/sync/plan/approve/apply/verify
 
 The local SQLite read model and dashboard sit outside that credentialed
 network boundary. `oflow sync --refresh` is the explicit refresh operation;
-`oflow dashboard` reads SQLite on `127.0.0.1` and never receives a GitLab
-token. Its refresh control records a local request for the CLI rather than
-calling GitLab from a browser.
+`oflow dashboard` reads SQLite on `127.0.0.1` and never sends GitLab token
+material to a browser: no response body, no HTML, and no log contains a token.
+Its refresh control records a local request for the CLI rather than calling
+GitLab from a browser.
+
+The dashboard *process* does resolve a token from the same local credential
+store when the user explicitly runs an API check, because `doctor` needs one to
+probe capability calls. That token stays inside the loopback server process and
+the config directory. The Auth view cannot accept a token, and the host an auth
+action applies to is always resolved server-side from the repository's Git
+remote, so a page that reaches the loopback port cannot redirect it to another
+GitLab instance. See [`DASHBOARD-V2.md`](DASHBOARD-V2.md).
 
 The current release implements the REST path for compact project-scoped read
 commands, the guarded issue-update/note/label/milestone/board/board-list plans,

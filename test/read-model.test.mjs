@@ -113,7 +113,7 @@ test("dashboard is loopback-only, read-only for GitLab, and has explicit refresh
     assert.match(dashboard.url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
     const page = await fetch(dashboard.url);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /Planning cockpit/);
+    assert.match(await page.text(), /oflow cockpit/);
 
     const status = await fetch(new URL("api/status", dashboard.url));
     assert.equal(status.status, 200);
