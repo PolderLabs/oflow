@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.5
+Mark a task complete in a guarded plan. GitLab has no writable task field:
+`task_completion_status` appears in issue responses but is absent from the
+documented parameter list for `PUT /projects/:id/issues/:issue_iid`, and there
+is no `tasks` subresource. Ticking a task is a description edit, and that is
+what this does.
+### Added
+- `plan issue update --check <id|position>` and `--uncheck` flip a single
+  checklist item in the acceptance section and record an issue note naming
+  the criterion, in one plan, so the tick and its audit trail are a single
+  approval and cannot half-apply. A positional reference resolves inside the
+  acceptance section only, so it can never tick a box under another heading.
+- The audit note reports `n of m` over every checklist in the description,
+  which is how GitLab derives `task_completion_status`; the acceptance-section
+  parser sees only part of that list.
+- `issue.criterion.toggle` is a distinct plan kind, visible in `plan`,
+  `approve`, `apply`, `verify`, and the audit log.
+### Notes
+- The description write happens first. The note must never claim a tick that
+  failed, so a failed description update leaves no note behind.
+- `verify` asserts the description text and the note, but not the counter:
+  GitLab recomputes it and can serve a value computed just before the write
+  landed, so asserting it produces false failures on a correct apply.
+- Ticking an already-correct criterion writes no plan and exits 1.
 ## 0.4.4
 
 Finish honouring `--description-file` across the remaining plan commands.

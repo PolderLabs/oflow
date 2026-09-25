@@ -38,6 +38,7 @@ Canonical plan types (`GitLabIssueUpdate` in `src/types.ts`):
 | `assignee_ids` | yes | yes (comma-joined) | not yet | |
 | `state_event` | yes | yes | not yet | `close` \| `reopen` |
 | iteration | GraphQL `IssueSetIteration` only | not via glab PUT | not yet | not a REST form field on issue update |
+| `task_completion_status` | n/a — read-only | n/a | n/a | Not a writable parameter on `PUT /projects/:path/issues/:iid`, and no `tasks` subresource exists. Ticking a task is a `description` edit; `plan issue update --check` does that and records a note. |
 
 ## Gaps closed in this pass
 

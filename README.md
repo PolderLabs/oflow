@@ -497,7 +497,8 @@ resumed safely.
 | Local planning dashboard | ✅ | SQLite-backed, loopback-only, six-view cockpit that never sends GitLab credentials to the browser |
 | Copilot / VS Code handoff | ✅ | `.github/copilot-instructions.md` plus shared CLI JSON contract |
 | Merge-request writes | ✅ | Plan-backed create/update, including multiline description files |
-| Issue, label, and milestone descriptions from a file | ✅ | `--description` and `--description-file` on every plan command that writes a body |
+| Issue, label, and milestone descriptions from a file | ✅ | `--description` and `--description-file` on every plan command that writes a description |
+| Task-completion checklists | ✅ | `--check` / `--uncheck` on `plan issue update`; GitLab exposes no writable `task_completion_status`, so a tick is a description edit plus an audit note |
 
 ## Roadmap
 
@@ -509,9 +510,12 @@ git reports the long one. v0.4.2 corrected the repository owner in published
 links. v0.4.3 and v0.4.4 fixed a dropped-flag defect: `--description-file`
 was accepted by the parser for every command but ignored by the issue, label,
 and milestone plan sites, so a body supplied as a file silently vanished on
-create and refused with `EMPTY_PLAN` on update. The next release target is
-delivery expansion beyond the bounded MR create/update slice, plus the
-packaging layer for agent plugins and skill hosts.
+create and refused with `EMPTY_PLAN` on update. v0.4.5 closed the
+task-completion write path: GitLab exposes `task_completion_status` as
+read-only, so ticking a task is a description edit, and `--check` / `--uncheck`
+now do that under a plan together with the audit note. The next release
+target is delivery expansion beyond the bounded MR create/update slice, plus
+the packaging layer for agent plugins and skill hosts.
 
 ### Delivered — workflow and Scrum foundation
 
