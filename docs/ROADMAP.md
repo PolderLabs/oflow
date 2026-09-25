@@ -318,6 +318,41 @@ credential minting remain later milestones. The explicitly scoped MR create/
 update work above is not a general delivery API; it must remain plan-backed,
 permission-aware, and independently verified.
 
+
+### Experimental — local decision-engine triage (not wired in)
+
+- [x] `src/laya-triage.ts`: an advisory, dependency-free wrapper around a local
+  decision engine, with 21 mutation-verified tests
+- [x] Calibration measured and recorded in [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md)
+- [ ] Decide whether to surface a triage hint on `assess`, and if so behind an
+  explicit opt-in flag
+
+Measured, not assumed: the engine's difficulty score correlates 0.82 with input
+word count, and on equal-length trivial-vs-hard pairs it separated them by
++0.02, -0.08, and +0.75. It is close to a length meter, so the module exposes
+no difficulty band and nothing may branch on its score. Its domain guess is
+usable as a weak hint. Wiring this into the plan lifecycle needs a calibrated
+checkpoint that clears the equal-length control first; the full reasoning and
+the mutation table live in the linked document.
+
+### Friction log reconciliation — 2026-09-26
+
+The friction log above was written on 2026-09-22 against "v0.3.0". The project
+is now on 0.5.2, so the log is partly stale. Verified against `src/`:
+
+| # | Logged as | Actual state on 0.5.2 |
+|---|---|---|
+| 1 | `--add-labels` does not validate label existence | **Still open** — no existence check in the plan path |
+| 2 | `plan issue create` has no `--type`/`--issue-type` | **Shipped** — `cli.ts` parses both and forwards `issue_type` |
+| 3 | Stale-digest guard has no escape hatch | **Still open** — no `--supersede` |
+| 4 | `--assignee` needs `User:Read` and leaks raw JSON on 403 | **Still open** — the lookup is unguarded |
+| 5 | `work --author` is case-sensitive, username-only | **Unverified** — needs a read before it is queued |
+| 6 | 50-IID bulk cap undocumented in help | **Partly shipped** — the cap exists; help coverage is per-command |
+| 7 | Apply leaves ambiguous `applied-partial` state | **Shipped** — the state and the resume path both exist |
+
+Only #1, #3, and #4 are confirmed-open work. Treat the rest of the log as
+history rather than as a backlog.
+
 ## Status
 
 ### Phase 0 — Current foundation
