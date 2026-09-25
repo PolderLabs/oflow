@@ -441,6 +441,32 @@ function captureStdout() {
   };
 }
 
+/**
+ * Captures every byte of stdout, markdown included.
+ *
+ * `captureStdout` deliberately passes non-JSON through to the real stream so
+ * the test runner keeps working, which makes it unusable for asserting on
+ * oflow's human-readable output. This one swallows everything, so it must be
+ * used only where the assertion genuinely needs the rendered text.
+ */
+function captureAllStdout() {
+  const original = process.stdout.write.bind(process.stdout);
+  let captured = "";
+  process.stdout.write = (chunk, encoding, callback) => {
+    const text = Buffer.isBuffer(chunk)
+      ? chunk.toString(typeof encoding === "string" ? encoding : "utf8")
+      : String(chunk);
+    captured += text;
+    if (typeof encoding === "function") encoding();
+    else if (typeof callback === "function") callback();
+    return true;
+  };
+  return {
+    read() { return captured; },
+    restore() { process.stdout.write = original; },
+  };
+}
+
 /** Captures oflow's stderr diagnostics so refusal messages can be asserted. */
 function captureStderr() {
   const original = process.stderr.write.bind(process.stderr);
@@ -1433,6 +1459,53 @@ test("plan issue update --check refuses when the criterion is already checked", 
     // A refused command must not leave a plan behind. The plans directory is
     // only created when one is actually written.
     assert.equal(existsSync(join(root, ".oflow", "state", "plans")), false);
+  });
+});
+
+test("apply names the criterion and audit note in the criterion-toggle result", async () => {
+  await withCriterionFixture(async (root) => {
+    let description = CRITERION_ISSUE;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = String(input);
+      const method = init.method || "GET";
+      if (url.includes("/issues/42/notes")) {
+        if (method === "POST") return jsonResponse({ id: 7, body: "Marked AC-2 complete (2 of 3)." });
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/issues/42")) {
+        if (method === "PUT") {
+          description = new URLSearchParams(init.body).get("description");
+          return jsonResponse({ iid: 42, description, updated_at: "2026-01-02T00:00:00Z" });
+        }
+        return jsonResponse({ iid: 42, title: "Choose a pod", description, updated_at: "2026-01-01T00:00:00Z" });
+      }
+      throw new Error("unstubbed " + method + " " + url);
+    };
+    const out = captureAllStdout();
+    let rendered;
+    let planPath;
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-2", "--json",
+      ]), 0);
+      const planId = /"id"\s*:\s*"([0-9a-f-]{36})"/.exec(out.read())[1];
+      planPath = join(root, ".oflow", "state", "plans", planId + ".json");
+      assert.equal(await main(["approve", planPath, "--root", root]), 0);
+      assert.equal(await main(["apply", planPath, "--root", root]), 0);
+      rendered = out.read();
+    } finally {
+      out.restore();
+    }
+    // An agent reads this line to learn what landed, so it must identify the
+    // issue, the criterion, the direction, and the audit note. Asserting on
+    // the rendered text is the point: the persisted plan JSON already carried
+    // this data before the formatter existed, so a JSON-only assertion would
+    // keep passing even if the formatter regressed.
+    assert.match(
+      rendered,
+      /Applied result: issue #42 criterion "AC-2" checked \(note #7\)/,
+    );
+    assert.doesNotMatch(rendered, /issue updated \(unknown\)/);
   });
 });
 
