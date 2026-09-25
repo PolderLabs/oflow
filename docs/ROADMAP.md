@@ -342,7 +342,7 @@ is now on 0.5.2, so the log is partly stale. Verified against `src/`:
 
 | # | Logged as | Actual state on 0.5.2 |
 |---|---|---|
-| 1 | `--add-labels` does not validate label existence | **Still open** — `validateIssueLabelList` (`plan.ts:4373`) rejects only an empty list; every `listLabels` call sits in a `label.*` operation, never the issue add/remove path |
+| 1 | `--add-labels` does not validate label existence | **Fixed on this branch** — `assertIssueLabelsExist` (`plan.ts:4411`) rejects an unknown added label at plan time, before anything is approved or applied |
 | 2 | `plan issue create` has no `--type`/`--issue-type` | **Shipped** — parsed at `cli.ts:1392` and forwarded as `issue_type` at `cli.ts:629` |
 | 3 | Stale-digest guard has no escape hatch | **Still open** — no `--supersede` anywhere in `src/` |
 | 4 | `--assignee` needs `User:Read` and leaks raw JSON on 403 | **Still open** — `resolveAssigneeIds` (`plan.ts:3170`) calls `listUsersByUsername` unguarded; `normalizeForbidden` (`auth-resolver.ts:247`) is not applied to it |
@@ -350,8 +350,8 @@ is now on 0.5.2, so the log is partly stale. Verified against `src/`:
 | 6 | 50-IID bulk cap undocumented in help | **Partly shipped** — enforced at `plan.ts:2573`; help mentions it at `cli.ts:2252` and `cli.ts:2298`, not for every bulk command |
 | 7 | Apply leaves ambiguous `applied-partial` state | **Shipped** — the state is declared at `plan.ts:44`, the resume path at `plan.ts:1301` |
 
-Only #1, #3, and #4 are confirmed-open work. Treat the rest of the log as
-history rather than as a backlog.
+#1 is fixed on this branch. #3 and #4 remain confirmed-open work; treat the
+rest of the log as history rather than as a backlog.
 
 ## Status
 
