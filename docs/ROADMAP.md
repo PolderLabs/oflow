@@ -455,13 +455,16 @@ agent-execution milestone.
   sync-history snapshots.
 - [x] Add explicit cache status, age, invalidation, and migration diagnostics.
 - [x] Add a loopback-only read-only dashboard backed by the local SQLite model.
-- [x] Add explicit refresh controls without exposing GitLab credentials to the
-  dashboard process or browser.
+- [x] Add explicit refresh controls that never expose GitLab credentials to
+  the browser. The dashboard process does resolve a token locally for an
+  explicit API check, so the boundary is stated as "never sent to the
+  browser" rather than "never loaded".
 
 The foundation is exposed through `oflow dashboard`, `oflow sync --refresh`,
 `oflow capabilities --json`, and the stable CLI JSON contract. The dashboard
-only reads the local database; its refresh button records a local request and
-shows the explicit CLI command required to contact GitLab.
+reads the local database; its refresh button records a local request and
+shows the explicit CLI command required to contact GitLab. Diagnostics is the
+one in-process capability probe, and it runs only on an explicit click.
 
 ### Phase 4b — Backend-neutral action schema
 

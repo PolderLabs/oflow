@@ -494,18 +494,17 @@ resumed safely.
 | Merge-request and pipeline reads | ✅ | Compact status and verification evidence |
 | `glab` fallback | ◐ Optional | Explicit GET-only diagnostics and unwrapped reads |
 | GitLab MCP | ◐ Optional | Agent-facing companion; not required by oflow |
-| Local planning dashboard | ✅ | SQLite-backed, loopback-only, credential-free browser view |
+| Local planning dashboard | ✅ | SQLite-backed, loopback-only, six-view cockpit that never sends GitLab credentials to the browser |
 | Copilot / VS Code handoff | ✅ | `.github/copilot-instructions.md` plus shared CLI JSON contract |
-| Merge-request writes | ◌ v0.3.0 | Plan-backed create/update with multiline description files |
+| Merge-request writes | ◌ Next | Plan-backed create/update with multiline description files |
 
 ## Roadmap
 
-**Current position:** v0.2.1 delivered the Scrum/planning read model, agent
-context flow, safe planning writes, assessment, SQLite cache, dashboard
-foundation, and host handoff bridge. The next release target is v0.3.0:
-truthful transport/auth state, first-class GitLab identity, live capabilities,
-host-contract compatibility, and thin agent integrations. Delivery expansion
-outside the bounded MR create/update slice remains intentionally later.
+**Current position:** v0.4.0 delivered the dashboard v2 cockpit, first-class
+GitLab identity, truthful transport/auth state, live capabilities, and
+host-contract compatibility. The next release target is delivery expansion
+beyond the bounded MR create/update slice, plus the packaging layer for agent
+plugins and skill hosts.
 
 ### Delivered — workflow and Scrum foundation
 
@@ -521,18 +520,15 @@ outside the bounded MR create/update slice remains intentionally later.
 - Acceptance-aware story context, assessment, and verification.
 - Guarded issue, planning, label, milestone, board, and bounded bulk writes.
 
-### Next — v0.3.0 reliability and agent integration
+### Next — delivery expansion and agent packaging
 
-- Resolve configured/authenticated/readable/mutable/verifiable transport state.
-- Add `oflow identity --json` and deterministic `work --mine` behavior.
-- Make capabilities and doctor reflect live permissions and reduced modes.
-- Validate generated Claude, Codex, OMP, Copilot/VS Code, and OpenWolf
-  contracts against the stable JSON surface.
-- Audit portable action field parity and add synthetic compatibility fixtures.
-- Close the session-friction items: safe plan expiry/list/discard/apply
-  summaries/no-op detection, scope introspection, plan-backed MR create/update,
-  flexible verification, documented JSON/help contracts, bulk notes, normalized
-  Work Item reads, safe timebox fallback, and audited note fast paths.
+- Plan-backed merge-request create/update through the existing write gates.
+- Package a thin Codex plugin/skill layer and a native OMP extension that
+  delegate to the stable JSON contract.
+- Close the remaining field-parity gaps across REST, `glab`, and delegated
+  transports for label, milestone, and issue relationships.
+- Add a durable caller-supplied identity for issue creation before any
+  broader creation path is enabled.
 
 ### Later — delivery and broader GitLab coverage
 

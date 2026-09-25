@@ -121,7 +121,9 @@ group-scoped token.
 Run `oflow dashboard` to serve the latest local snapshot at a loopback-only
 address. The browser can reload local SQLite data or record a refresh request,
 but it cannot call GitLab. Run `oflow sync --refresh` in the CLI when current
-remote state is required. The dashboard process never loads a GitLab token.
+remote state is required. The browser never receives token material: the
+dashboard process resolves a token locally for an explicit API check, and that
+value is never returned in a response, logged, or exposed to the page.
 
 GitHub Copilot, VS Code agents, Claude, and Codex consume the same CLI JSON
 contract. `oflow install` preserves existing `.github/copilot-instructions.md`

@@ -122,3 +122,21 @@ test("overview notes describe the read model and snapshot state honestly", async
   assert.equal(/no snapshot yet/.test(ready), false);
   assert.equal(/not created yet/.test(ready), false);
 });
+
+test("a __html field in API data cannot forge raw markup", () => {
+  // rawCell() tags with a Symbol, which JSON cannot express, so a hostile
+  // field in a GitLab-sourced response stays inert text.
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+  const start = script.indexOf("const esc = ");
+  const end = script.indexOf("const metric = ");
+  const { cell, table, rawCell } = new Function(
+    script.slice(start, end) + "; return { cell, table, rawCell };",
+  )();
+
+  const forged = { __html: '<img src=x onerror="window.__pwned=1">' };
+  assert.equal(cell(forged).includes("<img"), false, "a string key must not opt out of escaping");
+  assert.equal(table(["Item"], [[forged]]).includes("<img"), false);
+
+  // The explicit opt-in still works, which is the only path to raw markup.
+  assert.match(cell(rawCell("<b>ok</b>")), /<b>ok<\/b>/);
+});

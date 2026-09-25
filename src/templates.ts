@@ -14,7 +14,7 @@ export const CACHE_POLICY_MARKDOWN = [
   "4. If refresh fails, continue local analysis only and do not apply a remote mutation.",
   "5. After applying a remote change, refresh the work and project snapshots again.",
   "6. Use `oflow context --story <iid>` and `oflow assess --story <iid> --json` for detailed story and acceptance-criteria evidence.",
-  "7. Use `oflow dashboard` for a local read-only view; it binds to 127.0.0.1 and never receives GitLab credentials.",
+  "7. Use `oflow dashboard` for a local read-only view; it binds to 127.0.0.1 and never sends GitLab credentials to the browser.",
   "",
   "Cached reads never contact GitLab. They are a local read model, not a freshness guarantee.",
 ].join("\n");

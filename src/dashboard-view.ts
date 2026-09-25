@@ -137,9 +137,13 @@ async function api(path, options) {
  * strings (project paths, issue titles, capability notes, doctor details), so one
  * forgotten esc() at a single call site would otherwise inject script into a
  * localhost page. A cell that genuinely needs markup opts in via rawCell(). */
-const rawCell = (html) => ({ __html: html });
-const cell = (value) => (value !== null && typeof value === 'object' && value.__html !== undefined
-  ? value.__html
+/* A Symbol tag, not a string key: any API response is JSON, so a
+ * {"__html": "<img onerror=...>"} field in a GitLab-sourced string would
+ * otherwise be auto-promoted to raw markup without ever calling rawCell(). */
+const RAW = Symbol('raw');
+const rawCell = (html) => ({ [RAW]: html });
+const cell = (value) => (value !== null && typeof value === 'object' && value[RAW] !== undefined
+  ? value[RAW]
   : esc(value));
 const table = (headers, rows) =>
   '<table><thead><tr>' + headers.map((h) => '<th>' + esc(h) + '</th>').join('') +

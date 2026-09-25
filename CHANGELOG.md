@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+Dashboard v2 release.
 
 ### Added
 
@@ -23,6 +25,10 @@
 - Mutating dashboard routes validate `Origin` and reject any origin other than
   the server's own `127.0.0.1` address; `POST /api/auth/request` accepts an
   action only and refuses a browser-supplied host.
+- The dashboard's raw-cell opt-in is tagged with a `Symbol` rather than a
+  `__html` string key, so a `__html` field in a GitLab-sourced API response
+  can no longer be promoted to raw markup without passing through
+  `rawCell()`.
 
 ### Fixed
 
@@ -32,6 +38,13 @@
   `WORK_CACHE_IDENTITY_UNAVAILABLE`; non-mine cached reads remain offline and
   retain their existing key shape. SQLite schema bumped to v3 with an
   idempotent `actor_id` column.
+- Dashboard error responses are keyed on the specific `OflowError` code, so a
+  domain failure is reported as `500` rather than a client `400`, and an
+  oversized request body returns `413`.
+- The Overview view describes snapshot and read-model state honestly: a
+  repository that has never synced reads "no snapshot yet" instead of
+  "unknown", and an uncreated database reads "not created yet" instead of
+  "sqlite ready".
 
 ## 0.3.0
 
