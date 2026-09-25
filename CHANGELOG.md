@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+Document the task-completion flags in `oflow --help`.
+### Fixed
+- `--check` and `--uncheck` were absent from the help text, so the 0.5.0
+  feature shipped undiscoverable: a user reading `--help` had no way to find
+  how to tick a task. Both now appear in the command summary and the flag
+  reference, and a test fails if either line is removed.
+
 ## 0.5.0
 Mark a task complete in a guarded plan. GitLab has no writable task field:
 `task_completion_status` appears in issue responses but is absent from the
