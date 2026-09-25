@@ -1,21 +1,5 @@
 # Changelog
 
-## 0.4.3
-
-Fix the dropped `--description-file` flag on issue create and update.
-
-### Fixed
-
-- The argument parser accepts `--description-file` for every command, but the
-  issue create and issue update sites read `options.description` directly
-  instead of resolving the file, so the flag never reached the plan. The two
-  commands failed differently: `plan issue create` dropped the body silently
-  and planned an issue with no description, while `plan issue update` came
-  out with an empty change set and refused with `EMPTY_PLAN`, naming
-  `--description` rather than the flag actually passed. Both now resolve the
-  flag the way the merge-request commands already did, so an agent can write
-  an issue body from a file on either command.
-
 ## 0.4.4
 
 Finish honouring `--description-file` across the remaining plan commands.
@@ -31,6 +15,22 @@ Finish honouring `--description-file` across the remaining plan commands.
   refused with `EMPTY_PLAN` naming `--description` rather than the flag
   actually passed. All four now resolve the flag, matching the issue and
   merge-request commands.
+
+## 0.4.3
+
+Fix the dropped `--description-file` flag on issue create and update.
+
+### Fixed
+
+- The argument parser accepts `--description-file` for every command, but the
+  issue create and issue update sites read `options.description` directly
+  instead of resolving the file, so the flag never reached the plan. The two
+  commands failed differently: `plan issue create` dropped the body silently
+  and planned an issue with no description, while `plan issue update` came
+  out with an empty change set and refused with `EMPTY_PLAN`, naming
+  `--description` rather than the flag actually passed. Both now resolve the
+  flag the way the merge-request commands already did, so an agent can write
+  an issue body from a file on either command.
 
 ## 0.4.2
 
