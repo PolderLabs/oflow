@@ -513,7 +513,11 @@ and milestone plan sites, so a body supplied as a file silently vanished on
 create and refused with `EMPTY_PLAN` on update. v0.5.0 closed the
 task-completion write path: GitLab exposes `task_completion_status` as
 read-only, so ticking a task is a description edit, and `--check` / `--uncheck`
-now do that under a plan together with the audit note. The next release
+now do that under a plan together with the audit note. v0.5.1 listed those two
+flags in `oflow --help`, where they were previously undiscoverable. v0.5.2
+corrected the 0.5.0 changelog entry that claimed the same help text, and
+hardened `verify` so a note returned without a body reports a failed check
+instead of raising a raw `TypeError`. The next release
 target is delivery expansion beyond the bounded MR create/update slice, plus
 the packaging layer for agent plugins and skill hosts.
 
