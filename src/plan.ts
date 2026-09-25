@@ -1,4 +1,5 @@
 import { lstat, readdir, realpath, unlink } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { readAudit, recordPlanEvent } from "./audit.js";
@@ -2768,21 +2769,43 @@ function validateBulkIssueLabelChanges(
 }
 
 function resolvePlanPath(root: string, input: string): string {
-  const candidate = resolve(root, isAbsolute(input) ? relative(root, input) : input);
+  const candidate = resolve(root, input);
   const planRoot = resolve(root, PLAN_DIRECTORY);
-  const pathRelativeToPlanRoot = relative(planRoot, candidate);
+  const insidePlanRoot = (base: string, target: string): boolean => {
+    const rest = relative(base, target);
+    return !!rest && !rest.split(/[\\/]+/).includes("..") && !isAbsolute(rest) && rest.endsWith(".json");
+  };
+  // The lexical comparison above is the guard. It can also fail for a path
+  // that never left the plan root, because git and the filesystem can spell
+  // one directory two ways: on Windows the temp directory may use the 8.3
+  // short form while `git rev-parse` reports the long form, and `relative`
+  // turns that mismatch into a ".." chain.
+  // Only when the lexical check fails do we retry against the canonical
+  // paths, which expand short names and resolve symlinks. A real
+  // traversal fails both comparisons, so this widens nothing.
+  if (insidePlanRoot(planRoot, candidate)) {
+    return candidate;
+  }
+  const canonical = (path: string): string | null => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return null;
+    }
+  };
+  const canonicalPlanRoot = canonical(planRoot);
+  const canonicalCandidate = canonical(candidate);
   if (
-    !pathRelativeToPlanRoot ||
-    pathRelativeToPlanRoot.split(/[\\/]+/).includes("..") ||
-    isAbsolute(pathRelativeToPlanRoot) ||
-    !pathRelativeToPlanRoot.endsWith(".json")
+    !canonicalPlanRoot ||
+    !canonicalCandidate ||
+    !insidePlanRoot(canonicalPlanRoot, canonicalCandidate)
   ) {
     throw new OflowError(
       "Plan paths must point to .oflow/state/plans/*.json.",
       "UNSAFE_PLAN_PATH",
     );
   }
-  return candidate;
+  return canonicalCandidate;
 }
 
 function assertState(plan: PlanArtifact, expected: PlanState | PlanState[], action: string): void {
