@@ -172,12 +172,14 @@ async function renderOverview(host) {
   const counts = status.counts || {};
   const project = data.project;
   const metrics = [
-    metric('Work items', counts.workItems ?? 0, age(status.latestSync && status.latestSync.ageSeconds)),
+    metric('Work items', counts.workItems ?? 0,
+      status.latestSync ? age(status.latestSync.ageSeconds) : 'no snapshot yet'),
     metric('Merge requests', counts.mergeRequests ?? 0),
     metric('Pipelines', counts.pipelines ?? 0),
     metric('Iterations', counts.iterations ?? 0),
     metric('Snapshots', counts.syncSnapshots ?? 0),
-    metric('Read model', status.state ?? 'unknown', status.databasePath ? 'sqlite ready' : 'no database'),
+    metric('Read model', status.state ?? 'unknown',
+      status.databaseExists ? 'sqlite ready' : 'not created yet'),
   ];
   const workRows = (data.workItems || []).map((item) => [
     rawCell(link('#' + item.iid + ' ' + item.title, item.webUrl)),

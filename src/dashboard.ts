@@ -134,15 +134,23 @@ async function handleRequest(
     writeJson(response, 404, { error: "Not found" });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    // OflowError here means the request itself was wrong (bad body, rejected
-    // option), which is a client fault; anything else is a server fault.
+    // Keyed on the specific codes rather than the class: a domain failure
+    // elsewhere can also throw OflowError and must stay a 500.
     if (error instanceof OflowError) {
-      writeJson(response, 400, { error: message, code: error.code });
+      const status = CLIENT_ERROR_STATUS[error.code] ?? 500;
+      writeJson(response, status, { error: message, code: error.code });
       return;
     }
     writeJson(response, 500, { error: message });
   }
 }
+
+const CLIENT_ERROR_STATUS: Record<string, number> = {
+  INVALID_AUTH_REQUEST: 400,
+  DASHBOARD_HOST_NOT_ACCEPTED: 400,
+  INVALID_DASHBOARD_BODY: 400,
+  DASHBOARD_BODY_TOO_LARGE: 413,
+};
 
 /**
  * A loopback port is reachable by any page the user has open, so a foreign

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import vm from "node:vm";
 import assert from "node:assert/strict";
 
 import { dashboardViewHtml } from "../dist/dashboard-view.js";
@@ -86,4 +87,38 @@ test("a hostile table cell is rendered as text, not markup", () => {
 test("every table cell passes through the escaping helper", () => {
   assert.match(html, /cells\.map\(\(entry\) => '<td>' \+ cell\(entry\)/);
   assert.equal(/cells\.map\(\(cell\) => '<td>' \+ cell/.test(html), false);
+});
+
+test("overview notes describe the read model and snapshot state honestly", async () => {
+  // renderOverview writes into the host element it is handed, so a plain object
+  // is enough: the notes are proven to follow the data, not to match a spelling.
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+  const render = async (status) => {
+    const context = vm.createContext({
+      document: { getElementById: () => null, querySelectorAll: () => [], addEventListener() {} },
+      location: { hash: "" },
+      fetch: async () => ({ ok: true, text: async () => JSON.stringify({ status }) }),
+      console, setTimeout, clearTimeout,
+    });
+    // Everything from the hashchange registration onward is bootstrap that
+    // auto-runs on load; this test drives renderOverview directly.
+    new vm.Script(script.split("window.addEventListener('hashchange'")[0]).runInContext(context);
+    const host = { innerHTML: "" };
+    await context.renderOverview(host);
+    return host.innerHTML;
+  };
+
+  const empty = await render({ state: "missing", databaseExists: false, latestSync: null, counts: {} });
+  assert.match(empty, /no snapshot yet/);
+  assert.match(empty, /not created yet/);
+  assert.equal(/unknown/.test(empty), false, "no sync should not read as 'unknown'");
+
+  const ready = await render({
+    state: "ready", databaseExists: true,
+    latestSync: { ageSeconds: 30 }, counts: { workItems: 3 },
+  });
+  assert.match(ready, /sqlite ready/);
+  assert.match(ready, /under a minute/);
+  assert.equal(/no snapshot yet/.test(ready), false);
+  assert.equal(/not created yet/.test(ready), false);
 });

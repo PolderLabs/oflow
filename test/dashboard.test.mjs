@@ -214,3 +214,37 @@ test("--open and --port are only accepted by the dashboard command", async () =>
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("error status is keyed on the specific code, not the error class", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-dash-status-"));
+  const dashboard = await startDashboard(root, { port: 0 });
+  try {
+    // check-api runs doctor(), which reports a missing Git remote as a warning
+    // rather than throwing, so a remote-less repository still succeeds.
+    const checkApi = await fetch(new URL("api/check-api", dashboard.url), { method: "POST" });
+    assert.equal(checkApi.status, 200);
+    const report = await checkApi.json();
+    assert.equal(report.remote, null);
+
+    // A body that is not a JSON object is a client fault.
+    const badBody = await fetch(new URL("api/auth/request", dashboard.url), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([1, 2, 3]),
+    });
+    assert.equal(badBody.status, 400);
+    assert.equal((await badBody.json()).code, "INVALID_DASHBOARD_BODY");
+
+    // An oversized body is a distinct 413, not a generic 400.
+    const huge = await fetch(new URL("api/auth/request", dashboard.url), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "login", pad: "x".repeat(9000) }),
+    });
+    assert.equal(huge.status, 413);
+    assert.equal((await huge.json()).code, "DASHBOARD_BODY_TOO_LARGE");
+  } finally {
+    await dashboard.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
