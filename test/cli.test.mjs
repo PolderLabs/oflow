@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -428,6 +428,28 @@ function captureStdout() {
     },
     restore() {
       process.stdout.write = original;
+    },
+  };
+}
+
+/** Captures oflow's stderr diagnostics so refusal messages can be asserted. */
+function captureStderr() {
+  const original = process.stderr.write.bind(process.stderr);
+  let captured = "";
+  process.stderr.write = (chunk, encoding, callback) => {
+    captured += Buffer.isBuffer(chunk)
+      ? chunk.toString(typeof encoding === "string" ? encoding : "utf8")
+      : String(chunk);
+    if (typeof encoding === "function") encoding();
+    else if (typeof callback === "function") callback();
+    return true;
+  };
+  return {
+    read() {
+      return captured;
+    },
+    restore() {
+      process.stderr.write = original;
     },
   };
 }
@@ -1243,3 +1265,379 @@ for (const [resource, operation, path, argv, stub] of [
     }
   });
 }
+
+// A criterion tick is a description write: GitLab derives task completion by
+// parsing `- [ ]` / `- [x]` out of the description and exposes no writable
+// field for it. These cover the bracket flip, the guarded note, and the
+// refusals that keep the plan honest.
+const CRITERION_ISSUE = [
+  "## Acceptance criteria",
+  "",
+  "- [ ] AC-1: first  ",
+  "- [ ] AC-2: second",
+  "- [x] AC-3: third",
+  "",
+].join("\n");
+
+async function withCriterionFixture(run) {
+  const root = mkdtempSync(join(tmpdir(), "oflow-criterion-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "criterion-cli-test-token";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    // await so the finally block cannot delete the fixture before the
+    // async body has finished with it.
+    return await run(root);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("plan issue update --check ticks the criterion and audits it in the same plan", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: CRITERION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-2", "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      assert.equal(parsed.operation.kind, "issue.criterion.toggle");
+      assert.deepEqual(parsed.operation.criterion, { id: "AC-2", checked: true });
+      const description = parsed.operation.changes.description;
+      // Only the targeted bracket moves; indentation and trailing spaces stay.
+      assert.match(description, /^- \[x\] AC-2: second$/m);
+      assert.match(description, /^- \[ \] AC-1: first {2}$/m);
+      assert.match(description, /^- \[x\] AC-3: third$/m);
+      // The note states the resulting progress, not the pre-tick count.
+      assert.equal(parsed.operation.note, "Marked AC-2 complete (2 of 3).");
+      // Concurrent-edit guard captured from the live issue.
+      assert.equal(parsed.operation.expectedUpdatedAt, "2026-01-01T00:00:00Z");
+      const persisted = JSON.parse(
+        readFileSync(join(root, ".oflow", "state", "plans", parsed.id + ".json"), "utf8"),
+      );
+      assert.equal(persisted.operation.changes.description, description);
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+test("plan issue update --uncheck reopens a checked criterion and lowers the count", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: CRITERION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--uncheck", "AC-3", "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      assert.deepEqual(parsed.operation.criterion, { id: "AC-3", checked: false });
+      assert.match(parsed.operation.changes.description, /^- \[ \] AC-3: third$/m);
+      // AC-3 was the only checked box, so reopening it leaves none complete.
+      assert.equal(parsed.operation.note, "Reopened AC-3 (0 of 3).");
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+test("plan issue update --check refuses when the criterion is already checked", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: CRITERION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-3",
+      ]), 1);
+    } finally {
+      out.restore();
+    }
+    // A refused command must not leave a plan behind. The plans directory is
+    // only created when one is actually written.
+    assert.equal(existsSync(join(root, ".oflow", "state", "plans")), false);
+  });
+});
+
+test("plan issue update --check rejects an unknown criterion and names the valid ids", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: CRITERION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const err = captureStderr();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-9",
+      ]), 1);
+    } finally {
+      err.restore();
+    }
+    const message = err.read();
+    assert.match(message, /AC-9/);
+    assert.match(message, /AC-1, AC-2, AC-3/);
+    // A refused command must not leave a plan behind. The plans directory is
+    // only created when one is actually written.
+    assert.equal(existsSync(join(root, ".oflow", "state", "plans")), false);
+  });
+});
+
+test("plan issue update refuses --check combined with other issue edit flags", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: CRITERION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const err = captureStderr();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42",
+        "--check", "AC-1", "--title", "Renamed",
+      ]), 1);
+    } finally {
+      err.restore();
+    }
+    assert.match(err.read(), /--title/);
+    // A refused command must not leave a plan behind. The plans directory is
+    // only created when one is actually written.
+    assert.equal(existsSync(join(root, ".oflow", "state", "plans")), false);
+  });
+});
+
+test("plan issue update refuses --check together with --uncheck", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: CRITERION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const err = captureStderr();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42",
+        "--check", "AC-1", "--uncheck", "AC-3",
+      ]), 1);
+    } finally {
+      err.restore();
+    }
+    assert.match(err.read(), /either --check or --uncheck/);
+    assert.equal(existsSync(join(root, ".oflow", "state", "plans")), false);
+  });
+});
+
+test("applying a criterion toggle writes the description then the note, and verifies both", async () => {
+  await withCriterionFixture(async (root) => {
+    let description = CRITERION_ISSUE;
+    const notes = [];
+    const order = [];
+    globalThis.fetch = async (input, init = {}) => {
+      const url = String(input);
+      const method = init.method || "GET";
+      if (url.endsWith("/issues/42")) {
+        if (method === "PUT") {
+          order.push("description");
+          description = new URLSearchParams(init.body).get("description");
+          return jsonResponse({ iid: 42, description, updated_at: "2026-01-02T00:00:00Z" });
+        }
+        return jsonResponse({ iid: 42, title: "Choose a pod", description, updated_at: "2026-01-01T00:00:00Z" });
+      }
+      if (url.includes("/issues/42/notes")) {
+        if (method === "POST") {
+          order.push("note");
+          const body = new URLSearchParams(init.body).get("body");
+          notes.push({ id: notes.length + 1, body });
+          return jsonResponse({ id: notes.length, body });
+        }
+        return jsonResponse([...notes].reverse());
+      }
+      throw new Error("unstubbed " + url);
+    };
+    const out = captureStdout();
+    let planPath;
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-2", "--json",
+      ]), 0);
+      const plan = JSON.parse(out.read()).plan;
+      planPath = join(root, ".oflow", "state", "plans", plan.id + ".json");
+      assert.equal(await main(["approve", planPath, "--root", root]), 0);
+      assert.equal(await main(["apply", planPath, "--root", root]), 0);
+      assert.equal(await main(["verify", planPath, "--root", root]), 0);
+    } finally {
+      out.restore();
+    }
+    // The note must be created only after the description write succeeds, so a
+    // failed tick can never leave a note claiming work that did not happen.
+    assert.deepEqual(order, ["description", "note"], "order=" + JSON.stringify(order));
+    // The description write landed and the note was created after it.
+    assert.match(description, /^- \[x\] AC-2: second$/m);
+    assert.deepEqual(notes.map((note) => note.body), ["Marked AC-2 complete (2 of 3)."]);
+    const applied = JSON.parse(readFileSync(planPath, "utf8"));
+    // The lifecycle ends in `verified`, not `applied`: verify advances the state.
+    assert.equal(applied.state, "verified");
+    assert.equal(applied.result.noteId, 1);
+    assert.deepEqual(applied.result.criterion, { id: "AC-2", checked: true });
+  });
+});
+
+// A description with a second checklist section. GitLab counts every
+// `- [ ]` / `- [x]` bullet when it derives task_completion_status, and a
+// positional reference must resolve inside the acceptance section only.
+const MULTI_SECTION_ISSUE = [
+  "## Tasks",
+  "",
+  "- [ ] write the migration",
+  "- [ ] add the regression test",
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] AC-1: first",
+  "- [ ] AC-2: second",
+  "",
+].join("\n");
+
+// Same shape, but the earlier checklist is unlabelled and the acceptance
+// section carries explicit ids. A scan that ignores section boundaries would
+// count the `## Tasks` bullets first and tick the wrong line.
+const EARLY_UNLABELLED_ISSUE = [
+  "## Tasks",
+  "",
+  "- [ ] a",
+  "- [ ] b",
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] AC-1: first",
+  "- [ ] AC-2: second",
+  "",
+].join("\n");
+
+test("a positional --check never reaches a checklist under an earlier heading", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: EARLY_UNLABELLED_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "1", "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      assert.equal(parsed.operation.criterion.id, "AC-1");
+      assert.match(parsed.operation.changes.description, /^- \[x\] AC-1: first$/m);
+      // The earlier unlabelled boxes must be untouched.
+      assert.match(parsed.operation.changes.description, /^- \[ \] a$/m);
+      assert.match(parsed.operation.changes.description, /^- \[ \] b$/m);
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+test("a positional --check resolves inside the acceptance section, not an earlier checklist", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: MULTI_SECTION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "1", "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      assert.equal(parsed.operation.criterion.id, "AC-1");
+      assert.match(parsed.operation.changes.description, /^- \[x\] AC-1: first$/m);
+      // The `## Tasks` boxes must be untouched.
+      assert.match(parsed.operation.changes.description, /^- \[ \] write the migration$/m);
+      assert.match(parsed.operation.changes.description, /^- \[ \] add the regression test$/m);
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+test("the audit note counts every checklist in the description, the way GitLab does", async () => {
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: MULTI_SECTION_ISSUE,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-1", "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      // 1 completed of 4 total checkboxes, not "1 of 2" from the AC section alone.
+      assert.equal(parsed.operation.note, "Marked AC-1 complete (1 of 4).");
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+test("criteria with no AC-n prefix are still addressable by position", async () => {
+  const noIds = ["## Acceptance criteria", "", "- [ ] write the migration", "- [ ] add the test", ""].join("\n");
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: noIds,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "2", "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      assert.equal(parsed.operation.criterion.id, "AC-2");
+      assert.match(parsed.operation.changes.description, /^- \[x\] add the test$/m);
+      assert.match(parsed.operation.changes.description, /^- \[ \] write the migration$/m);
+    } finally {
+      out.restore();
+    }
+  });
+});
+
+test("--check refuses a criterion id that no line carries", async () => {
+  const noIds = ["## Acceptance criteria", "", "- [ ] write the migration", ""].join("\n");
+  await withCriterionFixture(async (root) => {
+    globalThis.fetch = async () => jsonResponse({
+      iid: 42, title: "Choose a pod", description: noIds,
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const err = captureStderr();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-7",
+      ]), 1);
+    } finally {
+      err.restore();
+    }
+    // AC-7 is absent, so the id must not silently resolve to an allocated AC-n.
+    assert.match(err.read(), /AC-7/);
+    // A refused command must not leave a plan behind. The plans directory is
+    // only created when one is actually written.
+    assert.equal(existsSync(join(root, ".oflow", "state", "plans")), false);
+  });
+});

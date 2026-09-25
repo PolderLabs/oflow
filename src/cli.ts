@@ -68,6 +68,7 @@ import {
   createIssueConvertAcPlan,
   createIssueCreatePlan,
   createIssueIterationUpdatePlan,
+  createIssueCriterionTogglePlan,
   createIssueNotePlan,
   createIssueUpdatePlan,
   createBoardCreatePlan,
@@ -147,6 +148,8 @@ interface CliOptions {
   sourceBranch?: string;
   targetBranch?: string;
   issueType?: string;
+  check?: string;
+  uncheck?: string;
   body?: string;
   name?: string;
   color?: string;
@@ -658,6 +661,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           const storyIid = await resolveStoryIid(root, options.story);
           if (options.convertAc) {
             const stored = await createIssueConvertAcPlan(root, storyIid);
+            printPlan(options.json, stored, formatPlanMarkdown(stored));
+            return 0;
+          }
+          if (options.check !== undefined || options.uncheck !== undefined) {
+            assertCriterionToggleOptions(options);
+            const stored = await createIssueCriterionTogglePlan(
+              root,
+              storyIid,
+              options.check ?? (options.uncheck as string),
+              options.check !== undefined,
+            );
             printPlan(options.json, stored, formatPlanMarkdown(stored));
             return 0;
           }
@@ -1318,6 +1332,8 @@ function parseArgs(argv: string[]): CliOptions {
       argument === "--description-file" ||
       argument === "--issue-type" ||
       argument === "--type" ||
+      argument === "--check" ||
+      argument === "--uncheck" ||
       argument === "--body" ||
       argument === "--name" ||
       argument === "--color" ||
@@ -1375,6 +1391,10 @@ function parseArgs(argv: string[]): CliOptions {
         options.descriptionFile = value;
       } else if (argument === "--issue-type" || argument === "--type") {
         options.issueType = value;
+      } else if (argument === "--check") {
+        options.check = value;
+      } else if (argument === "--uncheck") {
+        options.uncheck = value;
       } else if (argument === "--body") {
         options.body = value;
       } else if (argument === "--name") {
@@ -1470,6 +1490,18 @@ function parseArgs(argv: string[]): CliOptions {
         throw new OflowError("--type requires a value.", "MISSING_FLAG_VALUE");
       }
       options.issueType = value;
+    } else if (argument.startsWith("--check=")) {
+      const value = argument.slice("--check=".length);
+      if (!value) {
+        throw new OflowError("--check requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.check = value;
+    } else if (argument.startsWith("--uncheck=")) {
+      const value = argument.slice("--uncheck=".length);
+      if (!value) {
+        throw new OflowError("--uncheck requires a value.", "MISSING_FLAG_VALUE");
+      }
+      options.uncheck = value;
     } else if (argument.startsWith("--body=")) {
       options.body = argument.slice("--body=".length);
     } else if (argument.startsWith("--name=")) {
@@ -2400,6 +2432,41 @@ function assertIssueIterationPlanOptions(options: CliOptions): void {
     throw new OflowError(
       "Iteration assignment is a single-field issue plan; do not combine --iteration with other issue or filter flags.",
       "UNSUPPORTED_ITERATION_COMBINATION",
+    );
+  }
+}
+
+function assertCriterionToggleOptions(options: CliOptions): void {
+  if (options.check !== undefined && options.uncheck !== undefined) {
+    throw new OflowError(
+      "Pass either --check or --uncheck, not both.",
+      "CONFLICTING_FLAGS",
+    );
+  }
+  const unsupported = [
+    ["--title", options.title],
+    ["--description", options.description],
+    ["--description-file", options.descriptionFile],
+    ["--issue-type", options.issueType],
+    ["--convert-ac", options.convertAc ? "true" : undefined],
+    ["--iteration", options.iteration],
+    ["--labels", options.labels],
+    ["--add-labels", options.addLabels],
+    ["--remove-labels", options.removeLabels],
+    ["--milestone", options.milestone],
+    ["--epic", options.epic],
+    ["--assignee", options.assignee],
+    ["--state", options.state],
+    ["--due-date", options.dueDate],
+    ["--start-date", options.startDate],
+    ["--weight", options.weight],
+  ].filter(([, value]) => value !== undefined);
+  if (unsupported.length > 0) {
+    throw new OflowError(
+      "Ticking a criterion rewrites the issue description; do not combine it with other issue edit flags (" +
+        unsupported.map(([flag]) => String(flag)).join(", ") +
+        "). Plan a separate issue update for those changes.",
+      "UNSUPPORTED_CRITERION_COMBINATION",
     );
   }
 }

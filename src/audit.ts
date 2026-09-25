@@ -160,6 +160,7 @@ function formatAuditTarget(operation: PlanArtifact["operation"]): string {
       return "new issue";
     case "issue.update":
     case "issue.iteration.update":
+    case "issue.criterion.toggle":
       return "issue #" + String(operation.issueIid);
     case "issues.labels.update":
     case "issues.planning.update":

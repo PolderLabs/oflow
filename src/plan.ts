@@ -9,7 +9,13 @@ import { readJson, writeJson } from "./fs.js";
 import { getCurrentBranch, getGitLabRemote } from "./git.js";
 import { GitLabApiError, GitLabClient } from "./gitlab.js";
 import { executeIssueUpdate } from "./executor.js";
-import { convertBulletsToAcceptanceCriteria } from "./criteria.js";
+import {
+  convertBulletsToAcceptanceCriteria,
+  parseAcceptanceCriteria,
+  setCriterionChecked,
+  countChecklistItems,
+  type CriterionStateChange,
+} from "./criteria.js";
 import { isIssueType } from "./types.js";
 import type { DelegatedActionRequest, ExecutionReceipt } from "./actions.js";
 import type {
@@ -43,6 +49,28 @@ export interface IssueUpdateOperation {
   projectPath: string;
   issueIid: number;
   changes: GitLabIssueUpdate;
+  expectedUpdatedAt?: string | null;
+}
+
+/**
+ * Ticks one acceptance criterion and records the change in an issue note in a
+ * single approved plan. GitLab derives `task_completion_status` by parsing
+ * `- [ ]` / `- [x]` bullets out of the issue description, and exposes no
+ * writable field for it, so the description write is the only way to change
+ * task completion. The note rides along so the audit trail cannot drift from
+ * the tick: one plan, one approval, one apply.
+ */
+export interface IssueCriterionToggleOperation {
+  kind: "issue.criterion.toggle";
+  host: string;
+  projectPath: string;
+  issueIid: number;
+  changes: GitLabIssueUpdate;
+  criterion: {
+    id: string;
+    checked: boolean;
+  };
+  note: string;
   expectedUpdatedAt?: string | null;
 }
 
@@ -231,6 +259,7 @@ export interface MergeRequestUpdateOperation {
 export type PlanOperation =
   | IssueCreateOperation
   | IssueUpdateOperation
+  | IssueCriterionToggleOperation
   | IssueIterationUpdateOperation
   | BulkIssueLabelsUpdateOperation
   | BulkIssuePlanningUpdateOperation
@@ -275,6 +304,7 @@ export interface PlanArtifact {
     iterationIid?: number | null;
     iterationTitle?: string | null;
     noteId?: number;
+    criterion?: { id: string; checked: boolean };
     labelId?: number;
     name?: string;
     color?: string;
@@ -789,6 +819,66 @@ export async function createIssueConvertAcPlan(
   });
 }
 
+/**
+ * Plans a single acceptance-criterion tick (or untick) plus its audit note.
+ *
+ * Reads the live issue, rewrites only the matching checkbox, and captures
+ * `expectedUpdatedAt` so a concurrent edit is rejected at apply time instead
+ * of being clobbered. The progress note is rendered from GitLab's own
+ * `task_completion_status` for the resulting description, so the number in
+ * the note stays truthful.
+ */
+export async function createIssueCriterionTogglePlan(
+  root: string,
+  issueIid: number,
+  reference: string,
+  checked: boolean,
+): Promise<StoredPlan> {
+  const config = await loadConfig(root);
+  if (!config) {
+    throw new OflowError(
+      "No .oflow/config.json found. Run oflow install first.",
+      "NOT_INSTALLED",
+    );
+  }
+  validateIssueIid(issueIid);
+  const remote = await getGitLabRemote(root);
+  const client = new GitLabClient(remote.host);
+  const currentIssue = await client.getIssue(remote.projectPath, issueIid);
+  let toggle: CriterionStateChange;
+  try {
+    toggle = setCriterionChecked(currentIssue.description, reference, checked);
+  } catch (error) {
+    throw new OflowError(String(error instanceof Error ? error.message : error), "EMPTY_PLAN");
+  }
+  if (!toggle.changed) {
+    throw new OflowError(
+      checked
+        ? "Acceptance criterion " + toggle.id + " is already checked."
+        : "Acceptance criterion " + toggle.id + " is already unchecked.",
+      "EMPTY_PLAN",
+    );
+  }
+  // Count the resulting checklist exactly as GitLab will, so the note cannot
+  // claim a total the issue does not have.
+  const after = countChecklistItems(toggle.description);
+  const completed = after.completed;
+  const total = after.total;
+  const note = checked
+    ? "Marked " + toggle.id + " complete (" + completed + " of " + total + ")."
+    : "Reopened " + toggle.id + " (" + completed + " of " + total + ").";
+  return writePlan(root, {
+    kind: "issue.criterion.toggle",
+    host: remote.host,
+    projectPath: remote.projectPath,
+    issueIid,
+    changes: { description: toggle.description },
+    criterion: { id: toggle.id, checked },
+    note,
+    expectedUpdatedAt: currentIssue.updated_at ?? null,
+  });
+}
+
 export async function createLabelCreatePlan(
   root: string,
   label: GitLabLabelCreate,
@@ -1279,6 +1369,31 @@ export async function applyPlan(root: string, input: string, options: { force?: 
       createRestClient: () => client,
     });
     stored.plan.result = compactIssue(outcome.issue);
+    stored.plan.execution = { backend: outcome.backend };
+  } else if (stored.plan.operation.kind === "issue.criterion.toggle") {
+    const operation = stored.plan.operation;
+    const outcome = await executeIssueUpdate({
+      root,
+      host: operation.host,
+      projectPath: operation.projectPath,
+      issueIid: operation.issueIid,
+      changes: operation.changes,
+      expectedUpdatedAt: operation.expectedUpdatedAt,
+      createRestClient: () => client,
+    });
+    // Only after the description write lands, so the audit note never claims a
+    // tick that failed. A duplicate note is not retried into a second copy.
+    const note = await client.createIssueNote(
+      operation.projectPath,
+      operation.issueIid,
+      { body: operation.note },
+    );
+    stored.plan.result = {
+      kind: "issue.criterion.toggle",
+      iid: operation.issueIid,
+      criterion: operation.criterion,
+      noteId: note.id,
+    };
     stored.plan.execution = { backend: outcome.backend };
   } else if (stored.plan.operation.kind === "issue.iteration.update") {
     await assertIssueFresh(
@@ -1849,6 +1964,18 @@ export async function verifyPlan(root: string, input: string): Promise<StoredPla
         ),
         stored.plan.operation.changes,
       )
+    : stored.plan.operation.kind === "issue.criterion.toggle"
+    ? verifyCriterionToggle(
+        await client.getIssue(
+          stored.plan.operation.projectPath,
+          stored.plan.operation.issueIid,
+        ),
+        await client.getIssueNotes(
+          stored.plan.operation.projectPath,
+          stored.plan.operation.issueIid,
+        ),
+        stored.plan.operation,
+      )
     : stored.plan.operation.kind === "issue.iteration.update"
     ? verifyIssueIteration(
         await client.getIssue(
@@ -2041,6 +2168,12 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
                             "- label_id: " + plan.operation.labelId,
                             "- label: " + plan.operation.labelName,
                           ].join("\n")
+                        : plan.operation.kind === "issue.criterion.toggle"
+                          ? [
+                              "- criterion: " + plan.operation.criterion.id +
+                                (plan.operation.criterion.checked ? " (checked)" : " (unchecked)"),
+                              "- note: " + plan.operation.note,
+                            ].join("\n")
                         : plan.operation.kind === "merge_request.update"
                           ? Object.entries(plan.operation.changes)
                               .map(([key, value]) => "- " + key + ": " + String(value))
@@ -2075,6 +2208,8 @@ export function formatPlanMarkdown(stored: StoredPlan): string {
       ? "Create " + (plan.operation.issue.issue_type ?? "issue") + ":"
       : plan.operation.kind === "issue.update"
       ? "Changes:"
+      : plan.operation.kind === "issue.criterion.toggle"
+        ? "Toggle acceptance criterion:"
       : plan.operation.kind === "issue.iteration.update"
       ? "Iteration change:"
       : plan.operation.kind === "issues.iteration.update"
@@ -2219,6 +2354,7 @@ async function recheckPlanTarget(plan: PlanArtifact): Promise<string[]> {
     case "issue.create":
       break;
     case "issue.update":
+    case "issue.criterion.toggle":
     case "issue.iteration.update":
       // Without a captured revision, a stale update cannot prove absence of drift.
       requireTarget(op.expectedUpdatedAt !== undefined);
@@ -2411,6 +2547,19 @@ function isSupportedOperation(
       (operation.changes.issue_type === undefined || isIssueType(operation.changes.issue_type)) &&
       validExpectedUpdatedAt(operation.expectedUpdatedAt);
   }
+  if (operation.kind === "issue.criterion.toggle") {
+    return validIssueOperation(operation) &&
+      Boolean(operation.changes && typeof operation.changes === "object") &&
+      typeof operation.changes.description === "string" &&
+      operation.changes.description.trim().length > 0 &&
+      Boolean(operation.criterion) &&
+      typeof operation.criterion.id === "string" &&
+      /^AC-\d+$/.test(operation.criterion.id) &&
+      typeof operation.criterion.checked === "boolean" &&
+      typeof operation.note === "string" &&
+      operation.note.trim().length > 0 &&
+      validExpectedUpdatedAt(operation.expectedUpdatedAt);
+  }
   if (operation.kind === "issue.iteration.update") {
     return validIssueIterationOperation(operation);
   }
@@ -2536,7 +2685,7 @@ function isSupportedOperation(
 
 function validIssueOperation(
   operation: PlanOperation,
-): operation is IssueUpdateOperation | IssueNoteCreateOperation {
+): operation is IssueUpdateOperation | IssueCriterionToggleOperation | IssueNoteCreateOperation {
   return "issueIid" in operation &&
     Number.isSafeInteger(operation.issueIid) &&
     operation.issueIid >= 1;
@@ -3839,6 +3988,36 @@ function verifyIssue(
   };
 }
 
+/**
+ * Verifies a criterion toggle on the description text plus the audit note.
+ *
+ * Deliberately does NOT assert `task_completion_status.count` /
+ * `completed_count`: GitLab recomputes those from the description and can
+ * serve a value computed just before this write landed, so asserting the
+ * counter produces false failures on a correct apply. The description is
+ * echoed verbatim by GitLab, so it is the stable observable.
+ */
+function verifyCriterionToggle(
+  issue: GitLabIssue,
+  notes: GitLabNote[],
+  operation: IssueCriterionToggleOperation,
+): PlanVerification {
+  const description = verifyIssue(issue, operation.changes);
+  const checks: PlanVerification["checks"] = [...description.checks];
+  const notePresent = notes.some((note) => note.body.trim() === operation.note.trim());
+  checks.push(check("note", operation.note, notePresent ? operation.note : "not found"));
+  const failed = checks.filter((item) => !item.passed);
+  return {
+    passed: checks.length > 0 && failed.length === 0,
+    checks,
+    reasons: failed.map((item) =>
+      item.field === "note"
+        ? "The audit note is not on the issue."
+        : "GitLab did not report the requested " + item.field + " value.",
+    ),
+  };
+}
+
 function verifyIssueIteration(
   issue: GitLabIssue,
   operation: IssueIterationUpdateOperation,
@@ -4579,6 +4758,12 @@ function formatTarget(operation: PlanOperation): string {
   }
   if (operation.kind === "merge_request.update") {
     return "merge request !" + operation.iid;
+  }
+  if (operation.kind === "issue.criterion.toggle") {
+    // Includes the intended state so a check and its later uncheck are two
+    // distinct plan targets rather than the same digest.
+    return "issue #" + operation.issueIid + " " + operation.criterion.id +
+      (operation.criterion.checked ? " checked" : " unchecked");
   }
   return "board #" + operation.boardId + " list #" + operation.listId;
 }

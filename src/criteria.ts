@@ -339,6 +339,122 @@ export function evaluateCriteria(
   };
 }
 
+export interface CriterionStateChange {
+  description: string;
+  id: string;
+  checked: boolean;
+  changed: boolean;
+}
+
+/**
+ * Counts checklist items the way GitLab does when it derives
+ * `task_completion_status`: every `- [ ]` / `- [x]` bullet anywhere in the
+ * description, not just those under the acceptance-criteria heading. Counting
+ * only the acceptance section would put a number in the audit note that
+ * contradicts the count GitLab itself reports.
+ */
+export function countChecklistItems(
+  description: string | null | undefined,
+): { completed: number; total: number } {
+  const text = normalizeDescription(description);
+  let total = 0;
+  let completed = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(criterionPattern);
+    if (!match) {
+      continue;
+    }
+    total += 1;
+    if (match[1].toLowerCase() === "x") {
+      completed += 1;
+    }
+  }
+  return { completed, total };
+}
+
+/**
+ * Flip the checkbox on one acceptance criterion, addressed either by its
+ * explicit `AC-n` id or by its 1-based position among the criteria GitLab
+ * parses. GitLab derives `task_completion_status` from these brackets, so
+ * writing the description is the only way to change completion.
+ *
+ * Only the bracket is rewritten; indentation, bullet glyph, id, and trailing
+ * text are preserved byte for byte. Never runs implicitly.
+ */
+export function setCriterionChecked(
+  description: string | null | undefined,
+  reference: string,
+  checked: boolean,
+): CriterionStateChange {
+  const original = normalizeDescription(description);
+  const criteria = parseAcceptanceCriteria(original);
+  if (criteria.length === 0) {
+    throw new Error(
+      "No acceptance criteria found to update. Use --description to add a checklist first.",
+    );
+  }
+
+  const wanted = reference.trim();
+  const byId = criteria.filter((item) => item.id === wanted.toUpperCase());
+  const byPosition = /^\d+$/.test(wanted) ? [criteria[Number(wanted) - 1]] : [];
+  const matches = byId.length > 0 ? byId : byPosition;
+  if (matches.length === 0) {
+    throw new Error(
+      "No acceptance criterion " + JSON.stringify(wanted) + " found. Available: " +
+        criteria.map((item) => item.id).join(", ") + ".",
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      "Acceptance criterion " + JSON.stringify(wanted) + " is ambiguous; address it by its explicit id.",
+    );
+  }
+  const target = matches[0];
+  if (target && target.checked === checked) {
+    return { description: original, id: target.id, checked, changed: false };
+  }
+
+  const lines = original.split(/\r?\n/);
+  const section = findAcceptanceSections(original)[0];
+  const headingIndex = section
+    ? lines.findIndex((line) => line.trim() === section.heading)
+    : -1;
+  if (headingIndex < 0) {
+    return { description: original, id: target.id, checked, changed: false };
+  }
+  // Walk only the acceptance section, so a positional reference cannot tick a
+  // checklist that lives under some other heading (`## Tasks`, for example).
+  const end = headingIndex + 1 + (section?.lines.length ?? 0);
+  let seen = 0;
+  for (let index = headingIndex + 1; index < end; index += 1) {
+    const line = lines[index];
+    const match = line?.match(criterionPattern);
+    if (!match) {
+      continue;
+    }
+    const id = match[2]?.toUpperCase();
+    if (id !== undefined) {
+      if (id !== target.id) {
+        continue;
+      }
+    } else {
+      // Unlabelled bullet: the parser assigns ids by allocation order, so the
+      // nth such bullet is the nth criterion. Count only within this section.
+      seen += 1;
+      if (seen !== Number(wanted)) {
+        continue;
+      }
+    }
+    const next = line.replace(criterionPattern, (whole) =>
+      whole.replace(/\[([ xX])\]/, checked ? "[x]" : "[ ]"));
+    if (next !== line) {
+      lines[index] = next;
+      return { description: lines.join("\n"), id: target.id, checked, changed: true };
+    }
+  }
+  return { description: original, id: target.id, checked, changed: false };
+}
+
 function isPlaceholderEvidence(value: string): boolean {
   return /^(?:tbd|todo|none|n\/?a|pending|not available|-)$/i.test(value) ||
     /^(?:tbd|todo)\b/i.test(value);
