@@ -4004,7 +4004,10 @@ function verifyCriterionToggle(
 ): PlanVerification {
   const description = verifyIssue(issue, operation.changes);
   const checks: PlanVerification["checks"] = [...description.checks];
-  const notePresent = notes.some((note) => note.body.trim() === operation.note.trim());
+  // A note without a body is a note that is not ours. Guard the read: a raw
+  // TypeError here would escape the verifier instead of reporting a failed
+  // check, and every sibling verifier treats an absent field as a mismatch.
+  const notePresent = notes.some((note) => String(note.body ?? "").trim() === operation.note.trim());
   checks.push(check("note", operation.note, notePresent ? operation.note : "not found"));
   const failed = checks.filter((item) => !item.passed);
   return {

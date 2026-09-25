@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.2
+Correct the 0.5.0 changelog entry and harden the criterion-toggle verifier.
+### Fixed
+- The 0.5.0 entry claimed `--check` and `--uncheck` were listed in `oflow
+  --help`. That version shipped without them; the help lines shipped in 0.5.1.
+  The duplicate claim is removed so the published changelog no longer credits
+  0.5.0 with a fix it did not contain.
+- `verifyCriterionToggle` read `note.body` unguarded, so a note returned without
+  a body raised a raw `TypeError` out of the verifier instead of reporting a
+  failed check. It now reads an absent body as "not found", matching every
+  sibling verifier.
+
 ## 0.5.1
 Document the task-completion flags in `oflow --help`.
 ### Fixed
@@ -32,8 +44,6 @@ what this does.
   GitLab recomputes it and can serve a value computed just before the write
   landed, so asserting it produces false failures on a correct apply.
 - Ticking an already-correct criterion writes no plan and exits 1.
-- `--check` and `--uncheck` are listed in `oflow --help`; an undiscoverable
-  flag is an unusable one.
 
 ## 0.4.4
 

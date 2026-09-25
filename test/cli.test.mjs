@@ -1313,6 +1313,54 @@ async function withCriterionFixture(run) {
   }
 }
 
+test("verify reports a clean failure when GitLab returns a note with no body", async () => {
+  await withCriterionFixture(async (root) => {
+    let description = CRITERION_ISSUE;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = String(input);
+      const method = init.method || "GET";
+      if (url.endsWith("/issues/42")) {
+        if (method === "PUT") {
+          description = new URLSearchParams(init.body).get("description");
+          return jsonResponse({ iid: 42, description, updated_at: "2026-01-02T00:00:00Z" });
+        }
+        return jsonResponse({ iid: 42, title: "Choose a pod", description, updated_at: "2026-01-01T00:00:00Z" });
+      }
+      if (url.includes("/issues/42/notes")) {
+        if (method === "POST") return jsonResponse({ id: 1 });
+        // A note with no body must read as "not found", not throw a TypeError
+        // out of the verifier.
+        return jsonResponse([{ id: 1 }, { id: 2, body: null }]);
+      }
+      throw new Error("unstubbed " + url);
+    };
+    const out = captureStdout();
+    let planPath;
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root, "--story", "42", "--check", "AC-2", "--json",
+      ]), 0);
+      const plan = JSON.parse(out.read()).plan;
+      planPath = join(root, ".oflow", "state", "plans", plan.id + ".json");
+      assert.equal(await main(["approve", planPath, "--root", root]), 0);
+      assert.equal(await main(["apply", planPath, "--root", root]), 0);
+    } finally {
+      out.restore();
+    }
+    // Verify must fail cleanly, reporting the missing note, and must not throw.
+    assert.equal(await main(["verify", planPath, "--root", root, "--json"]), 1);
+    const verified = JSON.parse(readFileSync(planPath, "utf8"));
+    // A failed verify does not roll the plan back: it stays `applied` and
+    // records why, which is the existing contract for every plan kind.
+    assert.equal(verified.state, "applied");
+    assert.equal(verified.verification.passed, false);
+    assert.match(
+      verified.verification.reasons.join(" "),
+      /audit note is not on the issue/,
+    );
+  });
+});
+
 test("plan issue update --check ticks the criterion and audits it in the same plan", async () => {
   await withCriterionFixture(async (root) => {
     globalThis.fetch = async () => jsonResponse({
