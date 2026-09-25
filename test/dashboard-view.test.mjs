@@ -305,3 +305,32 @@ test("a gap on one source does not annotate a readable neighbour", async () => {
   assert.equal(cards.get("Labels").includes("not readable"), true,
     "Labels is the unreadable one and must say so");
 });
+
+test("the served page keeps the escape in the gap status regex", () => {
+  // dashboardViewHtml is a template literal, so a single \d in the source is
+  // cooked to a literal "d" and the served page silently ships
+  // /GitLab API (d{3})/, which never matches. The source looks correct and
+  // every other test still passes, so assert on the SERVED string.
+  assert.ok(
+    html.includes("GitLab API (\\d{3})"),
+    "served page lost the escape: a single \\d inside the template literal cooks to d",
+  );
+  assert.equal(
+    html.includes("GitLab API (d{3})"),
+    false,
+    "served page contains the cooked regex, which matches a literal d",
+  );
+});
+
+test("every card label the tests assert on is actually rendered", async () => {
+  // cardsByLabel returns undefined for a missing label, and `.includes` on
+  // undefined throws a TypeError that reads like a product failure. Assert
+  // the labels exist so a typo names itself.
+  const cards = cardsByLabel(await renderOverviewHtml(overviewData([])));
+  for (const label of [
+    "Work items", "Merge requests", "Pipelines", "Iterations",
+    "Snapshots", "Read model", "Labels", "Milestones", "Boards",
+  ]) {
+    assert.ok(cards.has(label), `expected a card labelled "${label}"`);
+  }
+});
