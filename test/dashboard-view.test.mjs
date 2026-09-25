@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import vm from "node:vm";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { dashboardViewHtml } from "../dist/dashboard-view.js";
 
@@ -333,4 +334,23 @@ test("every card label the tests assert on is actually rendered", async () => {
   ]) {
     assert.ok(cards.has(label), `expected a card labelled "${label}"`);
   }
+});
+
+test("no lone backslash in the served page's source template", () => {
+  // The general form of the escape bug: a doubled backslash in source cooks
+  // to one in the served page, so a single one silently becomes a literal.
+  // Counting total backslashes is not the invariant (2 in source -> 1 served
+  // is correct); the invariant is that none of them is unpaired. A comment
+  // mentioning a backslash would trip this, so the region is code only.
+  const src = readFileSync(new URL("../src/dashboard-view.ts", import.meta.url), "utf8");
+  const region = src.slice(
+    src.indexOf("return `<!doctype html>"),
+    src.lastIndexOf("</html>") + "</html>".length,
+  );
+  const lone = region.match(/(?<!\\)\\(?!\\)/g) ?? [];
+  assert.deepEqual(
+    lone,
+    [],
+    "unpaired backslash in the dashboardViewHtml template literal: it cooks away in the served page",
+  );
 });
