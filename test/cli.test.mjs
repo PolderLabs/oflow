@@ -1081,3 +1081,91 @@ test("plan issue update --convert-ac produces a guarded description conversion p
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("plan issue update reads --description-file verbatim and writes a plan", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-issue-descfile-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "issue-descfile-cli-test-token";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    const descriptionPath = join(root, "body.md");
+    const description = [
+      "## Acceptance criteria verification",
+      "",
+      "- [ ] AC-1: body from a file",
+      "  Evidence: trailing spaces  ",
+    ].join("\n");
+    writeFileSync(descriptionPath, description, "utf8");
+    globalThis.fetch = async (input) => jsonResponse({
+      iid: 42,
+      title: "Choose a pod",
+      description: "existing",
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "update", "--root", root,
+        "--story", "42", "--description-file", descriptionPath, "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      assert.equal(parsed.operation.kind, "issue.update");
+      assert.equal(parsed.operation.changes.description, description);
+      assert.equal(parsed.operation.changes.title, undefined);
+      const persisted = JSON.parse(readFileSync(join(root, ".oflow", "state", "plans", parsed.id + ".json"), "utf8"));
+      assert.equal(persisted.operation.changes.description, description);
+    } finally {
+      out.restore();
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("plan issue create reads --description-file into the issue body", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-issue-create-descfile-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "issue-create-descfile-cli-test-token";
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    const descriptionPath = join(root, "body.md");
+    writeFileSync(descriptionPath, "Body from a file.\n", "utf8");
+    globalThis.fetch = async () => jsonResponse({ id: 7, path_with_namespace: "team/project" });
+    const out = captureStdout();
+    try {
+      assert.equal(await main([
+        "plan", "issue", "create", "--root", root,
+        "--title", "Pick a pod", "--description-file", descriptionPath, "--json",
+      ]), 0);
+      const parsed = JSON.parse(out.read()).plan;
+      assert.equal(parsed.operation.kind, "issue.create");
+      assert.equal(parsed.operation.issue.description, "Body from a file.\n");
+    } finally {
+      out.restore();
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});

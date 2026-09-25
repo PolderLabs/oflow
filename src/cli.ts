@@ -617,7 +617,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           }
           const stored = await createIssueCreatePlan(root, {
             title: options.title,
-            description: options.description,
+            description: await resolveDescription(options),
             labels: options.labels,
             milestone: options.milestone,
             epic_id: options.epic === undefined
@@ -673,7 +673,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           }
           const changes: GitLabIssueUpdate = {
             title: options.title,
-            description: options.description,
+            description: await resolveDescription(options),
             labels: options.labels,
             add_labels: options.addLabels,
             remove_labels: options.removeLabels,
