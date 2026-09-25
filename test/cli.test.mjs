@@ -1169,3 +1169,77 @@ test("plan issue create reads --description-file into the issue body", async () 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// A create plan stores the description at the top level of `operation`, while an
+// update plan nests it under `changes`, so each case reads its own path. All
+// four run through main() against a stubbed GitLab host; nothing hits network.
+for (const [resource, operation, path, argv, stub] of [
+  [
+    "label", "create", ["description"],
+    ["plan", "label", "create", "--name", "bug", "--color", "#ff0000"],
+    { labels: [] },
+  ],
+  [
+    "label", "update", ["changes", "description"],
+    ["plan", "label", "update", "--label", "bug"],
+    { labels: [{ name: "bug", color: "#ff0000" }] },
+  ],
+  [
+    "milestone", "create", ["description"],
+    ["plan", "milestone", "create", "--title", "M1"],
+    { milestones: [] },
+  ],
+  [
+    "milestone", "update", ["changes", "description"],
+    ["plan", "milestone", "update", "--milestone", "3"],
+    { milestones: [{ id: 3, title: "M1" }] },
+  ],
+]) {
+  test(`plan ${resource} ${operation} reads --description-file into the plan`, async () => {
+    const root = mkdtempSync(join(tmpdir(), `oflow-${resource}-${operation}-descfile-cli-`));
+    const originalFetch = globalThis.fetch;
+    const previousToken = process.env.GITLAB_TOKEN;
+    process.env.GITLAB_TOKEN = `${resource}-${operation}-descfile-cli-test-token`;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+      mkdirSync(join(root, ".oflow"), { recursive: true });
+      writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+        managedBy: "oflow",
+        version: 1,
+        project: { host: "gitlab.example.test", path: "team/project" },
+      }));
+      const description = [
+        "Label guidance written from a file.",
+        "",
+        "- [ ] keep this line intact  ",
+      ].join("\n");
+      const descriptionPath = join(root, "body.md");
+      writeFileSync(descriptionPath, description, "utf8");
+      globalThis.fetch = async (input) => {
+        const url = new URL(String(input));
+        if (url.pathname.endsWith("/labels")) return jsonResponse(stub.labels);
+        if (url.pathname.endsWith("/milestones")) return jsonResponse(stub.milestones);
+        return jsonResponse({ id: 7, path_with_namespace: "team/project" });
+      };
+      const out = captureStdout();
+      try {
+        assert.equal(await main([
+          ...argv, "--root", root, "--description-file", descriptionPath, "--json",
+        ]), 0);
+        const parsed = JSON.parse(out.read()).plan;
+        const value = path.reduce((node, key) => node?.[key], parsed.operation);
+        assert.equal(value, description);
+        const persisted = JSON.parse(readFileSync(join(root, ".oflow", "state", "plans", parsed.id + ".json"), "utf8"));
+        assert.equal(path.reduce((node, key) => node?.[key], persisted.operation), description);
+      } finally {
+        out.restore();
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+      else process.env.GITLAB_TOKEN = previousToken;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}

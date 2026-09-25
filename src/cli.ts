@@ -702,7 +702,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           const stored = await createLabelCreatePlan(root, {
             name: options.name,
             color: options.color,
-            description: options.description,
+            description: await resolveDescription(options),
           });
           printPlan(options.json, stored, formatPlanMarkdown(stored));
           return 0;
@@ -717,7 +717,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           const changes: GitLabLabelUpdate = {
             new_name: options.newName,
             color: options.color,
-            description: options.description,
+            description: await resolveDescription(options),
           };
           const stored = await createLabelUpdatePlan(root, options.label, changes);
           printPlan(options.json, stored, formatPlanMarkdown(stored));
@@ -732,7 +732,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           }
           const stored = await createMilestoneCreatePlan(root, {
             title: options.title,
-            description: options.description,
+            description: await resolveDescription(options),
             start_date: options.startDate,
             due_date: options.dueDate,
           });
@@ -749,7 +749,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           const milestoneIid = parsePositiveInteger(options.milestone, "milestone IID");
           const changes: GitLabMilestoneUpdate = {
             title: options.title,
-            description: options.description,
+            description: await resolveDescription(options),
             start_date: options.startDate,
             due_date: options.dueDate,
             state_event: normalizeMilestoneUpdateState(options.state),

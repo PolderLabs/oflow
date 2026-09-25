@@ -16,6 +16,22 @@ Fix the dropped `--description-file` flag on issue create and update.
   flag the way the merge-request commands already did, so an agent can write
   an issue body from a file on either command.
 
+## 0.4.4
+
+Finish honouring `--description-file` across the remaining plan commands.
+
+### Fixed
+
+- `plan label create`, `plan label update`, `plan milestone create`, and
+  `plan milestone update` had the same dropped-flag defect fixed in 0.4.3 for
+  the issue paths: the parser accepts `--description-file` for every command,
+  but these four sites read `options.description` directly, so a body supplied
+  as a file never reached the plan. The create commands dropped it silently
+  and planned a label or milestone with no description; the update commands
+  refused with `EMPTY_PLAN` naming `--description` rather than the flag
+  actually passed. All four now resolve the flag, matching the issue and
+  merge-request commands.
+
 ## 0.4.2
 
 Repository owner correction in published links.
