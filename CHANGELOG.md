@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.3
+
+Fix the dropped `--description-file` flag on issue create and update.
+
+### Fixed
+
+- `oflow plan issue update --description-file` and `oflow plan issue create
+  --description-file` silently ignored the flag. The argument parser accepts
+  `--description-file` for every command, but these two sites read
+  `options.description` directly instead of resolving the file. The body was
+  dropped, the change set came out empty, and the command refused with
+  `EMPTY_PLAN` -- which reads as "description editing is blocked" rather than
+  as a dropped flag. Both now resolve the flag the way the merge-request
+  commands already did.
+
 ## 0.4.2
 
 Repository owner correction in published links.
