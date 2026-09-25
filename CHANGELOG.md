@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.2
+
+Repository owner correction in published links.
+
+### Fixed
+
+- `package.json` `bugs.url` and the README links named `PolderLabsVOF/oflow`, a
+  stale owner from before the organization was renamed to `PolderLabs`. GitHub
+  still redirects the old name, so the links worked, but the npm page
+  advertised an organization that no longer exists. The `gh release create`
+  command in `docs/RELEASING.md` named it as well.
+
 ## 0.4.1
 
 Windows plan-path fix.
