@@ -6,9 +6,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PolderLabsVOF/oflow"><img src="https://img.shields.io/badge/GitLab--first-18181B?style=flat-square&logo=gitlab&logoColor=FC6D26" alt="GitLab-first" /></a>
+  <a href="https://github.com/PolderLabs/oflow"><img src="https://img.shields.io/badge/GitLab--first-18181B?style=flat-square&logo=gitlab&logoColor=FC6D26" alt="GitLab-first" /></a>
   <a href="https://www.npmjs.com/package/oflow-workflow"><img src="https://img.shields.io/npm/v/oflow-workflow?style=flat-square&logo=npm&logoColor=CB3837" alt="npm version" /></a>
-  <a href="https://github.com/PolderLabsVOF/oflow/releases"><img src="https://img.shields.io/github/v/release/PolderLabsVOF/oflow?style=flat-square&logo=github&logoColor=white" alt="GitHub release" /></a>
+  <a href="https://github.com/PolderLabs/oflow/releases"><img src="https://img.shields.io/github/v/release/PolderLabs/oflow?style=flat-square&logo=github&logoColor=white" alt="GitHub release" /></a>
   <img src="https://img.shields.io/badge/Node.js-22.5%2B-18181B?style=flat-square&logo=nodedotjs&logoColor=5FA04E" alt="Node.js 22.5 or newer" />
   <img src="https://img.shields.io/badge/SQLite-local%20read%20model-18181B?style=flat-square&logo=sqlite&logoColor=003B57" alt="SQLite local read model" />
   <img src="https://img.shields.io/badge/license-MIT-18181B?style=flat-square" alt="MIT license" />
@@ -127,7 +127,7 @@ environment variables take precedence over stored credentials.
 | --- | --- |
 | npm package | [`oflow-workflow`](https://www.npmjs.com/package/oflow-workflow) |
 | CLI executable | `oflow` |
-| GitHub repository | [`PolderLabsVOF/oflow`](https://github.com/PolderLabsVOF/oflow) |
+| GitHub repository | [`PolderLabs/oflow`](https://github.com/PolderLabs/oflow) |
 
 The package name and executable are intentionally different: npm package names
 are globally shared, while the command stays short and memorable for agents.

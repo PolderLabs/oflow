@@ -30,7 +30,7 @@ unrelated package, so release commands must use `oflow-workflow`.
 
    ```bash
    gh release create "v$VERSION" \
-     --repo PolderLabsVOF/oflow \
+     --repo PolderLabs/oflow \
      --target main \
      --generate-notes
    ```

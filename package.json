@@ -24,7 +24,7 @@
     "url": "git+https://github.com/PolderLabs/oflow.git"
   },
   "bugs": {
-    "url": "https://github.com/PolderLabsVOF/oflow/issues"
+    "url": "https://github.com/PolderLabs/oflow/issues"
   },
   "license": "MIT",
   "engines": {
