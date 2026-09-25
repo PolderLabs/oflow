@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.1
+
+Windows plan-path fix.
+
+### Fixed
+
+- `oflow` plan commands no longer refuse a valid plan on Windows. The plan
+  path guard compared a caller-supplied plan path against `.oflow/state/plans`
+  lexically, but `git rev-parse` reports a forward-slash long path while a
+  Windows temp path is a backslash 8.3 short name. `relative` read that
+  mismatch as a `..` chain and `approve`, `apply`, `discard`, and the session
+  lookup all failed with `UNSAFE_PLAN_PATH`. The lexical check remains the
+  guard; only when it fails does the guard retry on canonical paths, and a
+  real traversal still fails both. The canonical pass uses
+  `realpathSync.native`, because the JavaScript `realpathSync` keeps an 8.3
+  short name intact and so never made the two spellings comparable.
+
 ## 0.4.0
 
 Dashboard v2 release.

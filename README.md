@@ -502,7 +502,9 @@ resumed safely.
 
 **Current position:** v0.4.0 delivered the dashboard v2 cockpit, first-class
 GitLab identity, truthful transport/auth state, live capabilities, and
-host-contract compatibility. The next release target is delivery expansion
+host-contract compatibility. v0.4.1 fixed the plan path guard so plan
+commands work on Windows, where a temp path uses the 8.3 short form while
+git reports the long one. The next release target is delivery expansion
 beyond the bounded MR create/update slice, plus the packaging layer for agent
 plugins and skill hosts.
 
