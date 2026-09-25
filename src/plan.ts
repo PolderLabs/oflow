@@ -2786,6 +2786,14 @@ function resolvePlanPath(root: string, input: string): string {
   if (insidePlanRoot(planRoot, candidate)) {
     return candidate;
   }
+  if (process.platform === "win32") {
+    process.stderr.write("PROBE " + JSON.stringify({
+      root, input, candidate, planRoot,
+      rel: relative(planRoot, candidate),
+      planRootReal: (() => { try { return realpathSync(planRoot); } catch (e) { return "ERR:" + e.code; } })(),
+      candReal: (() => { try { return realpathSync(candidate); } catch (e) { return "ERR:" + e.code; } })(),
+    }) + "\n");
+  }
   const canonical = (path: string): string | null => {
     try {
       return realpathSync(path);
