@@ -2790,8 +2790,8 @@ function resolvePlanPath(root: string, input: string): string {
     process.stderr.write("PROBE " + JSON.stringify({
       root, input, candidate, planRoot,
       rel: relative(planRoot, candidate),
-      planRootReal: (() => { try { return realpathSync(planRoot); } catch (e) { return "ERR:" + e.code; } })(),
-      candReal: (() => { try { return realpathSync(candidate); } catch (e) { return "ERR:" + e.code; } })(),
+      planRootReal: (() => { try { return realpathSync(planRoot); } catch (e) { return "ERR:" + String(e); } })(),
+      candReal: (() => { try { return realpathSync(candidate); } catch (e) { return "ERR:" + String(e); } })(),
     }) + "\n");
   }
   const canonical = (path: string): string | null => {
