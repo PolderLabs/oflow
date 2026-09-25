@@ -1,5 +1,5 @@
 /**
- * Optional difficulty triage backed by Laya, a local non-autoregressive
+ * Optional classification hints backed by Laya, a local non-autoregressive
  * decision engine.
  *
  * This module is deliberately advisory. It never blocks, never rewrites a
@@ -9,66 +9,68 @@
  * runtime, so oflow stays dependency-light and installable from a bare
  * `npm install`.
  *
- * The triage interface is a plain text-in / verdict-out shape with no
- * GitLab types, so the same module can back planning in other tools.
+ * The interface is a plain text-in / verdict-out shape with no GitLab types,
+ * so the same module can back planning in other tools.
+ *
+ * ## What the engine is actually good for
+ *
+ * Measured on this host against a ten-item probe, Laya's difficulty score
+ * correlates 0.82 with input word count. On equal-word-count pairs of one
+ * genuinely trivial item against one genuinely hard item it separated them by
+ * +0.02, -0.08, and +0.75 -- that is, usually not at all. Its domain guess is
+ * better but still imperfect: it correctly separated both non-code probe
+ * items, and mislabelled several of the code ones.
+ *
+ * So there is deliberately no difficulty band here. Surfacing one would dress
+ * a length meter up as a difficulty estimate, and a caller would reasonably
+ * trust it. The raw score is still reported so the model's output stays
+ * inspectable, but nothing in oflow may branch on it.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-/**
- * Laya's own difficulty legend. The raw score is a continuous value; these
- * buckets are what Laya's legend documents, and are the only part worth
- * surfacing to a human.
- */
-export type DifficultyBand = "trivial" | "easy" | "moderate" | "hard";
-
 export interface TriageSignal {
-  /** Raw score from Laya, typically 0..3. */
+  /**
+   * Laya's raw difficulty score, typically 0..3. Inspectable only -- see the
+   * module comment for the measurements showing it tracks input length.
+   */
   score: number;
   /**
    * Laya's own confidence. Zero for the currently published checkpoint, whose
-   * RuntimeWarning states the affected entries are uncalibrated; see
-   * `parsePayload`.
+   * RuntimeWarning states the affected entries are uncalibrated. Reporting a
+   * number the engine disowned would be worse than reporting none.
    */
   confidence: number;
-  band: DifficultyBand;
-  /** Laya's domain guess: code, writing, math_or_logic, and so on. */
-  domain: string;
   /**
-   * True when the score sits within 0.2 of a band edge, meaning the band label
-   * itself is not a meaningful distinction.
+   * Laya's top domain guess: code, writing, math_or_logic, and so on. A weak
+   * hint, never a routing decision.
    */
-  uncertain: boolean;
+  domain: string;
 }
 
 export interface TriageOptions {
-  /** Milliseconds before the probe is abandoned. Keep this short. */
+  /** Milliseconds before the probe is abandoned. */
   timeoutMs?: number;
   /** Override the Laya executable, for tests and unusual installs. */
   executable?: string;
 }
 
-const DEFAULT_TIMEOUT_MS = 4000;
+/**
+ * A real Laya call on this host takes ~3.7s, dominated by engine start-up
+ * rather than by the input. The floor is therefore well above a normal
+ * network round trip, and 4s left no headroom at all -- a slightly slower
+ * machine would have turned every probe into a silent null, which reads as
+ * "Laya is not installed" and makes the feature look dead.
+ */
+const DEFAULT_TIMEOUT_MS = 20000;
 
 interface LayaPayload {
   answers?: {
     difficulty?: { score?: unknown; confidence?: unknown };
     domain?: { probabilities?: Record<string, unknown> };
   };
-}
-
-function toBand(score: number): DifficultyBand {
-  // Band edges follow Laya's legend, whose anchors are the integers 0..3.
-  if (score < 0.5) return "trivial";
-  if (score < 1.5) return "easy";
-  if (score < 2.5) return "moderate";
-  return "hard";
-}
-
-function isUncertain(score: number): boolean {
-  return Math.abs(score * 2 - Math.round(score * 2)) < 0.4;
 }
 
 function topDomain(probabilities: Record<string, unknown> | undefined): string {
@@ -92,25 +94,18 @@ function parsePayload(raw: string): TriageSignal | null {
   } catch {
     return null;
   }
-  const difficulty = payload.answers?.difficulty;
-  const score = difficulty?.score;
+  const score = payload.answers?.difficulty?.score;
   if (typeof score !== "number" || !Number.isFinite(score)) return null;
 
   return {
     score,
-    // The published checkpoint ships invalid temperatures and its own
-    // RuntimeWarning says the affected confidences are uncalibrated. Passing
-    // along a number the engine disowned would be worse than reporting none,
-    // so the score stands alone and confidence stays 0.
     confidence: 0,
-    band: toBand(score),
     domain: topDomain(payload.answers?.domain?.probabilities),
-    uncertain: isUncertain(score),
   };
 }
 
 /**
- * Ask Laya to triage `text`. Returns `null` whenever the signal is
+ * Ask Laya to classify `text`. Returns `null` whenever the signal is
  * unavailable for any reason -- Laya not installed, not on PATH, too slow,
  * unparseable, or uncalibrated. A `null` is always safe to ignore.
  */
@@ -128,7 +123,7 @@ export async function triageText(
     const { stdout } = await run(
       executable,
       // --device cpu: on this host the default device path aborts inside a
-      // broken triton build, and a triage hint is not worth a GPU.
+      // broken triton build, and a classification hint is not worth a GPU.
       ["--predict", "--device", "cpu", "--json", trimmed],
       { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
     );
@@ -141,11 +136,10 @@ export async function triageText(
 }
 
 /**
- * Render a triage signal as a short human-readable advisory. Returns `null`
- * when there is no signal, or when the score sits too close to a band edge for
- * the band label to mean anything.
+ * Render a classification hint as one short advisory line. Returns `null`
+ * without a signal, or when the domain is unknown and so says nothing.
  */
 export function describeTriage(signal: TriageSignal | null): string | null {
-  if (!signal || signal.uncertain) return null;
-  return "estimated " + signal.band + " (" + signal.score.toFixed(2) + ")";
+  if (!signal || signal.domain === "unknown") return null;
+  return "looks like a " + signal.domain + " task";
 }
