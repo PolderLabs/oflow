@@ -121,6 +121,15 @@ test("plan --help routes to discoverable command help", () => {
   assert.match(result.stdout, /apply <plan\.json>/);
 });
 
+test("the criterion toggle flags are discoverable in help", () => {
+  const result = spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  // An undiscoverable flag is an unusable one: a user reading --help must be
+  // able to find how to tick a task.
+  assert.match(result.stdout, /--check <ac\|position>/);
+  assert.match(result.stdout, /--uncheck <ac\|position>/);
+});
+
 test("identity --json emits a stable secret-free principal record", async () => {
   const root = mkdtempSync(join(tmpdir(), "oflow-identity-cli-"));
   const originalFetch = globalThis.fetch;

@@ -24,6 +24,8 @@ what this does.
   GitLab recomputes it and can serve a value computed just before the write
   landed, so asserting it produces false failures on a correct apply.
 - Ticking an already-correct criterion writes no plan and exits 1.
+- `--check` and `--uncheck` are listed in `oflow --help`; an undiscoverable
+  flag is an unusable one.
 
 ## 0.4.4
 
