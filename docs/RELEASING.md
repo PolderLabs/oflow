@@ -26,22 +26,27 @@ unrelated package, so release commands must use `oflow-workflow`.
    git push origin "v$VERSION"
    ```
 
-6. Run the publish workflow, then confirm the registry accepted the version
-   before creating any GitHub release:
+6. Run the publish workflow and wait for it. A GitHub release created before
+   this point advertises a version npm does not have:
 
    ```bash
    gh workflow run publish.yml -f tag="v$VERSION"
+   gh run watch "$(gh run list -w publish.yml -L1 -q '.[0].databaseId')" --exit-status
    ```
 
-   Wait for the run to succeed, then verify the registry. A GitHub release
-   created before this point advertises a version that npm does not have:
+   Then confirm the registry, and check `gitHead` against the tag. It must be
+   the tagged commit, not merely `HEAD`; a docs commit made after tagging
+   moves `HEAD` without changing what was published:
 
    ```bash
-   npm view oflow-workflow "versions[$VERSION]" gitHead
+   npm view "oflow-workflow@$VERSION" version gitHead
+   git rev-parse "v$VERSION^{}"
    ```
 
-   The printed `gitHead` must be the tagged commit. A missing version means
-   npm is still propagating; wait and re-run rather than publishing again.
+   Query the exact version rather than a `versions[...]` field selector: the
+   dots in `0.5.2` are read as path syntax and yield nothing, which looks like
+   propagation delay. A missing version does mean npm is still propagating —
+   wait and re-run. Never re-publish a version that already succeeded.
 7. Create the GitHub release only after the registry shows the version:
 
    ```bash
@@ -49,13 +54,19 @@ unrelated package, so release commands must use `oflow-workflow`.
      --repo PolderLabs/oflow \
      --target main \
      --title "oflow $VERSION" \
-     --verify-tag
+     --verify-tag \
+     --notes-file <(awk "/^## $VERSION\$/{f=1;next} /^## /{f=0} f" CHANGELOG.md)
    ```
 
-   Write release notes from that version's `CHANGELOG.md` section rather than
-   `--generate-notes`, which lists commits instead of user-visible changes. Use
-   `--verify-tag` so a typo cannot create a release on a missing tag, and keep
-   the title as `oflow <version>` so the release list sorts consistently.
+   Notes come from that version's `CHANGELOG.md` section, not
+   `--generate-notes`, which lists commits against the repository's previous
+   owner and describes no user-visible change. `--verify-tag` stops a typo
+   from creating a release on a missing tag, and the `oflow <version>` title
+   keeps the list sorting. Add `--latest` to the newest release only, or
+   GitHub can move the badge onto an older tag.
+8. A version that never reached npm keeps a **draft** release, never a
+   published one. `v0.2.0` is the current example: it was skipped before
+   publish and `0.2.1` carries the first shipped `0.2.x`.
 
 ## Publishing from GitHub Actions
 
