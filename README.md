@@ -510,7 +510,7 @@ git reports the long one. v0.4.2 corrected the repository owner in published
 links. v0.4.3 and v0.4.4 fixed a dropped-flag defect: `--description-file`
 was accepted by the parser for every command but ignored by the issue, label,
 and milestone plan sites, so a body supplied as a file silently vanished on
-create and refused with `EMPTY_PLAN` on update. v0.4.5 closed the
+create and refused with `EMPTY_PLAN` on update. v0.5.0 closed the
 task-completion write path: GitLab exposes `task_completion_status` as
 read-only, so ticking a task is a description edit, and `--check` / `--uncheck`
 now do that under a plan together with the audit note. The next release

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.5
+## 0.5.0
 Mark a task complete in a guarded plan. GitLab has no writable task field:
 `task_completion_status` appears in issue responses but is absent from the
 documented parameter list for `PUT /projects/:id/issues/:issue_iid`, and there
@@ -24,6 +24,7 @@ what this does.
   GitLab recomputes it and can serve a value computed just before the write
   landed, so asserting it produces false failures on a correct apply.
 - Ticking an already-correct criterion writes no plan and exits 1.
+
 ## 0.4.4
 
 Finish honouring `--description-file` across the remaining plan commands.
