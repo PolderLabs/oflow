@@ -496,7 +496,8 @@ resumed safely.
 | GitLab MCP | ◐ Optional | Agent-facing companion; not required by oflow |
 | Local planning dashboard | ✅ | SQLite-backed, loopback-only, six-view cockpit that never sends GitLab credentials to the browser |
 | Copilot / VS Code handoff | ✅ | `.github/copilot-instructions.md` plus shared CLI JSON contract |
-| Merge-request writes | ◌ Next | Plan-backed create/update with multiline description files |
+| Merge-request writes | ✅ | Plan-backed create/update, including multiline description files |
+| Issue, label, and milestone descriptions from a file | ✅ | `--description` and `--description-file` on every plan command that writes a body |
 
 ## Roadmap
 
@@ -504,9 +505,13 @@ resumed safely.
 GitLab identity, truthful transport/auth state, live capabilities, and
 host-contract compatibility. v0.4.1 fixed the plan path guard so plan
 commands work on Windows, where a temp path uses the 8.3 short form while
-git reports the long one. The next release target is delivery expansion
-beyond the bounded MR create/update slice, plus the packaging layer for agent
-plugins and skill hosts.
+git reports the long one. v0.4.2 corrected the repository owner in published
+links. v0.4.3 and v0.4.4 fixed a dropped-flag defect: `--description-file`
+was accepted by the parser for every command but ignored by the issue, label,
+and milestone plan sites, so a body supplied as a file silently vanished on
+create and refused with `EMPTY_PLAN` on update. The next release target is
+delivery expansion beyond the bounded MR create/update slice, plus the
+packaging layer for agent plugins and skill hosts.
 
 ### Delivered — workflow and Scrum foundation
 
@@ -587,6 +592,7 @@ credential, private-host, email, and local-path indicators.
   `glab`, MCP, auth, and security boundaries.
 - [`docs/SCRUM-PLANNING.md`](docs/SCRUM-PLANNING.md) — agent planning contract,
   cache policy, Scrum reads, and guarded writes.
+- [`CHANGELOG.md`](CHANGELOG.md) — released changes, newest first.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged product direction.
 - [`docs/RELEASING.md`](docs/RELEASING.md) — public npm and GitHub release checklist.
 
