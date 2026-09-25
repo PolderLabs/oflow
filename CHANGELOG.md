@@ -66,9 +66,13 @@ Dashboard v2 release.
   is refused by a fine-grained token, but the dashboard dropped that warning,
   so an Overview reading "0 Pipelines" claimed the project had none when the
   token simply could not read them. The snapshot's warnings now reach the
-  dashboard, the affected metric carries an amber "N sources not readable"
-  caption, and a "Data sources this token cannot read" section names each
-  one.
+  dashboard. A "Data sources this token cannot read" section names each one,
+  and only the cards that own an unreadable source carry an amber
+  "not readable with this token" caption, so a readable zero is never shown as
+  an unreadable one. Advisory warnings (type coverage, a drifted remote, a
+  snapshot from another branch) are listed separately under "Sync warnings"
+  rather than presented as scope gaps. Each gap bullet leads with the source
+  and HTTP status and keeps the raw API text behind a disclosure.
 
 ### Changed
 

@@ -108,6 +108,14 @@ export function dashboardViewHtml(): string {
     .card-note.gap { color: var(--warn); }
     .gap-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: .86rem; }
     .gap-list li { margin: 5px 0; line-height: 1.5; word-break: break-word; }
+    .gap-source { color: var(--text); font-weight: 600; }
+    .gap-status { color: var(--warn); font-weight: 600; }
+    .gap-list details { margin-top: 4px; }
+    .gap-list summary { cursor: pointer; color: var(--dim); font-size: .78rem; }
+    .gap-list details code {
+      display: block; margin-top: 5px; white-space: pre-wrap; word-break: break-word;
+      font-size: .74rem; line-height: 1.45; color: var(--muted);
+    }
     .muted { color: var(--dim); font-size: .86rem; }
     .badge {
       display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem;
@@ -275,8 +283,8 @@ const metric = (label, value, note, noteClass) =>
  * means "this token cannot read this source"; the latter (type coverage, a
  * drifted remote, a snapshot from another branch) must never be presented as
  * a readability failure. */
-const isUnreadableSource = (warning) => /^Could not read /i.test(String(warning ?? ''));
-
+const unreadablePrefix = 'Could not read ';
+const isUnreadableSource = (warning) => new RegExp('^' + unreadablePrefix, 'i').test(String(warning ?? ''));
 function renderTabs() {
   const tabs = document.getElementById('tabs');
   tabs.replaceChildren();
@@ -305,23 +313,51 @@ async function renderOverview(host) {
   // notes that have nothing to do with readability -- type coverage, a drifted
   // git remote, a snapshot taken on another branch -- and labelling those
   // "cannot read" would be a different falsehood.
-  const unreadable = (Array.isArray(data.warnings) ? data.warnings : [])
-    .filter(isUnreadableSource);
-  const gapNote = unreadable.length
-    ? unreadable.length + ' source' + (unreadable.length === 1 ? '' : 's') + ' not readable with this token'
-    : '';
+  const allWarnings = Array.isArray(data.warnings) ? data.warnings : [];
+  const unreadable = allWarnings.filter(isUnreadableSource);
+  const advisories = allWarnings.filter((w) => !isUnreadableSource(w));
+
+  // Attribute a caption to the card that owns the unreadable source. A
+  // pipelines-only gap must not annotate the Merge requests count, or a
+  // readable zero would look like an unreadable one.
+  const gapFor = (...names) => (unreadable.some((w) => {
+    const source = String(w).slice(unreadablePrefix.length).split(':')[0].trim().toLowerCase();
+    return names.includes(source);
+  }) ? 'not readable with this token' : undefined);
   const sourceGap = unreadable.length
     ? '<section><h2>Data sources this token cannot read</h2>' +
       '<p class="muted">Counts above are not evidence of absence for these:</p><ul class="gap-list">' +
-      unreadable.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul></section>'
+      unreadable.map((w) => {
+        // GitLabApiError embeds the full request path plus a JSON body. Show
+        // the source and status; keep the raw text available on demand.
+        const source = String(w).slice(unreadablePrefix.length).split(':')[0].trim();
+        // Match the real marker "GitLab API 403". A loose three-digit scan can
+        // pick a number out of the encoded project path or a JSON body and
+        // present it as the status. Note the doubled backslash: this code is
+        // inside a template literal, where a single one would be cooked away
+        // and leave a regex that matches a literal "d".
+        const status = /GitLab API (\\d{3})/.exec(String(w))?.[1];
+        const detail = esc(w);
+        return '<li><span class="gap-source">' + esc(source) + '</span>' +
+          (status ? ' <span class="gap-status">HTTP ' + esc(status) + '</span>' : '') +
+          '<details><summary>detail</summary><code>' + detail + '</code></details></li>';
+      }).join('') + '</ul></section>'
+    : '';
+  const advisoryNote = advisories.length
+    ? '<section><h2>Sync warnings</h2>' +
+      '<p class="muted">Recorded by the last sync. Not an indication of missing data.</p>' +
+      '<ul class="gap-list">' + advisories.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul></section>'
     : '';
 
   const metrics = [
     metric('Work items', counts.workItems ?? 0,
-      status.latestSync ? age(status.latestSync.ageSeconds) : 'no snapshot yet'),
-    metric('Merge requests', counts.mergeRequests ?? 0),
-    metric('Pipelines', counts.pipelines ?? 0, gapNote || undefined, unreadable.length ? 'gap' : ''),
-    metric('Iterations', counts.iterations ?? 0),
+      gapFor('work items') || (status.latestSync ? age(status.latestSync.ageSeconds) : 'no snapshot yet'),
+      gapFor('work items') ? 'gap' : ''),
+    metric('Merge requests', counts.mergeRequests ?? 0,
+      gapFor('merge requests'), gapFor('merge requests') ? 'gap' : ''),
+    metric('Pipelines', counts.pipelines ?? 0, gapFor('pipelines'), gapFor('pipelines') ? 'gap' : ''),
+    metric('Iterations', counts.iterations ?? 0,
+      gapFor('project iterations', 'iterations'), gapFor('project iterations', 'iterations') ? 'gap' : ''),
     metric('Snapshots', counts.syncSnapshots ?? 0),
     metric('Read model', status.state ?? 'unknown',
       status.databaseExists ? 'sqlite ready' : 'not created yet'),
@@ -345,6 +381,7 @@ async function renderOverview(host) {
       (data.repository && data.repository.branch ? ' · ' + esc(data.repository.branch) : '') + '</p></section>' : '') +
     '<div class="grid">' + metrics.join('') + '</div>' +
     sourceGap +
+    advisoryNote +
     '<section><h2>Work items</h2>' +
       (workRows.length ? table(['Item', 'State', 'Type', 'Assignee', 'Updated'], workRows) : '<p class="muted">No cached work items.</p>') +
     '</section>' +
@@ -352,9 +389,9 @@ async function renderOverview(host) {
       (mrRows.length ? table(['MR', 'State', 'Branch', 'Updated'], mrRows) : '<p class="muted">No cached merge requests.</p>') +
     '</section>' +
     '<section><h2>Delivery and planning</h2><div class="grid">' +
-      metric('Labels', (planning.labels || []).length) +
-      metric('Milestones', (planning.milestones || []).length) +
-      metric('Boards', (planning.boards || []).length) +
+      metric('Labels', (planning.labels || []).length, gapFor('project labels'), gapFor('project labels') ? 'gap' : '') +
+      metric('Milestones', (planning.milestones || []).length, gapFor('project milestones'), gapFor('project milestones') ? 'gap' : '') +
+      metric('Boards', (planning.boards || []).length, gapFor('project boards'), gapFor('project boards') ? 'gap' : '') +
       '</div></section>' +
     '<section><h2>Sync history</h2>' +
       (data.syncHistory && data.syncHistory.length

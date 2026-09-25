@@ -214,33 +214,94 @@ const overviewData = (warnings) => ({
   warnings,
 });
 
-test("only unreadable sources are shown as a token scope gap", async () => {
-  // A snapshot's warnings mix scope gaps ("Could not read pipelines", raised
-  // by optionalFetch) with advisory notes that say nothing about readability
-  // (type coverage, a drifted remote, a snapshot from another branch).
-  // Rendering the second kind as "cannot read" is its own falsehood.
-  const gap = await renderOverviewHtml(overviewData(["Could not read pipelines: GitLab API 403"]));
-  assert.ok(gap.includes("cannot read"), "an unreadable source must be reported");
-  assert.equal((gap.match(/<li>/g) ?? []).length, 1, "exactly one gap listed");
-  assert.ok(gap.includes("1 source not readable"), "the count must be singular");
+// Card text keyed by its label, so a caption can be attributed to the card
+// that owns it. Splitting on the card boundary is simpler and less brittle
+// than a tempered-greedy regex over nested divs.
+const cardsByLabel = (html) => {
+  const out = new Map();
+  for (const chunk of html.split('<div class="card">').slice(1)) {
+    const label = /<div class="card-label">([^<]*)<\/div>/.exec(chunk)?.[1] ?? "";
+    out.set(label, chunk.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+  }
+  return out;
+};
 
-  const advisory = await renderOverviewHtml(overviewData([
+test("a scope gap is attributed to the card that owns that source", async () => {
+  // A pipelines-only gap must not annotate the Merge requests count: a
+  // readable zero would then look like an unreadable one.
+  const out = await renderOverviewHtml(overviewData([
+    "Could not read project labels: GitLab API 403",
+    "Could not read pipelines: GitLab API 403",
+  ]));
+  assert.ok(out.includes("cannot read"), "the gap section must render");
+  assert.equal((html.match(/<li>/g) ?? []).length, 2, "both gaps listed");
+  // Per-card attribution, not one blanket caption on whichever card came first.
+  assert.equal(cardsByLabel(out).get("Merge requests").includes("not readable"), false,
+    "Merge requests is readable and must not carry a gap caption");
+  assert.equal(cardsByLabel(out).get("Pipelines").includes("not readable"), true,
+    "Pipelines is unreadable and must say so");
+  assert.equal(cardsByLabel(out).get("Labels").includes("not readable"), true,
+    "Labels is unreadable and must say so");
+  assert.equal(cardsByLabel(out).get("Iterations").includes("not readable"), false);
+  assert.equal(cardsByLabel(out).get("Milestones").includes("not readable"), false);
+  // The bullet leads with the source and status, not the encoded URL.
+  assert.ok(out.includes(">pipelines</span>"), "gap bullet must name the source");
+  assert.ok(out.includes("HTTP 403"), "gap bullet must show the status :: " + out.slice(out.indexOf("<li>"), out.indexOf("<li>")+300));
+  assert.ok(out.includes("<details>"), "the raw API text must be collapsed");
+});
+
+test("advisory notes are not presented as scope gaps", async () => {
+  const out = await renderOverviewHtml(overviewData([
     "Type coverage: REST lists issue and task types only",
     "The current Git remote differs from .oflow/config.json; using the current remote.",
     "Cached snapshot was created on branch main; current branch is feat/x",
   ]));
-  assert.equal(advisory.includes("cannot read"), false, "advisory notes are not scope gaps");
-  assert.equal(advisory.includes("gap-list"), false);
-  assert.equal(advisory.includes("not readable"), false);
+  assert.equal(out.includes("cannot read"), false, "advisory notes are not scope gaps");
+  assert.equal(out.includes("not readable with this token"), false);
+  // The class is shared with the gap list; what must be absent is the gap
+  // heading and the per-card caption, checked above.
+  assert.equal(out.includes('class="gap-source"'), false, "no gap source rows");
+  // They are still surfaced, just not as a readability failure.
+  assert.ok(out.includes("Sync warnings"), "advisories get their own neutral section");
+  assert.ok(out.includes("Type coverage"), "advisory text is still shown");
+});
 
-  // A missing warnings field must not invent a gap.
-  const none = await renderOverviewHtml({ ...overviewData([]), warnings: undefined });
-  assert.equal(none.includes("cannot read"), false);
+test("a gap status is read from the real marker, not guessed", async () => {
+  // A loose 3-digit scan can pull a number out of the encoded project path or
+  // a JSON body and present it as the HTTP status.
+  const decoy = await renderOverviewHtml(overviewData([
+    "Could not read pipelines: refused for /projects/2026-403-team%2Fdemo/pipelines",
+  ]));
+  assert.equal(decoy.includes("HTTP 403"), false, "must not invent a status from the path");
+  assert.ok(decoy.includes(">pipelines</span>"), "the source is still reported");
+});
 
-  // Warning text is GitLab-influenced and must be escaped, not rendered.
-  const hostile = await renderOverviewHtml(
+test("a missing warnings field does not invent a gap", async () => {
+  const out = await renderOverviewHtml({ ...overviewData([]), warnings: undefined });
+  assert.equal(out.includes("cannot read"), false);
+  assert.equal(out.includes("not readable"), false);
+});
+
+test("gap warning text is escaped, not rendered as markup", async () => {
+  const out = await renderOverviewHtml(
     overviewData(['Could not read <img src=x onerror="window.__pwned=1">']),
   );
-  assert.equal(hostile.includes("<img"), false, "warning text must be escaped");
-  assert.ok(hostile.includes("&lt;img"), "hostile warning must survive as text");
+  assert.equal(out.includes("<img"), false, "warning text must be escaped");
+  assert.ok(out.includes("&lt;img"), "hostile warning must survive as text");
+});
+
+test("a gap on one source does not annotate a readable neighbour", async () => {
+  // The two-gap case above cannot catch blanket captioning: with pipelines
+  // unreadable too, a blanket caption on Pipelines looks identical to correct
+  // attribution. Only a labels-only gap separates them.
+  const out = await renderOverviewHtml(overviewData([
+    "Could not read project labels: GitLab API 403",
+  ]));
+  const cards = cardsByLabel(out);
+  assert.equal(cards.get("Pipelines").includes("not readable"), false,
+    "Pipelines is readable; it must not carry a caption");
+  assert.equal(cards.get("Merge requests").includes("not readable"), false);
+  assert.equal(cards.get("Iterations").includes("not readable"), false);
+  assert.equal(cards.get("Labels").includes("not readable"), true,
+    "Labels is the unreadable one and must say so");
 });
