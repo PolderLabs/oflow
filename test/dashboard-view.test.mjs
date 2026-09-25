@@ -171,3 +171,76 @@ test("timestamps render compactly and never as injectable markup", () => {
   assert.equal(cell(hostile).includes("<img"), false, "hostile timestamp must not become markup");
   assert.ok(cell(hostile).includes("&lt;img"), "hostile timestamp must survive as text");
 });
+
+
+// Drives the real renderOverview so assertions are about rendered output,
+// not a regex restated in the test.
+async function renderOverviewHtml(data) {
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+  const start = script.indexOf("const esc = ");
+  const end = script.indexOf("window.addEventListener('hashchange'");
+  assert.ok(start > -1 && end > start, "page script not found");
+  const host = { innerHTML: "" };
+  const stubDocument = {
+    getElementById: () => ({
+      textContent: "",
+      className: "",
+      classList: { add() {}, remove() {} },
+    }),
+  };
+  const stubFetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(data),
+  });
+  const render = new Function(
+    "document", "location", "fetch", "window",
+    script.slice(start, end) + "; return renderOverview;",
+  )(stubDocument, { hash: "" }, stubFetch, {});
+  await render(host);
+  return host.innerHTML;
+}
+
+const overviewData = (warnings) => ({
+  status: { state: "ready", databaseExists: true, counts: { workItems: 1, mergeRequests: 0, pipelines: 0, iterations: 0, syncSnapshots: 1 } },
+  project: null,
+  repository: null,
+  workItems: [],
+  mergeRequests: [],
+  pipelines: [],
+  iterations: [],
+  planning: { labels: [], milestones: [], boards: [] },
+  syncHistory: [],
+  warnings,
+});
+
+test("only unreadable sources are shown as a token scope gap", async () => {
+  // A snapshot's warnings mix scope gaps ("Could not read pipelines", raised
+  // by optionalFetch) with advisory notes that say nothing about readability
+  // (type coverage, a drifted remote, a snapshot from another branch).
+  // Rendering the second kind as "cannot read" is its own falsehood.
+  const gap = await renderOverviewHtml(overviewData(["Could not read pipelines: GitLab API 403"]));
+  assert.ok(gap.includes("cannot read"), "an unreadable source must be reported");
+  assert.equal((gap.match(/<li>/g) ?? []).length, 1, "exactly one gap listed");
+  assert.ok(gap.includes("1 source not readable"), "the count must be singular");
+
+  const advisory = await renderOverviewHtml(overviewData([
+    "Type coverage: REST lists issue and task types only",
+    "The current Git remote differs from .oflow/config.json; using the current remote.",
+    "Cached snapshot was created on branch main; current branch is feat/x",
+  ]));
+  assert.equal(advisory.includes("cannot read"), false, "advisory notes are not scope gaps");
+  assert.equal(advisory.includes("gap-list"), false);
+  assert.equal(advisory.includes("not readable"), false);
+
+  // A missing warnings field must not invent a gap.
+  const none = await renderOverviewHtml({ ...overviewData([]), warnings: undefined });
+  assert.equal(none.includes("cannot read"), false);
+
+  // Warning text is GitLab-influenced and must be escaped, not rendered.
+  const hostile = await renderOverviewHtml(
+    overviewData(['Could not read <img src=x onerror="window.__pwned=1">']),
+  );
+  assert.equal(hostile.includes("<img"), false, "warning text must be escaped");
+  assert.ok(hostile.includes("&lt;img"), "hostile warning must survive as text");
+});

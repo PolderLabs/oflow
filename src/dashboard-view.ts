@@ -271,6 +271,12 @@ const metric = (label, value, note, noteClass) =>
   (note ? '<div class="card-note' + (noteClass ? ' ' + noteClass : '') + '">' + esc(note) + '</div>' : '') +
   '</div>';
 
+/* A snapshot's warnings mix scope gaps with advisory notes. Only the former
+ * means "this token cannot read this source"; the latter (type coverage, a
+ * drifted remote, a snapshot from another branch) must never be presented as
+ * a readability failure. */
+const isUnreadableSource = (warning) => /^Could not read /i.test(String(warning ?? ''));
+
 function renderTabs() {
   const tabs = document.getElementById('tabs');
   tabs.replaceChildren();
@@ -294,20 +300,27 @@ async function renderOverview(host) {
   // A source the token could not read yields an empty list, which is
   // indistinguishable from "none exist". Say so rather than let the cockpit
   // claim the project has no pipelines.
-  const gaps = Array.isArray(data.warnings) ? data.warnings : [];
-  const gapNote = gaps.length
-    ? gaps.length + ' source' + (gaps.length === 1 ? '' : 's') + ' not readable with this token'
+  //
+  // Only scope gaps belong here. A snapshot's warnings also cover advisory
+  // notes that have nothing to do with readability -- type coverage, a drifted
+  // git remote, a snapshot taken on another branch -- and labelling those
+  // "cannot read" would be a different falsehood.
+  const unreadable = (Array.isArray(data.warnings) ? data.warnings : [])
+    .filter(isUnreadableSource);
+  const gapNote = unreadable.length
+    ? unreadable.length + ' source' + (unreadable.length === 1 ? '' : 's') + ' not readable with this token'
     : '';
-  const sourceGap = gaps.length
+  const sourceGap = unreadable.length
     ? '<section><h2>Data sources this token cannot read</h2>' +
       '<p class="muted">Counts above are not evidence of absence for these:</p><ul class="gap-list">' +
-      gaps.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul></section>'
+      unreadable.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul></section>'
     : '';
+
   const metrics = [
     metric('Work items', counts.workItems ?? 0,
       status.latestSync ? age(status.latestSync.ageSeconds) : 'no snapshot yet'),
     metric('Merge requests', counts.mergeRequests ?? 0),
-    metric('Pipelines', counts.pipelines ?? 0, gapNote || undefined, gaps.length ? 'gap' : ''),
+    metric('Pipelines', counts.pipelines ?? 0, gapNote || undefined, unreadable.length ? 'gap' : ''),
     metric('Iterations', counts.iterations ?? 0),
     metric('Snapshots', counts.syncSnapshots ?? 0),
     metric('Read model', status.state ?? 'unknown',
