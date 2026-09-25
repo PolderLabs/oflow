@@ -3312,6 +3312,13 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
     return "note #" + String(result.noteId ?? "unknown") +
       (result.noteReused ? " already present" : " created");
   }
+  if (result.kind === "issue.criterion.toggle") {
+    const criterion = result.criterion;
+    return "issue #" + String(result.iid ?? "unknown") + " criterion " +
+      JSON.stringify(criterion?.id ?? "unknown") +
+      (criterion ? (criterion.checked ? " checked" : " unchecked") : "") +
+      (result.noteId !== undefined ? " (note #" + String(result.noteId) + ")" : "");
+  }
   if (result.kind === "issue.iteration.update") {
     return "issue #" + String(result.iid ?? "unknown") + " iteration set to " +
       JSON.stringify(result.iterationTitle ?? "none");
