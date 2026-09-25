@@ -34,7 +34,7 @@ export const PLAN_DIRECTORY = ".oflow/state/plans";
 export const PLAN_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_BULK_ISSUES = 50;
 
-export type PlanState = "draft" | "approved" | "applied" | "verified";
+export type PlanState = "draft" | "approved" | "applied" | "applied-partial" | "verified";
 
 export interface IssueUpdateOperation {
   kind: "issue.update";
@@ -1207,8 +1207,9 @@ export async function approvePlan(root: string, input: string, options: { force?
 
 export async function applyPlan(root: string, input: string, options: { force?: boolean } = {}): Promise<StoredPlan> {
   const stored = await loadPlan(root, input);
-  assertState(stored.plan, "approved", "apply");
+  assertState(stored.plan, ["approved", "applied-partial"], "apply");
   assertDigest(stored.plan);
+  const wasResumed = stored.plan.state === "applied-partial";
   await assertPlanLifecycle(root, stored.plan, options.force);
   if ((DELEGATED_ONLY_OPERATIONS as readonly string[]).includes(stored.plan.operation.kind)) {
     throw new OflowError(
@@ -1546,9 +1547,10 @@ export async function applyPlan(root: string, input: string, options: { force?: 
     }
   }
   stored.plan.state = "applied";
+  stored.plan.applyError = undefined;
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
-  await recordPlanEvent(root, stored.plan, "applied");
+  await recordPlanEvent(root, stored.plan, wasResumed ? "resumed" : "applied");
   return stored;
 }
 
@@ -2320,7 +2322,7 @@ export async function listPlans(root: string) {
     try {
     const { path, plan } = await loadPlan(root, join(PLAN_DIRECTORY, entry.name));
     assertDigest(plan);
-    if (!["draft", "approved", "applied", "verified"].includes(plan.state)) {
+    if (!["draft", "approved", "applied", "applied-partial", "verified"].includes(plan.state)) {
       throw new OflowError("Invalid plan state.", "INVALID_PLAN");
     }
     plans.push({
@@ -2677,6 +2679,8 @@ async function persistBulkApplyFailure(
     ...failure,
     completed: results.length,
   };
+  const hadProgress = results.length > 0;
+  stored.plan.state = hadProgress ? "applied-partial" : "approved";
   stored.plan.updatedAt = new Date().toISOString();
   await writeJson(stored.path, stored.plan);
   await recordPlanEvent(root, stored.plan, "apply-failed", failure);
@@ -2781,10 +2785,11 @@ function resolvePlanPath(root: string, input: string): string {
   return candidate;
 }
 
-function assertState(plan: PlanArtifact, expected: PlanState, action: string): void {
-  if (plan.state !== expected) {
+function assertState(plan: PlanArtifact, expected: PlanState | PlanState[], action: string): void {
+  const states = Array.isArray(expected) ? expected : [expected];
+  if (!states.includes(plan.state)) {
     throw new OflowError(
-      "Cannot " + action + " a plan in state " + plan.state + "; expected " + expected + ".",
+      "Cannot " + action + " a plan in state " + plan.state + "; expected " + states.join(" or ") + ".",
       "INVALID_PLAN_STATE",
     );
   }

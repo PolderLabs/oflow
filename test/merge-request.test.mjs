@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { beforeEach } from "node:test";
 import {
-  PLAN_DIRECTORY, PLAN_TTL_MS, approvePlan, applyPlan, verifyPlan,
+  PLAN_DIRECTORY, PLAN_TTL_MS, approvePlan, applyPlan, applyPlanDelegated, verifyPlan,
 } from "../dist/plan.js";
 
 beforeEach((t) => {
@@ -142,6 +142,21 @@ test("mr update plan captures expectedUpdatedAt and applies via REST PUT", async
   assert.ok(verified.plan.verification.checks.some((entry) => entry.field === "description"));
 });
 
+
+test("delegated apply rejects merge-request update plans", async (t) => {
+  const root = await fixture(t);
+  const stored = await saveUpdatePlan(root, {
+    operation: {
+      kind: "merge_request.update", host: "gitlab.example.test", projectPath: "team/project",
+      iid: 7, expectedUpdatedAt: "2026-01-01T00:00:00Z", changes: { title: "Updated title" },
+    },
+  });
+  await approvePlan(root, stored.path);
+  await assert.rejects(
+    () => applyPlanDelegated(root, stored.path),
+    code("UNSUPPORTED_DELEGATED_ACTION"),
+  );
+});
 test("mr update apply skips the PUT when the MR already matches (no-op equivalence)", async (t) => {
   const root = await fixture(t);
   const state = mrFetchState(mergeRequestResponse({ description: "Updated body" }));

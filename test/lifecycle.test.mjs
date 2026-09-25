@@ -44,6 +44,7 @@ function gitlabFetchStub() {
         {
           iid: 42,
           title: "Synchronize meeting-room occupancy",
+          issue_type: "issue",
           state: "opened",
           web_url: "https://gitlab.example.test/team/project/-/issues/42",
           labels: ["In Progress"],
@@ -66,6 +67,7 @@ function gitlabFetchStub() {
       return json({
         iid: 42,
         title: "Synchronize meeting-room occupancy",
+        issue_type: "issue",
         state: "opened",
         web_url: "https://gitlab.example.test/team/project/-/issues/42",
         labels: ["In Progress"],
@@ -111,6 +113,7 @@ test("start returns one compact work context with criteria and execution state",
     const result = await startWork({ root, skipAuthProbe: true });
     assert.equal(result.work.iid, 42);
     assert.equal(result.work.title, "Synchronize meeting-room occupancy");
+    assert.equal(result.work.issueType, "issue");
     assert.deepEqual(
       result.acceptanceCriteria.map((c) => c.id),
       ["AC-1", "AC-2"],
@@ -202,7 +205,9 @@ test("finish gates completion on criteria, merge request, pipeline, and clean gi
       "merge-request",
       "pipeline",
       "local-git",
+      "repository-verification",
     ]);
+    assert.equal(result.repositoryVerification.state, "unconfigured");
     const criteriaGate = result.gates.find((gate) => gate.id === "acceptance-criteria");
     assert.equal(criteriaGate.passed, false);
     assert.ok(criteriaGate.detail.includes("not satisfied"));
@@ -210,6 +215,35 @@ test("finish gates completion on criteria, merge request, pipeline, and clean gi
     assert.equal(mrGate.passed, false);
     assert.equal(result.nextCommand, "oflow plan issue update --story 42 --state closed");
     assert.ok(formatFinishMarkdown(result).includes("NOT READY"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("finish blocks required repository verification until a fresh pass", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-finish-verify-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "finish-verify-token";
+  try {
+    await initStoryRepo(root);
+    await writeFile(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow", version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+      workflow: { verification: { policy: "required", checks: [{ id: "node", command: [process.execPath, "--version"] }] } },
+    }));
+    await writeFile(join(root, ".gitignore"), ".oflow/cache/\n");
+    await run("git", ["-C", root, "add", "."]);
+    await run("git", ["-C", root, "commit", "-qm", "configure verify"]);
+    globalThis.fetch = gitlabFetchStub();
+    const result = await finishStory({ root });
+    const gate = result.gates.find((g) => g.id === "repository-verification");
+    assert.equal(gate.passed, false);
+    assert.equal(result.repositoryVerification.state, "missing");
+    assert.equal(result.ready, false);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
@@ -253,6 +287,7 @@ test("finish reports READY without CI configuration or pipeline evidence", async
   const story = {
     iid: 42,
     title: "Synchronize meeting-room occupancy",
+    issue_type: "issue",
     state: "opened",
     web_url: "https://gitlab.example.test/team/project/-/issues/42",
     labels: ["In Progress"],
@@ -351,6 +386,7 @@ test("handoff emits compact resume context for the next agent", async () => {
     const result = await handoffStory({ root });
     assert.equal(result.story.iid, 42);
     assert.equal(result.story.title, "Synchronize meeting-room occupancy");
+    assert.equal(result.story.issueType, "issue");
     assert.equal(result.project.host, "gitlab.example.test");
     assert.equal(result.project.path, "team/project");
     assert.deepEqual(

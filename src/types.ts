@@ -90,9 +90,52 @@ export interface OflowConfig {
      * skips the pipeline gate with explicit policy output.
      */
     pipeline?: "enabled" | "disabled";
+    /**
+     * Required repository verification checks. Each entry is one command
+     * that must exit zero before `finish` reports the story as ready to
+     * close. `lastRun` is recorded by `oflow verify-local` and inspected
+     * by `check`/`finish`. Install writes this section by default so
+     * agents see explicit, fail-closed status.
+     */
+    verification?: VerificationConfig;
   };
 }
 
+export interface VerificationCheckDefinition {
+  id: string;
+  /** argv only; never interpreted by a shell. */
+  command: string[];
+  timeoutMs?: number;
+  outputBytes?: number;
+  /** Optional friendly label rendered in JSON/Markdown output. */
+  label?: string;
+}
+
+export interface VerificationRunCheck {
+  id: string;
+  command: string[];
+  status: "passed" | "failed" | "skipped";
+  exitCode: number | null;
+  durationMs: number;
+  output: string;
+  outputTruncated: boolean;
+}
+
+export interface VerificationRun {
+  status: "passed" | "failed" | "skipped" | "unconfigured";
+  ranAt: string;
+  /** Git/tree digest at run time; finish requires exact equality for freshness. */
+  targetDigest: string;
+  perCheck: VerificationRunCheck[];
+}
+export interface VerificationRunStore {
+  lastRun?: VerificationRun;
+}
+
+export interface VerificationConfig {
+  policy: "required" | "optional";
+  checks: VerificationCheckDefinition[];
+}
 export interface AcceptanceCriterion {
   id: string;
   text: string;
@@ -198,6 +241,7 @@ export interface LocalWorkCacheQuery {
   issueLimit: number;
   issueFilters: GitLabIssueFilters;
   mine: boolean;
+  actorId?: number | null;
 }
 
 export interface GitLabNoteCreate {

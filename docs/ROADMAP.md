@@ -108,6 +108,10 @@ kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
   host/transport combinations; never use real credentials in fixtures.
   *(Implemented: `test/fixtures/compat/*.json` + `test/compat-fixtures.test.mjs`
   covering direct-token, glab-only, runtime MCP delegated, Claude, Codex, OMP.)*
+- [x] Bind cached `work --mine` snapshots to the numeric GitLab actor ID
+  resolved during the live refresh; keep cached reads offline, reject
+  identity-less legacy rows, and preserve non-mine cache keys. *(Unreleased:
+  SQLite schema v3 `actor_id` metadata plus cache/CLI regressions.)*
 
 ### Mandatory session-friction closure
 
@@ -194,10 +198,10 @@ delivery writes, verification flexibility, discoverability, then ergonomics.
   `oflow mr update --iid <iid> --description-file <path>` so multiline
   descriptions remain intact and auditable. (`descriptionFile` flag +
   `resolveDescription` helper; both mr.create and mr.update plumbed)
-- [x] Support the selected REST/glab/delegated transport honestly, report the
-  required scope before apply, and retain independent post-apply verification.
-  (capability lists all three transports; doctor write-check row names them;
-  403 normalization routes to the right transport via `normalizeForbidden`)
+- [x] Support direct REST execution for plan-backed MR create/update and
+  delegated GitLab MCP execution for MR create only; report required scope
+  before apply and retain independent post-apply verification. (`glab` is an
+  auth/read fallback here, not the MR mutation implementation.)
 - [x] Keep MR review, discussion, approval, and pipeline mutation operations
   separate; they are not silently included in this write milestone. (only
   `--title`, `--description[--file]`, `--state`, `--target-branch` are exposed;
@@ -557,10 +561,10 @@ the same plan -> approve -> apply -> verify gates:
 - [x] Merge-request creation through delegated GitLab MCP actions
   (`plan merge-request create` -> `approve` -> `apply --delegate` ->
   `apply --receipt` -> `verify`); review/discussion state remains deferred
-- [x] Implement `merge-requests.write` with plan-backed REST/glab/delegated
-  create and update operations, multiline description files, permission
-  diagnostics, and independent verification. *(Implemented under F3; covered
-  by plan and CLI lifecycle tests.)*
+- [x] Implement `merge-requests.write` with plan-backed direct create/update,
+  delegated MCP create, multiline description files, permission diagnostics,
+  and independent verification. Delegated MR update remains unimplemented.
+  *(Implemented under F3; covered by plan and CLI lifecycle tests.)*
 - [ ] Branch and repository operations (optional; local Git preferred)
 - [ ] Pipeline inspection and controlled trigger/cancel/retry operations
 - [ ] Delivery evidence linked back to acceptance criteria

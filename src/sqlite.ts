@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { OflowError } from "./errors.js";
 import { exists } from "./fs.js";
 
-export const LOCAL_DATABASE_VERSION = 2;
+export const LOCAL_DATABASE_VERSION = 3;
 export const LOCAL_DATABASE_RELATIVE_PATH = ".oflow/cache/oflow.db";
 
 export interface LocalDatabaseOptions {
@@ -267,5 +267,18 @@ function migrate(database: DatabaseSync): void {
       INSERT INTO oflow_meta(key, value) VALUES ('schema_version', '2')
         ON CONFLICT(key) DO UPDATE SET value = excluded.value;
     `);
+  }
+
+  if (version < 3) {
+    const columns = database.prepare("PRAGMA table_info(work_item_cache_queries)").all() as Array<{
+      name?: unknown;
+    }>;
+    if (!columns.some((column) => column.name === "actor_id")) {
+      database.exec("ALTER TABLE work_item_cache_queries ADD COLUMN actor_id INTEGER");
+    }
+    database.prepare(`
+      INSERT INTO oflow_meta(key, value) VALUES ('schema_version', '3')
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run();
   }
 }

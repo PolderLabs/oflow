@@ -13,16 +13,20 @@ export interface WorkCacheResult {
     source: "sqlite";
     savedAt: string;
     ageSeconds: number;
+    actorId: number | null;
     actorUsername: string | null;
   };
 }
 
 export interface WorkCacheSaveResult {
   savedAt: string;
+  actorId: number | null;
   actorUsername: string | null;
 }
 
-export function normalizeWorkCacheQuery(query: LocalWorkCacheQuery): LocalWorkCacheQuery {
+export type NormalizedWorkCacheQuery = Omit<LocalWorkCacheQuery, "actorId">;
+
+export function normalizeWorkCacheQuery(query: LocalWorkCacheQuery): NormalizedWorkCacheQuery {
   return {
     state: query.state,
     issueLimit: query.issueLimit,
@@ -52,13 +56,14 @@ export async function saveWorkItemsCache(options: {
   host: string;
   projectPath: string;
   query: LocalWorkCacheQuery;
+  actorId: number | null;
   actorUsername: string | null;
   items: WorkItemSummary[];
   pagination: GitLabPagination;
 }): Promise<WorkCacheSaveResult> {
   const query = normalizeWorkCacheQuery(options.query);
   const projectKey = makeProjectKey(options.host, options.projectPath);
-  const cacheKey = workCacheKey(options.host, options.projectPath, query);
+  const cacheKey = workCacheKey(options.host, options.projectPath, options.query);
   const savedAt = new Date().toISOString();
   const database = await openLocalDatabase(options.root);
 
@@ -148,14 +153,16 @@ export async function saveWorkItemsCache(options: {
     database.prepare(`
       INSERT INTO work_item_cache_queries(
         cache_key, project_key, query_json, state, issue_limit, mine,
-        actor_username, saved_at, work_items_may_be_truncated, pagination_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        actor_id, actor_username, saved_at,
+        work_items_may_be_truncated, pagination_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(cache_key) DO UPDATE SET
         project_key = excluded.project_key,
         query_json = excluded.query_json,
         state = excluded.state,
         issue_limit = excluded.issue_limit,
         mine = excluded.mine,
+        actor_id = excluded.actor_id,
         actor_username = excluded.actor_username,
         saved_at = excluded.saved_at,
         work_items_may_be_truncated = excluded.work_items_may_be_truncated,
@@ -167,6 +174,7 @@ export async function saveWorkItemsCache(options: {
       query.state,
       query.issueLimit,
       query.mine ? 1 : 0,
+      options.actorId,
       options.actorUsername,
       savedAt,
       options.pagination.hasNextPage ? 1 : 0,
@@ -181,7 +189,7 @@ export async function saveWorkItemsCache(options: {
       insertCacheItem.run(cacheKey, position, projectKey, item.iid, JSON.stringify(item));
     });
     database.exec("COMMIT");
-    return { savedAt, actorUsername: options.actorUsername };
+    return { savedAt, actorId: options.actorId, actorUsername: options.actorUsername };
   } catch (error: unknown) {
     try {
       database.exec("ROLLBACK");
@@ -194,15 +202,48 @@ export async function saveWorkItemsCache(options: {
   }
 }
 
+export async function readLastActorIdentity(
+  root: string,
+  host: string,
+  projectPath: string,
+): Promise<{ actorId: number; actorUsername: string | null } | null> {
+  let database;
+  try {
+    database = await openLocalDatabase(root, { readOnly: true });
+  } catch (error: unknown) {
+    if (error instanceof OflowError && error.code === "LOCAL_DATABASE_MISS") return null;
+    throw error;
+  }
+  try {
+    if (!hasCacheColumn(database, "actor_id")) return null;
+    const row = database.prepare(`
+      SELECT actor_id, actor_username
+      FROM work_item_cache_queries
+      WHERE project_key = ? AND mine = 1 AND actor_id IS NOT NULL
+      ORDER BY saved_at DESC
+      LIMIT 1
+    `).get(makeProjectKey(host, projectPath)) as { actor_id?: unknown; actor_username?: unknown } | undefined;
+    if (!row || !Number.isSafeInteger(row.actor_id)) return null;
+    const actorId = row.actor_id as number;
+    return {
+      actorId,
+      actorUsername: typeof row.actor_username === "string" ? row.actor_username : null,
+    };
+  } finally {
+    database.close();
+  }
+}
+
 export async function readWorkItemsCache(options: {
   root: string;
   host: string;
   projectPath: string;
   query: LocalWorkCacheQuery;
+  expectedActorId?: number;
 }): Promise<WorkCacheResult> {
   const query = normalizeWorkCacheQuery(options.query);
   const projectKey = makeProjectKey(options.host, options.projectPath);
-  const cacheKey = workCacheKey(options.host, options.projectPath, query);
+  const cacheKey = workCacheKey(options.host, options.projectPath, options.query);
   let database;
   try {
     database = await openLocalDatabase(options.root, { readOnly: true });
@@ -217,12 +258,21 @@ export async function readWorkItemsCache(options: {
   }
 
   try {
+    const hasActorId = hasCacheColumn(database, "actor_id");
+    if (query.mine && !hasActorId) {
+      throw new OflowError(
+        "The local assigned-work cache has no GitLab identity. Run oflow work --mine --refresh.",
+        "WORK_CACHE_IDENTITY_UNAVAILABLE",
+      );
+    }
     const row = database.prepare(`
-      SELECT saved_at, actor_username, work_items_may_be_truncated, pagination_json
+      SELECT saved_at, ${hasActorId ? "actor_id" : "NULL AS actor_id"}, actor_username,
+             work_items_may_be_truncated, pagination_json
       FROM work_item_cache_queries
       WHERE cache_key = ? AND project_key = ? AND query_json = ?
     `).get(cacheKey, projectKey, JSON.stringify(query)) as {
       saved_at?: unknown;
+      actor_id?: unknown;
       actor_username?: unknown;
       work_items_may_be_truncated?: unknown;
       pagination_json?: unknown;
@@ -233,7 +283,17 @@ export async function readWorkItemsCache(options: {
         "WORK_CACHE_MISS",
       );
     }
-
+    if (
+      query.mine &&
+      (!Number.isSafeInteger(row.actor_id) ||
+        (options.expectedActorId !== undefined &&
+          (!Number.isSafeInteger(options.expectedActorId) || row.actor_id !== options.expectedActorId)))
+    ) {
+      throw new OflowError(
+        "The local assigned-work cache has no valid matching GitLab identity. Run oflow work --mine --refresh.",
+        "WORK_CACHE_IDENTITY_MISMATCH",
+      );
+    }
     let pagination: GitLabPagination;
     try {
       pagination = parsePagination(JSON.parse(row.pagination_json));
@@ -258,6 +318,7 @@ export async function readWorkItemsCache(options: {
         source: "sqlite",
         savedAt: row.saved_at,
         ageSeconds: cacheAgeSeconds(row.saved_at),
+        actorId: typeof row.actor_id === "number" ? row.actor_id : null,
         actorUsername: typeof row.actor_username === "string" ? row.actor_username : null,
       },
     };
@@ -276,6 +337,13 @@ function cacheAgeSeconds(savedAt: string): number {
     return 0;
   }
   return Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+}
+
+function hasCacheColumn(database: { prepare(sql: string): { all(): unknown[] } }, name: string): boolean {
+  const columns = database.prepare("PRAGMA table_info(work_item_cache_queries)").all() as Array<{
+    name?: unknown;
+  }>;
+  return columns.some((column) => column.name === name);
 }
 
 function parsePagination(value: unknown): GitLabPagination {

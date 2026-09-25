@@ -43,6 +43,7 @@ export interface AssessmentResult {
   story: {
     iid: number;
     title: string;
+    issueType: string | null;
     state: string | null;
     labels: string[];
     assignees: string[];
@@ -155,6 +156,7 @@ export async function assessStory(
     story: {
       iid: context.story.iid,
       title: compact(context.story.title, 240),
+      issueType: typeof context.story.issue_type === "string" ? context.story.issue_type : null,
       state: context.story.state ?? null,
       labels: context.story.labels ?? [],
       assignees,

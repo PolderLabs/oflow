@@ -80,7 +80,7 @@ test("sync read model stores planning, delivery, history, and diagnostics", asyn
     await saveSyncReadModel({ root, host: "gitlab.example.test", projectPath: "team/project", result: snapshot() });
     const status = await readReadModelStatus(root);
     assert.equal(status.state, "ready");
-    assert.equal(status.schemaVersion, 2);
+    assert.equal(status.schemaVersion, 3);
     assert.equal(status.latestSync.stats.workItems, 1);
     assert.deepEqual(status.counts, {
       workItems: 1,
@@ -133,6 +133,7 @@ test("a legacy SQLite schema is diagnosed and migrated by the next live sync", a
   try {
     await saveSyncReadModel({ root, host: "gitlab.example.test", projectPath: "team/project", result: snapshot() });
     const database = new DatabaseSync(join(root, ".oflow", "cache", "oflow.db"));
+    // Pre-version-3 caches (no actor_id column) simulate an installed v0.3.0 database.
     database.prepare("UPDATE oflow_meta SET value = '1' WHERE key = 'schema_version'").run();
     database.close();
     assert.equal((await readReadModelStatus(root)).state, "migration-required");

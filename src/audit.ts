@@ -15,7 +15,8 @@ export type PlanAuditAction =
   | "receipt"
   | "applied"
   | "apply-failed"
-  | "verified";
+  | "verified"
+  | "resumed";
 
 export interface PlanAuditEvent {
   version: 1;
@@ -220,8 +221,8 @@ function isAuditEvent(value: unknown): value is PlanAuditEvent {
   return record.version === AUDIT_VERSION &&
     typeof record.at === "string" &&
     typeof record.planId === "string" &&
-    (action === "discarded" || action === "lifecycle-forced" || action === "created" || action === "approved" || action === "delegated" || action === "receipt" || action === "applied" || action === "apply-failed" || action === "verified") &&
-    (record.state === "draft" || record.state === "approved" || record.state === "applied" || record.state === "verified") &&
+    (action === "discarded" || action === "lifecycle-forced" || action === "created" || action === "approved" || action === "delegated" || action === "receipt" || action === "applied" || action === "apply-failed" || action === "verified" || action === "resumed") &&
+    (record.state === "draft" || record.state === "approved" || record.state === "applied" || record.state === "applied-partial" || record.state === "verified") &&
     operation !== null && typeof operation === "object" &&
     typeof (operation as Record<string, unknown>).kind === "string" &&
     typeof (operation as Record<string, unknown>).host === "string" &&

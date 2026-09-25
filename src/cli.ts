@@ -92,13 +92,14 @@ import {
 } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
 import { loadConfig, resolvePipelinePolicy } from "./config.js";
+import { runLocalVerification } from "./local-verification.js";
 import {
   formatReadModelStatusMarkdown,
   markReadModelStale,
   readReadModelStatus,
   requestReadModelRefresh,
 } from "./read-model.js";
-import { readWorkItemsCache, saveWorkItemsCache } from "./work-cache.js";
+import { readLastActorIdentity, readWorkItemsCache, saveWorkItemsCache } from "./work-cache.js";
 import type {
   GitLabIssueFilters,
   GitLabIssueUpdate,
@@ -229,6 +230,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       return 0;
     }
 
+    if (options.command === "verify-local") {
+      const root = await getRepoRoot(options.root);
+      const config = await loadConfig(root);
+      const run = await runLocalVerification(root, config?.workflow?.verification);
+      print(options.json, run, "Repository verification: " + run.status + "\n");
+      return run.status === "passed" ? 0 : 1;
+    }
+
     const root = await getRepoRoot(options.root);
     switch (options.command) {
       case "install": {
@@ -270,19 +279,32 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         const state = normalizeIssueState(options.state);
         const filters = collectIssueFilters(options);
         const limit = parseIssueLimit(options.limit, 100);
-        const cacheQuery = {
-          state,
-          issueLimit: limit,
-          issueFilters: filters,
-          mine: options.mine,
-        };
         const remote = await getGitLabRemote(root);
+        let actorId: number | null = null;
+        let actorUsername: string | null = null;
+        if (options.mine && options.cached) {
+          const cachedIdentity = await readLastActorIdentity(root, remote.host, remote.projectPath);
+          if (!cachedIdentity) {
+            throw new OflowError(
+              "The local assigned-work cache has no GitLab identity. Run oflow work --mine --refresh.",
+              "WORK_CACHE_IDENTITY_UNAVAILABLE",
+            );
+          }
+          actorId = cachedIdentity.actorId;
+          actorUsername = cachedIdentity.actorUsername;
+        } else if (options.mine) {
+          const identity = await resolveIdentity(root, { withEmail: false });
+          actorId = identity.id;
+          actorUsername = identity.username;
+        }
+        const cacheQuery = { state, issueLimit: limit, issueFilters: filters, mine: options.mine, actorId };
         if (options.cached) {
           const cached = await readWorkItemsCache({
             root,
             host: remote.host,
             projectPath: remote.projectPath,
             query: cacheQuery,
+            expectedActorId: actorId ?? undefined,
           });
           const displayFilters = options.mine && cached.cache.actorUsername
             ? { ...filters, assignee: cached.cache.actorUsername }
@@ -308,13 +330,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           return 0;
         }
 
-        let effectiveFilters = filters;
-        let actorUsername: string | null = null;
-        if (options.mine) {
-          const identity = await resolveIdentity(root, { withEmail: false });
-          actorUsername = identity.username;
-          effectiveFilters = { ...filters, assigneeId: identity.id };
-        }
+        const effectiveFilters = actorId !== null
+          ? { ...filters, assigneeId: actorId }
+          : filters;
         const issuePage = await listWorkItemsPage(root, state, effectiveFilters, limit);
         const items = compactWorkItems(issuePage.items);
         const warnings: string[] = [];
@@ -337,6 +355,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
             host: remote.host,
             projectPath: remote.projectPath,
             query: cacheQuery,
+            actorId,
             actorUsername,
             items,
             pagination: issuePage.pagination,
@@ -350,6 +369,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           source: "remote" as const,
           savedAt,
           ageSeconds: 0,
+          actorId,
           actorUsername,
         };
         print(
@@ -2124,6 +2144,7 @@ function helpText(): string {
     "  start [--story <iid>] [--json]         one compact work context for agents",
     "  check [--story <iid>] [--json]         unified story, evidence, and policy check",
     "  finish [--story <iid>] [--json]        gated completion check with close command",
+    "  verify-local [--json]                  run configured repository argv checks and record tree-bound evidence",
     "  handoff [--story <iid>] [--json]       compact context for the next agent",
     "  work [filters] [--state opened|closed|all] [--json] list current GitLab work items",
     "  work --iid <iid> [--json]           read one normalized work item by IID",

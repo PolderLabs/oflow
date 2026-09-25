@@ -20,6 +20,35 @@ Agents should use these layers in order:
    `oflow assess --story <iid> --json` only when needed.
 5. Discover support with `oflow capabilities --json` rather than guessing.
 
+## Closing work safely
+
+`oflow` owns plan creation, approval, evidence, and postcondition verification.
+REST, `glab`, GraphQL, and runtime-owned GitLab MCP are interchangeable
+execution transports for the operations `oflow capabilities --json`
+advertises as supported. Configured MCP is runtime-owned state, not proof that
+the runtime is authenticated or that a tool call will succeed; only
+`oflow capabilities --probe --json` reports a non-probed write.
+
+Suggested close sequence:
+
+1. Refresh remote truth with `oflow work --mine --refresh --json` and
+   `oflow sync --summary --refresh --json`.
+2. Explore locally with `oflow work --mine --cached --json` and
+   `oflow sync --summary --cached --json`.
+3. Run the repository's local checks. When `workflow.verification.checks` is
+   configured, `oflow verify-local --json` runs them, records bounded tree-bound
+   evidence under `.oflow/cache/`, and refreshes the timestamp consumed by
+   `oflow check`/`oflow finish`. Skip `verify-local` only if you intentionally
+   accept that `finish` will treat required verification as missing.
+4. Run `oflow verify --story <iid> --json` for acceptance and delivery
+   evidence.
+5. Run `oflow finish --story <iid> --json`. `finish` is read-only and reports
+   acceptance criteria, merged MR, pipeline policy/evidence, and clean Git.
+6. Only when `finish.ready` is true may the agent create, approve, apply, and
+   verify the guarded close plan:
+   `oflow plan issue update --story <iid> --state closed`,
+   `oflow approve <plan>`, `oflow apply <plan>`, `oflow verify --plan <plan>`.
+
 At the beginning of a new session, `oflow doctor --check-api --json` is an
 optional setup diagnostic. It checks bounded read access and shows every
 supported write as `not-probed`; it never mutates GitLab. A passing doctor
@@ -32,15 +61,16 @@ behind it.
 
 ## Identity and assignment
 
-The future stable identity entry point is `oflow identity --json` (or an
-equivalent `auth whoami`). It must use GitLab's current-user endpoint and
-report the GitLab principal, host, credential source, and backend capability
-metadata without exposing credentials. `work --mine` must use that server
-identity or a server-side `assignee=me` filter; local Git authors, model names,
-agent names, and instruction-file emails are not GitLab identity.
+`oflow identity --json` uses GitLab's current-user endpoint and reports the
+GitLab principal, host, credential source, and backend capability metadata
+without exposing credentials. Live `work --mine` resolves that server identity
+and filters by GitLab numeric user ID; it never uses local Git authors, model
+names, agent names, or instruction-file emails.
 
-Until that contract is implemented, a missing `User: Read` capability must be
-reported as unavailable rather than guessed.
+`work --mine --cached` remains offline. It reports the actor identity recorded
+by the last live refresh and rejects legacy snapshots that lack a numeric actor
+ID. Run `work --mine --refresh` whenever a GitLab identity changes; only that
+live operation can detect the change remotely.
 
 ## Native packaging direction
 

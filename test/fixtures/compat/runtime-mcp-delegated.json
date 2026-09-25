@@ -9,7 +9,7 @@
   },
   "capabilities": [
     { "id": "merge_request.create", "usable": true, "backend": "gitlab-mcp", "mode": "delegated" },
-    { "id": "merge_request.update", "usable": true, "backend": "gitlab-mcp", "mode": "delegated" },
+    { "id": "merge_request.update", "usable": false, "backend": null, "reason": "direct REST/glab only; delegated MR update is not implemented" },
     { "id": "work_item.update", "usable": false, "backend": null, "reason": "direct apply preferred when a token exists; delegated issue updates are later milestone" }
   ],
   "delegatedAction": {
@@ -39,6 +39,6 @@
     }
   },
   "writes": {
-    "parity": "Delegated path currently ships merge_request.create/update. Issue field parity is REST/glab only; see docs/FIELD-PARITY.md."
+    "parity": "Delegated path ships merge_request.create only. Direct REST/glab cover MR create/update; issue field parity is REST/glab only; see docs/FIELD-PARITY.md."
   }
 }

@@ -193,9 +193,9 @@ export async function getCapabilities(options: CapabilitiesOptions = {}): Promis
         "implemented",
         "apply",
         "Merge Request",
-        "REST + glab + delegated git push",
-        "Project: Write; optional delegated MR creation via `git push -o merge_request.create`",
-        "The REST and glab paths support title/description/state/source/target/topic. The delegated path is limited to MR create/update with description via --description-file; portable issue-update fields (labels, milestone_id, epic_id, due_date, weight, issue_type, assignee_ids) are not advertised for delegated actions.",
+        "direct REST plus delegated create",
+        "Project: Write; optional create fallback via `git push -o merge_request.create`",
+        "Plan-backed direct execution supports MR create/update. `oflow apply --delegate` supports MR create only through runtime-owned GitLab MCP; `git push -o merge_request.create` is a separate Git transport fallback, not MCP. Delegated MR update is not implemented.",
       ),
 
       capability(

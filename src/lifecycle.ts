@@ -15,6 +15,8 @@
 import { assessStory } from "./assess.js";
 import { resolveAuth } from "./auth-resolver.js";
 import { compactWorkItems, getCurrentGitLabUser, listWorkItems } from "./context.js";
+import { loadConfig } from "./config.js";
+import { getLocalVerificationStatus, type LocalVerificationStatus } from "./local-verification.js";
 import { OflowError } from "./errors.js";
 import { getCurrentBranch } from "./git.js";
 import { loadStoryContext } from "./context.js";
@@ -39,6 +41,7 @@ export interface StartResult {
   work: {
     iid: number;
     title: string;
+    issueType: string | null;
     state: string | null;
     webUrl: string | null;
     assignees: string[];
@@ -144,6 +147,7 @@ export async function startWork(options: StartOptions): Promise<StartResult> {
     work: {
       iid: story.iid,
       title: story.title,
+      issueType: typeof story.issue_type === "string" ? story.issue_type : null,
       state: story.state ?? null,
       webUrl: story.web_url ?? null,
       assignees: (story.assignees ?? []).map((a) => String(a.username ?? "")),
@@ -231,11 +235,17 @@ export interface CheckResult {
     branch: string | null;
     clean: boolean;
   };
+  repositoryVerification: LocalVerificationStatus;
   nextAction: string;
   warnings: string[];
 }
 
 export async function checkStory(options: CheckOptions): Promise<CheckResult> {
+  const config = await loadConfig(options.root);
+  const repositoryVerification = await getLocalVerificationStatus(
+    options.root,
+    config?.workflow?.verification,
+  );
   const { story } = await pickStory(options.root, options.story);
   const assessment = await assessStory(options.root, story.iid);
 
@@ -270,6 +280,7 @@ export async function checkStory(options: CheckOptions): Promise<CheckResult> {
       branch: assessment.local.branch,
       clean: assessment.local.clean,
     },
+    repositoryVerification,
     nextAction,
     warnings: assessment.warnings,
   };
@@ -324,6 +335,7 @@ export interface FinishResult {
   story: number;
   ready: boolean;
   gates: Array<{ id: string; passed: boolean; detail: string }>;
+  repositoryVerification: LocalVerificationStatus;
   nextCommand: string;
   warnings: string[];
 }
@@ -333,6 +345,11 @@ export interface FinishResult {
  * prints the guarded plan command that would close it. Never mutates.
  */
 export async function finishStory(options: FinishOptions): Promise<FinishResult> {
+  const config = await loadConfig(options.root);
+  const repositoryVerification = await getLocalVerificationStatus(
+    options.root,
+    config?.workflow?.verification,
+  );
   const { story } = await pickStory(options.root, options.story);
   const assessment = await assessStory(options.root, story.iid);
 
@@ -387,6 +404,11 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
         ? "Working tree clean on " + (assessment.local.branch ?? "(detached)") + "."
         : "Uncommitted changes: " + assessment.local.changedFiles.length + " file(s).",
     },
+    {
+      id: "repository-verification",
+      passed: !repositoryVerification.blocking,
+      detail: repositoryVerification.reason,
+    },
   ];
 
   return {
@@ -394,6 +416,7 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
     story: story.iid,
     ready: gates.every((gate) => gate.passed),
     gates,
+    repositoryVerification,
     nextCommand:
       "oflow plan issue update --story " + story.iid + " --state closed",
     warnings: [
@@ -440,6 +463,7 @@ export interface HandoffResult {
   story: {
     iid: number;
     title: string;
+    issueType: string | null;
     state: string | null;
     webUrl: string | null;
   };
@@ -480,6 +504,7 @@ export async function handoffStory(options: FinishOptions): Promise<HandoffResul
     story: {
       iid: assessment.story.iid,
       title: assessment.story.title,
+      issueType: assessment.story.issueType,
       state: assessment.story.state,
       webUrl: assessment.story.webUrl,
     },

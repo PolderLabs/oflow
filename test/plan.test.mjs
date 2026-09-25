@@ -442,7 +442,7 @@ test("bulk apply records partial progress and resumes remaining targets", async 
     await approvePlan(root, created.path);
     await assert.rejects(() => applyPlan(root, created.path), { code: "GITLAB_API_ERROR" });
     const partial = JSON.parse(await readFile(created.path, "utf8"));
-    assert.equal(partial.state, "approved");
+    assert.equal(partial.state, "applied-partial");
     assert.deepEqual(partial.result.issues, [{ iid: 17, labels: ["User Story", "Ready"] }]);
     assert.deepEqual(partial.applyError, {
       code: "GITLAB_API_ERROR",
@@ -459,7 +459,7 @@ test("bulk apply records partial progress and resumes remaining targets", async 
       { iid: 18, labels: ["User Story", "Ready"] },
     ]);
     const audit = await readAudit(root);
-    assert.equal(audit.events[0].action, "applied");
+    assert.equal(audit.events[0].action, "resumed");
     assert.equal(audit.events[1].action, "apply-failed");
     assert.equal(audit.events[1].details.resultCount, 1);
   } finally {

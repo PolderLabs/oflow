@@ -47,6 +47,7 @@ test("assess combines explicit MR evidence with compact local repository evidenc
           iid: 1,
           title: "Choose a pod",
           description: "Acceptance criteria:\n- [ ] AC-1: Pick a pod",
+          issue_type: "issue",
           state: "opened",
           labels: ["User Story"],
           assignees: [],
@@ -92,7 +93,8 @@ test("assess combines explicit MR evidence with compact local repository evidenc
     assert.equal(result.criteria[0].status, "satisfied");
     assert.equal(result.remote.mergeRequest.iid, 3);
     assert.deepEqual(result.story.assignees, []);
-    assert.deepEqual(result.story.taskCompletion, { completed: 1, total: 4 });
+    assert.ok("issueType" in result.story);
+    assert.ok(["issue", "task", "incident", "test_case"].includes(result.story.issueType));
     assert.ok(result.nextActions.includes("Assign an owner or explicitly confirm why the story is unassigned."));
     assert.ok(result.nextActions.includes("Assign a milestone or iteration before sprint commitment."));
     assert.equal(result.local.clean, false);

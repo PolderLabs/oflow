@@ -185,30 +185,68 @@ Receipt file passed to `apply --receipt`:
   "success": true,
   "result": { "iid": 9, "web_url": "https://gitlab.example.test/team/project/-/merge_requests/9" }
 }
-```
 
-## Verification (`verify --story --json`)
+## Repository verification (`verify-local --json`)
+
+When `.oflow/config.json` declares `workflow.verification.checks`, run the
+declared argv directly from the repository root and record bounded,
+tree-bound evidence under `.oflow/cache/`.
+
+```bash
+oflow verify-local --json
+```
 
 ```json
 {
-  "storyIid": 42,
-  "mergeRequest": { "iid": 3, "state": "merged", "draft": false },
-  "pipeline": { "id": 10, "status": "success" },
-  "pipelinePolicy": "enabled",
-  "ciConfigPresent": true,
-  "warnings": [],
-  "passed": true,
-  "criteria": []
+  "status": "passed",
+  "ranAt": "2026-01-01T00:00:00.000Z",
+  "targetDigest": "<sha256 of git ls-files + diff + status + untracked>",
+  "perCheck": [
+    {
+      "id": "typecheck",
+      "command": ["npm", "run", "typecheck"],
+      "status": "passed",
+      "exitCode": 0,
+      "durationMs": 4231,
+      "output": "...",
+      "outputTruncated": false
+    }
+  ]
 }
 ```
 
-- `pipelinePolicy: "disabled"` skips the pipeline gate
-  (`.oflow/config.json` → `workflow.pipeline`).
-- Enabled policy with no `.gitlab-ci.yml` and no pipeline evidence emits a
-  warning instead of a permanent block.
+- `status: "passed"` requires all declared checks to exit zero against the
+  same tree digest; pre-run/post-run digest mismatch is recorded as a failure.
+- Output is bounded by `outputBytes` (default 32 KiB) and `outputTruncated`
+  indicates whether truncation occurred.
+- oflow never interprets the command via a shell and rejects arguments that
+  contain control characters or look like credentials.
+- `oflow check --json` and `oflow finish --json` surface `repositoryVerification`
+  with `state`, `passed`, `blocking`, `policy`, `targetDigest`, and `reason`.
+  When `policy: "required"`, any non-`passed` state blocks `finish.ready`.
+
+## Configuration (`workflow.verification`)
+
+```json
+{
+  "policy": "required",
+  "checks": [
+    {
+      "id": "typecheck",
+      "command": ["npm", "run", "typecheck"],
+      "timeoutMs": 120000,
+      "outputBytes": 32768
+    }
+  ]
+}
+```
+
+- `policy: "required"` makes the verification gate blocking for `oflow finish`.
+- `policy: "optional"` keeps the gate non-blocking; failures still emit warnings.
+- `command` is argv only (no shell); it must be a non-empty string array.
+- `id` must match `/^[a-z][a-z0-9._-]*$/i` and be unique across `checks`.
 
 ## Related docs
-
 - [AGENT-INTEGRATION.md](AGENT-INTEGRATION.md) — host integration boundary
 - [SCRUM-PLANNING.md](SCRUM-PLANNING.md) — command surface
 - [FIELD-PARITY.md](FIELD-PARITY.md) — REST / glab / delegated field mapping

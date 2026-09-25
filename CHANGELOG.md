@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Cached `work --mine` snapshots are now bound to the authenticated GitLab
+  actor ID stored in the SQLite cache query row. Legacy snapshots without an
+  actor ID are rejected with `WORK_CACHE_IDENTITY_MISMATCH` /
+  `WORK_CACHE_IDENTITY_UNAVAILABLE`; non-mine cached reads remain offline and
+  retain their existing key shape. SQLite schema bumped to v3 with an
+  idempotent `actor_id` column.
+
 ## 0.3.0
 
 Reliability and agent-integration release.

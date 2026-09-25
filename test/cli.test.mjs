@@ -44,6 +44,34 @@ test("auth rejects token command-line arguments without echoing the value", () =
   assert.ok(!result.stderr.includes("secret-token"));
 });
 
+test("verify-local --json runs configured argv checks without GitLab access", () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-verify-local-cli-"));
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "config", "user.email", "test@example.test"]);
+    execFileSync("git", ["-C", root, "config", "user.name", "Test User"]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow", version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+      workflow: { verification: { policy: "required", checks: [
+        { id: "node-version", command: [process.execPath, "--version"] },
+      ] } },
+    }));
+    writeFileSync(join(root, ".gitignore"), ".oflow/cache/\n");
+    execFileSync("git", ["-C", root, "add", "."]);
+    execFileSync("git", ["-C", root, "commit", "-qm", "configure"]);
+    const result = spawnSync(process.execPath, [cli, "verify-local", "--root", root, "--json"], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.status, "passed");
+    assert.equal(parsed.perCheck[0].id, "node-version");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("CLI runs through a symlink like an npm global binary", { skip: process.platform === "win32" }, () => {
   const directory = mkdtempSync(join(tmpdir(), "oflow-bin-"));
   const linkedCli = join(directory, "oflow");
@@ -422,7 +450,7 @@ test("cache diagnostics stay local and report a missing read model without a tok
   }
 });
 
-test("work --mine refreshes once and can then be read from SQLite offline", async () => {
+test("work --mine refreshes and validates cached data against current identity", async () => {
   const root = mkdtempSync(join(tmpdir(), "oflow-work-mine-cli-"));
   const originalFetch = globalThis.fetch;
   const previousToken = process.env.GITLAB_TOKEN;
@@ -475,8 +503,9 @@ test("work --mine refreshes once and can then be read from SQLite offline", asyn
       root,
       host: "gitlab.example.test",
       projectPath: "team/project",
-      query: { state: "opened", issueLimit: 100, issueFilters: {}, mine: true },
+      query: { state: "opened", issueLimit: 100, issueFilters: {}, mine: true, actorId: 7 },
     });
+    assert.equal(refreshed.cache.actorId, 7);
     assert.equal(refreshed.cache.actorUsername, "test-user");
     assert.equal(refreshed.items[0].iid, 23);
 
@@ -490,6 +519,34 @@ test("work --mine refreshes once and can then be read from SQLite offline", asyn
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
     else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("work --mine --cached rejects a legacy identity-less cache offline", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-work-mine-legacy-cli-"));
+  const originalFetch = globalThis.fetch;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow", "cache"), { recursive: true });
+    const { DatabaseSync } = await import("node:sqlite");
+    const database = new DatabaseSync(join(root, ".oflow", "cache", "oflow.db"));
+    database.exec(`
+      CREATE TABLE oflow_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO oflow_meta VALUES ('schema_version', '3');
+      CREATE TABLE work_item_cache_queries (
+        cache_key TEXT PRIMARY KEY, project_key TEXT NOT NULL, query_json TEXT NOT NULL,
+        state TEXT NOT NULL, issue_limit INTEGER NOT NULL, mine INTEGER NOT NULL,
+        actor_username TEXT, saved_at TEXT NOT NULL, work_items_may_be_truncated INTEGER NOT NULL,
+        pagination_json TEXT NOT NULL, actor_id INTEGER
+      );
+    `);
+    database.close();
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    assert.equal(await main(["work", "--root", root, "--mine", "--cached", "--json"]), 1);
+  } finally {
+    globalThis.fetch = originalFetch;
     rmSync(root, { recursive: true, force: true });
   }
 });
