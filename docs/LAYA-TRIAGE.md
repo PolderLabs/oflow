@@ -96,7 +96,9 @@ crash, unparseable output, non-numeric score), so no oflow command can be
 broken by Laya. oflow takes **no npm dependency** on it; the engine is
 discovered at runtime, which preserves the bare-`npm-install` constraint.
 
-21 tests, all mutation-verified:
+12 tests. Each of the five guarantees below was mutation-verified: the listed
+mutation was applied, the suite was rebuilt, and the corresponding test was
+confirmed to turn red before the source was restored.
 
 | Guarantee | Mutation that must turn the suite red |
 |---|---|
