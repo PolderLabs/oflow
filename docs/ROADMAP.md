@@ -329,7 +329,7 @@ update work above is not a general delivery API; it must remain plan-backed,
 permission-aware, and independently verified.
 
 
-### Experimental — local decision-engine triage (not wired in)
+### Experimental — local decision-engine triage (scoring withdrawn, gate wired)
 
 - [x] Stock-questions wrapper — first written as `src/laya-triage.ts`, then folded
   into `src/laya-runner.ts` (`runDefaultQuestions`) and removed as dead code

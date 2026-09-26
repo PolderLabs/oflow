@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -180,6 +180,40 @@ test("the real engine produces an advisory triage band", { skip: !process.env.OF
     assert.deepEqual(result.blockers, []);
     } finally {
       delete process.env.OFLOW_LAYA_TRIAGE_UNCALIBRATED;
+    }
+  });
+});
+// The withdrawal gate is checked BEFORE the engine call, so `--triage` without
+// the override costs nothing rather than paying a ~3.7s forward pass to
+// produce a null. That ordering is invisible in the result and easy to lose, so
+// it is asserted directly: with the flag absent and no engine configured, the
+// call must not reach the engine at all.
+test("the withheld path does not reach the engine", async () => {
+  await withStory(async (root) => {
+    delete process.env.OFLOW_LAYA_TRIAGE_UNCALIBRATED;
+    const dir = mkdtempSync(join(tmpdir(), "oflow-assess-gate-"));
+    const python = join(dir, "slow-python");
+    writeFileSync(python, "#!/bin/sh\ncat >/dev/null\nsleep 2\n");
+    chmodSync(python, 0o755);
+    process.env.OFLOW_LAYA_PYTHON = python;
+    try {
+      // The result is `null` either way, so only the cost distinguishes a
+      // gate-first path from a gate-last one: spawning a process costs
+      // hundreds of milliseconds, returning early costs nothing measurable.
+      const started = process.hrtime.bigint();
+      const result = await assessStory(root, 42, { triage: true });
+      const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+      assert.equal(result.triage, undefined);
+      assert.deepEqual(result.blockers, []);
+      // A stub that sleeps stands in for a real forward pass: it answers,
+      // so a gate-last path would wait for it, and a gate-first path never
+      // runs it. 1.5s of sleep against a 1s budget separates the two without
+      // depending on how fast the host spawns processes.
+      assert.ok(elapsedMs < 1000, "the withheld path took " + Math.round(elapsedMs) + "ms, "
+        + "so it reached the engine before checking the gate");
+    } finally {
+      delete process.env.OFLOW_LAYA_PYTHON;
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

@@ -1,10 +1,11 @@
 # Laya triage: what the engine is actually good for
 
-**Status: module built and calibrated, not wired into any command.** The
-exportable module and the scrum question set exist; nothing in oflow calls them
-yet. This document records the measurements that decided what ships, so the
-next reader does not re-derive them and so the "wire it in or not" decision is
-made on evidence rather than on a tool's description.
+**Status: no Laya-derived feature is enabled. One precondition check is
+wired.** Both scoring paths are withdrawn on measurement, and the readability
+check now guards the triage path so that text the English checkpoint cannot
+read never reaches the question. This document records the measurements that
+decided that, so the next reader does not re-derive them and the "re-enable or
+not" decision is made on evidence rather than on a tool's description.
 
 ## What Laya is
 
@@ -377,6 +378,32 @@ is what would silently feed an English checkpoint text it cannot judge.
 
 So this is usable as a gate, with the caveat that a work item consisting of
 nothing but acronyms may be skipped unnecessarily.
+
+### Two defects found while wiring it in
+
+Wiring the check into `assess` turned up both, and both are worth recording
+because neither was visible from reading the code.
+
+**The module was committed with nothing calling it** — the same defect found and
+removed in `laya-triage.ts`. A surface that exists, is tested, and is reached
+by nothing is the shape that most easily reads as finished.
+
+**The probe had a Python syntax error, and the catch hid it.** A list
+comprehension lost a bracket in an earlier edit, so every call raised, the
+`catch` returned `null`, and the module reported "no engine" for every input
+**while the engine was present and working**. A catch that swallows crashes is
+right for absence and catastrophic for defects: this one made a syntax error
+present as a missing dependency, and would have been filed under "Laya is not
+installed" rather than "this line is broken". Found by extracting the script and
+running it directly.
+
+**And the withdrawal gate ran last**, after a ~3.7s engine call whose result
+was about to be discarded — so every `--triage` invocation paid full inference
+to produce a `null`. The gate is now checked first, and the common case costs
+nothing.
+
+Verified end to end: an English story scores 1.99, a German story is blocked
+before reaching the question, and an absent engine still returns `null`.
 
 ## The signal is asymmetric, and short titles are its weakness
 <!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
