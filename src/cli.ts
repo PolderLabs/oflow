@@ -2260,7 +2260,7 @@ function helpText(): string {
     "  cadence [--limit <n>]               list parent-group iteration cadences",
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  sync --summary                       token-light counts and planning health",
-    "  assess --story <iid> [--json] [--triage]  compact story progress; --triage adds an advisory Laya hint",
+    "  assess --story <iid> [--json] [--triage]  compact story progress; --triage is withheld (uncalibrated, see docs/LAYA-TRIAGE.md)",
     "  capabilities [--json] [--probe]      show supported and planned operations",
     "  audit [--limit <n>] [--json]         read local plan lifecycle history",
     "  cache status [--json]                inspect local cache age/schema/invalidation",

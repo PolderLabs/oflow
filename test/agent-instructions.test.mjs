@@ -140,3 +140,31 @@ test("the safety line points at a command that exists", () => {
   );
   assert.ok((help.stdout ?? "").length > 0, "doctor should produce output");
 });
+
+// A user-facing surface must not describe a path that returns nothing. The
+// triage hint is withheld pending recalibration, and both the help text and
+// the managed agent block previously said it "adds an advisory hint" -- which
+// agents would have acted on.
+test("the help text does not advertise the withheld triage path as working", () => {
+  const help = spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" }).stdout;
+  assert.match(help, /--triage/);
+  assert.match(help, /withheld/i, "help must say the flag is withheld");
+  assert.doesNotMatch(help, /--triage adds an advisory Laya hint/);
+});
+
+test("the agent instruction block does not promise a triage hint", () => {
+  for (const agent of ["codex", "claude", "omp"]) {
+    const text = agentInstructionBlock(agent);
+    assert.match(text, /--triage/);
+    // Agents follow this text literally, so it has to say the path is off.
+    assert.match(text, /withheld/i, agent + " block must say the hint is withheld");
+    assert.doesNotMatch(text, /--triage --json` adds an advisory hint/);
+    // The block may name the override only to rule it out; it must never tell
+    // an agent to set it.
+    assert.doesNotMatch(
+      text,
+      /(?:^|[^.]\s)(?:set|use|export)\s+OFLOW_LAYA_TRIAGE_UNCALIBRATED\s*=\s*1/,
+      agent + " must not tell an agent to enable the override",
+    );
+  }
+});
