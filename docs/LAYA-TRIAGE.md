@@ -132,6 +132,48 @@ disowned, so the module reports `confidence: 0` and callers must not gate on it.
 - **`src/laya-scrum.ts`** — the calibrated question set and the band reader, with
   the calibration table in its header.
 
+## The signal is asymmetric, and short titles are its weakness
+
+The control above used full sentences. Sprint boards do not: they hold short
+imperative titles, which is exactly where this would be used. Re-run over ten
+realistic board items, comparing each title with the same item written as a
+sentence:
+
+| item | title | expanded | |
+|---|---:|---:|---|
+| Fix sync retries | 1.35 | 1.05 | construction |
+| Add pagination to work list | 1.06 | 1.01 | construction |
+| Refactor label parsing | 0.48 | 0.75 | construction |
+| Ship the export endpoint | 0.85 | 0.53 | construction |
+| Check pipeline gating | **1.16** | **1.20** | verification |
+| Review the apply ordering | **1.47** | **1.30** | verification |
+| Confirm migration output | 1.58 | 2.31 | verification |
+| Audit label coverage | 1.72 | 1.93 | verification |
+| Validate the criterion parser | 1.96 | 2.04 | verification |
+| Verify the rollback path | 2.04 | 2.35 | verification |
+
+The ordering survives on titles (mean separation +1.238) but the **bands
+overlap**: construction reached 1.35 while verification started at 1.16, so the
+two cannot be separated by a threshold on short text. The same ten items as
+sentences separate cleanly, 1.05 against 1.20.
+
+The more important result is the two items in bold. "Check pipeline gating" and
+"Review the apply ordering" are verification work that the engine scores as
+construction, **at both lengths**. That is a systematic weakness in the
+question, not noise, and it is a miss no reviewer would catch by eye.
+
+**So the signal is asymmetric, and the module is built to say so.** It is
+informative in one direction: a high score does mean the item is
+verification-heavy. Silence means nothing. A construction band is not evidence
+that an item contains no verification work, and two tests pin that so it cannot
+be quietly upgraded into a classifier. Scores are deterministic at both
+lengths, so the limitation is in the question, not in the engine.
+
+This is also why nothing is wired into `sync` or the dashboard. A sprint-level
+rollup would rest on precisely the short titles where the bands overlap, and a
+portfolio figure that silently misclassifies 2 of 10 items is worse than no
+figure.
+
 ## How others are using it
 
 Three public integrations, read to see whether the patterns here are unusual or

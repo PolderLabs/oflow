@@ -30,6 +30,23 @@ import type { LayaQuestion, LayaQuestions } from "./laya-runner.js";
  * This is a review-effort signal, not a size estimate: an item that is mostly
  * verification costs a reviewer far more attention than its length suggests,
  * which is exactly what sprint planning tends to get wrong.
+ *
+ * ## Known weakness, measured not assumed
+ *
+ * On realistic sprint-board titles the ordering survives (mean separation
+ * +1.238) but the bands do not: construction reached 1.35 while verification
+ * started at 1.16, so the two classes overlap. The same ten items written as
+ * full sentences separate cleanly, 1.05 against 1.20.
+ *
+ * More important than the overlap, the same two items are mis-banded at both
+ * lengths: "Check pipeline gating" (1.16) and "Review the apply ordering"
+ * (1.47) are verification work scored as construction. That is a systematic
+ * weakness in the question rather than noise, and it is a miss a reviewer
+ * would not catch by eye.
+ *
+ * So a caller must never read a construction verdict as evidence that an item
+ * contains no verification work. The hint is informative in the direction it
+ * is reliable: it flags verification-heavy items, and silence says nothing.
  */
 export const VERIFICATION_SHARE: LayaQuestion = {
   type: "score",

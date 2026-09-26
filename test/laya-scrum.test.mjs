@@ -67,3 +67,34 @@ test("no signal and weak signal are both silence", () => {
   assert.equal(readVerificationShare({ verificationShare: { type: "noul", noul: 0.4 } }), null);
   assert.equal(readVerificationShare({ verificationShare: { type: "score", score: "high" } }), null);
 });
+
+// The signal is asymmetric by measurement: it flags verification-heavy items,
+// and silence proves nothing. Two real work items -- "Check pipeline gating"
+// (1.16) and "Review the apply ordering" (1.47) -- are verification work that
+// the engine scores as construction, at both title and sentence length. If
+// anyone ever treats a construction band as "contains no verification work",
+// this fails.
+test("a construction band is not evidence that an item has no verification work", () => {
+  // Both measured misses land in the construction band.
+  for (const measured of [1.16, 1.47]) {
+    const value = readVerificationShare(score(measured, "0"));
+    assert.equal(value.band, "construction");
+    // ...and the module says nothing at all about them, rather than
+    // asserting a negative.
+    assert.equal(describeVerificationShare(value), null);
+  }
+});
+
+test("the measured overlap between the two classes is recorded, not smoothed over", () => {
+  // construction max 1.35 against verification min 1.16 on short titles: the
+  // ranges genuinely overlap, so the bands cannot be treated as a classifier.
+  const constructionMax = readVerificationShare(score(1.35, "1"));
+  const verificationMin = readVerificationShare(score(1.16, "1"));
+  assert.equal(constructionMax.band, "construction");
+  assert.equal(verificationMin.band, "construction");
+  // Only the high end is trustworthy: a genuinely verification-heavy item is
+  // the one that gets flagged. 2.04 sits in the mixed band and 2.35 in the
+  // verification band, so a clear verification item does read as one.
+  assert.equal(readVerificationShare(score(2.04, "2")).band, "mixed");
+  assert.equal(readVerificationShare(score(2.35, "3")).band, "verification");
+});
