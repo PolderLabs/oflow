@@ -805,7 +805,7 @@ everything into a narrow band whatever you ask. There is little variance left
 for a better question to exploit, so rewording trades the gap for a tighter
 cluster and no gain.
 
-### The eleventh capability: shortlisting existing labels
+### Row 8: shortlisting existing labels
 
 `shortlist_choice` is a different mechanism from everything above. Those were
 asked for a score and returned a bad one; this ranks option labels by embedding
@@ -882,11 +882,10 @@ Rejected, on two grounds:
 With n=5 against n=10 no threshold conclusion here is stable, and that is the
 point at which to stop probing this primitive.
 
-This is row 9 of the canonical list at the top of this document: the twelfth
-*rejected* capability, or the fourteenth measured and not shipped once the two
-withdrawn paths are counted. Earlier drafts of this section moved that number
-between ten, eleven and twelve by hand, which is why the list is now the thing
-every count is read off.
+This is row 9 of the canonical list at the top of this document. Earlier drafts
+of this section moved that number by hand as capabilities were added, which is
+why the list is now the only place a count is read off, and why no ordinal or
+running total appears here.
 
 Row 8, shortlist_choice, was a different mechanism again —
 ranking option labels by embedding similarity rather than scoring. Two notes kept for whoever reads
@@ -989,7 +988,7 @@ language metadata rather than a routing decision — `script`, `language`,
 `is_english`, `diacritic_rate`. The `is_english` field is the readability
 precondition that is already wired, and nothing else in it is new.
 
-## Two things checked after the fourteen: the version, and the router
+## Rows 15 and 16: the version, and the router
 
 Every measurement above was made on **laya 0.3.10**. PyPI serves **0.3.20**,
 ten releases later, so the obvious question is whether a newer release fixes the
