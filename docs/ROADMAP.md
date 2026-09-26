@@ -582,17 +582,16 @@ one in-process capability probe, and it runs only on an explicit click.
   states for each backend. *(Implemented: `TransportState` in `src/transport.ts`,
   probed by `probeTransport`, and surfaced per capability by
   `buildPerCapabilityState`.)*
-- [ ] Make core reads honor a `glab` selection. The selection is computed and
-  partially honored: `pickReadBackend` returns `"glab"` when glab is the only
-  authenticated source (`src/auth-resolver.ts:155`), and `resolveContextRead`
-  gates on `"none"` at `src/context.ts:44`. But `src/context.ts:52` collapses
-  anything that is not `"graphql"` to `"rest"`, and `context.ts` contains no
-  glab read path at all — its only mention of glab is the unreachable
-  `ContextReadResolution.read: "rest" | "glab" | "graphql"` type at
-  `src/context.ts:21`. So a glab-selected project silently reads over REST
-  while every report claims otherwise. Six `new GitLabClient(remote.host)`
-  construction sites sit downstream of that decision: `src/context.ts:51, 94,
-  124, 146, 169, 479`. Separately, `reduced` is assigned in exactly one place,
+- [ ] Make core reads honor a `glab` selection. A user authenticated only via
+  glab is recorded as `rest` and served by REST, silently.
+  `pickReadBackend` returns `"glab"` when an authenticated glab source exists
+  (`src/auth-resolver.ts:152-155`), `src/context.ts:52` collapses that to
+  `"rest"`, and no glab read path is ever built — `context.ts` contains one
+  mention of glab, the type on line 21, and it is unreachable: the field is
+  declared `"rest" | "glab" | "graphql"` and can only ever hold `"rest"` or
+  `"graphql"`. Every report claims otherwise. Six `new GitLabClient(remote.host)`
+  sites sit downstream of that decision: `src/context.ts:51, 94, 124, 146, 169,
+  479`. Separately, `reduced` is assigned in exactly one place,
   inside the `--probe` branch (`src/capabilities.ts:118`) and initialised false
   at `:86`, so `oflow capabilities --json` reports `reduced: false`
   unconditionally — the one thing this item existed to prevent.
