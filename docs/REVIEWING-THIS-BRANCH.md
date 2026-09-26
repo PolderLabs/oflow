@@ -43,7 +43,7 @@ false alarms on story-shaped input, and `summariseBoardText` at 100%.
 shortlister that scored *below* chance, and a phishing screen whose worst
 false alarm -- "Approval is required before apply" -- outranks three of the
 five real attacks it was meant to catch. Counting the two withdrawn paths as
-well, that is eighteen measured and not shipped — the sixteen rejections above, plus the two withdrawn paths. A per-item checkpoint router, a version upgrade, a moderation preset and a ranker are among the sixteen, and each was expected to help. The portable runner, question
+well, that is eighteen measured — the fifteen rejections above, the two withdrawn paths, and one kept. The ranker is the kept one, and it was nearly rejected twice before the length confound behind it was found. A per-item checkpoint router, a version upgrade and a moderation preset were each expected to help. The portable runner, question
 set and full measurement record remain, and
 [LAYA-TRIAGE.md](LAYA-TRIAGE.md) carries the canonical numbered list every
 other count here is derived from. The measurements — including the ones

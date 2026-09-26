@@ -33,12 +33,14 @@ table of 7 rows alongside prose claiming twelve, and the two disagreed.
 | 15 | `LayaRouter` / per-item checkpoint selection | rejected | on a German board neither checkpoint separates: typed-decisions 7 of 8 construction items falsely flagged, multilingual 8 of 8 |
 | 16 | a laya version upgrade | rejected | 0.3.20 is byte-identical to 0.3.10: same RuntimeWarning, same score, same confidence |
 | 17 | `moderation_questions` (toxicity on issue text) | rejected | separated on a first benign set, then inverted: blunt technical criticism scored 0.38-0.45 against 0.38 for real abuse |
-| 18 | ranking items instead of labelling them (acceptance criteria, agent handoff) | rejected | the ordering is real but not the question's: length alone scores AUC 0.78 against the question's 0.79, and 0.89 against 0.86 |
+| 18 | ranking items instead of labelling them | **kept**, after the confound was removed | AUC 0.86 on length-matched acceptance criteria, against 0.50 for length alone and 0.54 for an unrelated control question. On unmatched text a word counter scores 0.79, so the first attempt at this was a length artefact |
 
-**Eighteen measured and not shipped: 2 withdrawn after shipping, 16 rejected
-outright.** Every figure above is an upper bound: the corpora were not
-length-matched, so a length-only baseline reproduces much of the same ordering.
-See the section on that before reusing any number here. One capability is kept and wired — the readability precondition,
+**Eighteen measured and not shipped: 2 withdrawn after shipping, 15 rejected
+outright, and 1 kept** (row 18, found only after the length confound was
+removed). Every rejected figure is an upper bound rather than a settled
+negative: the corpora were not length-matched, and a word counter reproduces
+much of the same ordering. See the section on that before reusing any number
+here. One capability is kept and wired — the readability precondition,
 which is not a classifier. The underlying engine is judged on every item above
 with the input each figure was measured on, stated in the same row.
 
@@ -1213,6 +1215,53 @@ anything, padding the shorter class up to the longer. Not done for the
 seventeen here, because re-running them is a fresh measurement session and this
 row records why it is needed. No ranker is implemented -- the ordering is real,
 it is just not the question's.
+
+## The first positive: ranking, on a corpus that cannot be faked
+
+The length confound above was not just a caveat. Removing it turns one of the
+rejected ideas into a capability, and it is the only one in this file.
+
+The shipped question cannot *label* an item -- the classes overlap at every
+threshold, on every corpus measured. But it can *order* them, and ordering
+needs no threshold. Measured on acceptance criteria with word count held equal
+across the two classes:
+
+| check | result |
+|---|---|
+| length-only AUC, same texts | **0.50** -- chance, by construction |
+| control question (dates/scheduling) | **0.54** -- chance |
+| shipped question | **0.86**, 95% CI 0.80-0.92 |
+| best single cut | 83% in-sample, **73% held out** |
+
+Both baselines sit on chance, so neither the ordering nor the labels are length
+or register.
+
+The result that would have falsified it: the same pairs with the padding
+applied to the **verification** side instead, so any filler lands on the other
+class. The question then inverts to **AUC 0.14**, 95% CI 0.08-0.20, which
+excludes chance. An ordering that depends on which class was padded would
+collapse here, and it did not. The padding is not carrying the signal.
+
+Building that corpus also cost the run it should not have: the length assertion
+was added after roughly fifteen turns of editing a corpus into shape, and it
+would have caught the first problem immediately. The assertion now runs before
+any engine call, and it asserts the *count* as well as the lengths -- a length
+check over an empty list passes, and a swap corpus that parsed to zero pairs
+reported itself clean while measuring nothing. On the *unmatched* version of the same criteria the question
+scores 0.79 and length scores 1.00; that gap is the confound, now removed.
+
+This is usable for scrum planning, and only as a sort: a board ordered by
+verification share puts the checking work first, which is a reading aid with no
+threshold to defend. It is not a classifier, so no item is ever labelled
+construction or verification, and no figure is reported to a human as a
+judgement.
+
+Three limits stated rather than buried. Every corpus here is self-authored, at
+n=12 per class, so the 95% interval is the honest width and the point estimate
+is not a promise. The items are acceptance criteria, not whole stories, because
+a single clause is the smallest text the engine reads reliably. And the
+question's own wording names "reading, verifying, confirming", so a future
+reword of the question invalidates these numbers.
 
 ## Portability, proven rather than asserted
 
