@@ -301,27 +301,30 @@ test("a board with no labeled lists falls back to disclosed conventional stages"
   assert.match(page.get("map-source").textContent, /board has no labeled lists.*Inferred convention/);
 });
 
-// An empty board still has to render: the inferred convention supplies the
-// lanes, so the stage-policy selector always has something to select. This
-// pins that the fallback applies at zero items, not only with a work item
-// present -- the earlier case covered the latter.
 test("a board with no items still renders inferred stages", () => {
   const page = harness();
   const snapshot = data([], [{ id: 1, name: "Empty board", lists: [{ label: null, position: 0 }] }]);
   const model = page.buildWorkMap(snapshot, {});
   const policyLanes = model.lanes.filter((lane) => !["unmapped", "closed"].includes(lane.id));
-  assert.ok(policyLanes.length > 0, "inferred convention must supply a lane to select");
-  // A board whose only list label is unconventional still contributes a
-  // configured lane, so the policy selector keeps a target. The item follows
-  // that lane rather than `unmapped`, because its label does match it.
-  const unmatched = data(
+  // The policy selector reads policyLanes[0] unguarded. Every renderable board
+  // supplies a lane -- configured lists, or the inferred convention when there
+  // are none -- so this pins that invariant rather than a crash.
+  assert.ok(policyLanes.length > 0, "a renderable board must supply a policy lane");
+  assert.doesNotThrow(() => page.renderWorkMap(page.get("host"), snapshot));
+  assert.equal(page.get("flow-policy-stage").value, policyLanes[0].id);
+});
+
+// A board whose only list label is unconventional still contributes a
+// configured lane, so the selector keeps a target. The item follows that lane
+// rather than `unmapped`, because its label does match it.
+test("a configured list with an unconventional label still resolves", () => {
+  const page = harness();
+  const snapshot = data(
     [item(1, { labels: ["Zzz-unmatched"] })],
     [{ id: 1, name: "B", lists: [{ label: "Zzz-unmatched", position: 0 }] }],
   );
-  assert.doesNotThrow(() => page.renderWorkMap(page.get("host"), unmatched));
-  assert.equal(laneFor(page.buildWorkMap(unmatched, {}), 1), "Zzz-unmatched");
+  assert.equal(laneFor(page.buildWorkMap(snapshot, {}), 1), "Zzz-unmatched");
   assert.doesNotThrow(() => page.renderWorkMap(page.get("host"), snapshot));
-  assert.equal(page.get("flow-policy-stage").value, policyLanes[0].id);
 });
 
 test("shared external parent URLs produce one reference card and multiple connectors", () => {
