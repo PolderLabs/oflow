@@ -1991,7 +1991,12 @@ function collectIssueFilters(options: CliOptions): GitLabIssueFilters {
     filters.assignee = requiredFilter(options.assignee, "--assignee");
   }
   if (options.author !== undefined) {
-    filters.author = requiredFilter(options.author, "--author");
+    // author_username takes a username, and usernames are the one form the
+    // parameter accepts -- a display name or email would never match, so
+    // there is nothing to resolve those into. Lower-casing puts the value in
+    // the canonical form a username is stored in, which also means --author
+    // Alice and --author alice ask the same question.
+    filters.author = requiredFilter(options.author, "--author").toLowerCase();
   }
   if (options.search !== undefined) {
     filters.search = requiredFilter(options.search, "--search");
