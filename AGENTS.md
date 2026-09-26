@@ -14,8 +14,11 @@ Codex agents.
   use synthetic placeholders and run `npm run check:public`.
 - Keep `oflow install` idempotent and preserve user-authored content.
 - Add or update tests for parser, detection, scaffold, and verification changes.
-- Run `npm run check:public`, `npm test`, `npm run typecheck`, and
-  `npm pack --dry-run` before handoff.
+- Run `npm run check:public`, `npm run check:portable`, `npm test`,
+  `npm run typecheck`, and `npm pack --dry-run` before handoff.
+  `check:portable` keeps `src/laya-*.ts` free of any import outside
+  `node:` builtins and the Laya modules themselves, so they stay liftable into
+  another planning tool.
 
 ## Product boundary
 

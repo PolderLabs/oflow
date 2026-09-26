@@ -14,9 +14,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json && node scripts/check-portable.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "check:public": "node scripts/check-public-content.mjs",
-    "test": "npm run check:public && npm run build && node --test test/*.test.mjs",
+    "test": "npm run check:public && npm run check:portable && npm run build && node --test test/*.test.mjs",
     "prepack": "npm run check:public && npm run build",
     "prepublishOnly": "npm run check:public && npm run build",
     "check:portable": "node scripts/check-portable.mjs"

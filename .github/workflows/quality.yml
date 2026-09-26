@@ -26,6 +26,8 @@ jobs:
         run: npm ci
       - name: Scan public content
         run: npm run check:public
+      - name: Check module portability
+        run: npm run check:portable
       - name: Run tests
         run: npm test
       - name: Typecheck
