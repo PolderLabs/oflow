@@ -307,6 +307,7 @@ export class GitLabClient {
     state: IssueState = "opened",
     limit = 100,
     filters: GitLabIssueFilters = {},
+    page?: number,
   ): Promise<GitLabListPage<GitLabIssue>> {
     const query = new URLSearchParams({
       state,
@@ -315,6 +316,12 @@ export class GitLabClient {
       sort: "desc",
       scope: "all",
     });
+    if (page !== undefined) {
+      if (!Number.isSafeInteger(page) || page < 1) {
+        throw new OflowError("Page must be a positive integer.", "INVALID_PAGE");
+      }
+      query.set("page", String(page));
+    }
     if (filters.label !== undefined) {
       query.set("labels", filters.label);
     }
