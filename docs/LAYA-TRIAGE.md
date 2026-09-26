@@ -33,9 +33,12 @@ table of 7 rows alongside prose claiming twelve, and the two disagreed.
 | 15 | `LayaRouter` / per-item checkpoint selection | rejected | on a German board neither checkpoint separates: typed-decisions 7 of 8 construction items falsely flagged, multilingual 8 of 8 |
 | 16 | a laya version upgrade | rejected | 0.3.20 is byte-identical to 0.3.10: same RuntimeWarning, same score, same confidence |
 | 17 | `moderation_questions` (toxicity on issue text) | rejected | separated on a first benign set, then inverted: blunt technical criticism scored 0.38-0.45 against 0.38 for real abuse |
+| 18 | ranking items instead of labelling them (acceptance criteria, agent handoff) | rejected | the ordering is real but not the question's: length alone scores AUC 0.78 against the question's 0.79, and 0.89 against 0.86 |
 
-**Seventeen measured and not shipped: 2 withdrawn after shipping, 15 rejected
-outright.** One capability is kept and wired — the readability precondition,
+**Eighteen measured and not shipped: 2 withdrawn after shipping, 16 rejected
+outright.** Every figure above is an upper bound: the corpora were not
+length-matched, so a length-only baseline reproduces much of the same ordering.
+See the section on that before reusing any number here. One capability is kept and wired — the readability precondition,
 which is not a classifier. The underlying engine is judged on every item above
 with the input each figure was measured on, stated in the same row.
 
@@ -1163,6 +1166,53 @@ A first version shipped `src/laya-guard.ts` as a warn-only module. It was never
 wired into a command, and it has been removed rather than left as a surface
 someone could promote into a gate later. The measurements above are the
 artefact worth keeping.
+
+## The corpora were not length-matched, and that is a defect in this file
+
+Every verdict in the canonical list was measured on corpora where the
+verification class happened to be longer than the construction class. Asking
+the shipped question to rank items, and comparing against a control, showed it
+is mostly reading word count.
+
+Ranking quality, as AUC, on three corpora that had never been measured:
+
+| corpus | question | length only | lead |
+|---|---:|---:|---:|
+| story prose | 0.88 | 0.74 | **+0.14** |
+| acceptance criteria | 0.79 | 0.78 | **+0.01** |
+| agent handoff | 0.86 | 0.89 | **-0.03** |
+
+A word counter **beats** the engine on agent handoff and ties it on acceptance
+criteria. On acceptance criteria the classes ran 10.0 against 11.8 words; on
+handoff, 31.0 against 40.0. The question's own criteria name "reading,
+verifying, confirming", and verification criteria open with those verbs and run
+a clause longer -- so a longer text and a more verifying text were the same
+observation.
+
+The unrelated-question control makes it unambiguous. Asked how much the text is
+about dates and scheduling, the same corpora give **AUC 0.28** -- not 0.50. A
+neutral question lands on chance; landing far from it means the engine was
+reading a systematic property of the corpus rather than its subject, and word
+count was the one available for free.
+
+This also explains two results already recorded here. The guardrail screen
+separated on equal-length prompts and inverted once the benign set got
+realistic -- equal length is why it looked calibrated. And the moderation
+preset separated on mild criticism, then scored blunt technical notes alongside
+real abuse. Both fit a length-and-register effect that a length-matched set hid.
+
+So the seventeen verdicts are not wrong, but they are **weaker than they read**.
+Each is an upper bound: some may be length artefacts, and none can be reused
+until the corpus is length-matched. Row 12 rejected a length-residual
+*adjustment* by showing that length correlates with the score. This is the same
+confound arriving in the *corpus* rather than the model, which is why it stayed
+invisible until the classes were deliberately unbalanced.
+
+The fix for further work: hold word count constant per class before measuring
+anything, padding the shorter class up to the longer. Not done for the
+seventeen here, because re-running them is a fresh measurement session and this
+row records why it is needed. No ranker is implemented -- the ordering is real,
+it is just not the question's.
 
 ## Portability, proven rather than asserted
 
