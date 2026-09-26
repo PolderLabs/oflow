@@ -7,6 +7,67 @@ read never reaches the question. This document records the measurements that
 decided that, so the next reader does not re-derive them and the "re-enable or
 not" decision is made on evidence rather than on a tool's description.
 
+## Running the engine at all
+
+Everything below was measured on a real Laya, and none of it re-runs without
+one. It is not on `PATH` by default and no npm install pulls it in:
+
+```
+export OFLOW_LAYA_BIN="$HOME/slop-venv/bin/laya"
+export OFLOW_LAYA_PYTHON="$HOME/slop-venv/bin/python"
+```
+
+`slop-venv` is a Python venv holding **laya 0.3.10** (`convaiinnovations/laya`),
+a non-autoregressive System 1 decision engine: it predicts properties of a
+prompt -- difficulty, domain, `needs_tools`, `is_sensitive` -- and scores
+custom questions. It is a prompt classifier. It cannot read a repository, run
+tests, or write code, and nothing in oflow asks it to.
+
+`--predict` needs `--device cpu` on a host without a working triton build; the
+default path fails with a `Python.h` error. The venv's checkpoint also emits a
+`RuntimeWarning` about invalid temperatures on every call, which is expected
+and is the reason confidence figures are treated as uncalibrated.
+
+With the two variables exported, the E2E tests run:
+
+```
+OFLOW_LAYA_TRIAGE_E2E=1 OFLOW_LAYA_SCRUM_E2E=1 OFLOW_LAYA_BATCH_E2E=1 npm test
+```
+
+That is 365 tests, 365 passing, 0 skipped. Without the flags those seven are
+skipped rather than failed, so a green default run says nothing about the
+engine -- the flags are the only way the engine is exercised.
+
+The two scoring paths stay off unless explicitly forced:
+
+| override | re-enables |
+|---|---|
+| `OFLOW_LAYA_TRIAGE_UNCALIBRATED=1` | `oflow assess --triage` (`src/assess.ts`) |
+| `OFLOW_LAYA_SCRUM_UNCALIBRATED=1` | `summariseBoardText` (`src/laya-scrum.ts`) |
+
+Both are withdrawn on measurement. Setting either reproduces a measurement
+that decided against them; it is not a workaround.
+
+## The measurement harness
+
+The corpora and scoring scripts used for every figure here live outside the
+repository, in `/tmp`:
+
+```
+/tmp/corpus.py         12 length-matched construction/verification pairs
+/tmp/corpus_swap.py    the same pairs, index order reversed
+/tmp/ranking.py        AUC over three corpora, question vs length-only
+```
+
+`corpus.py` asserts its pair count and exact word-count equality *before* any
+engine call, so a mismatched corpus cannot reach the model. Run it standalone
+to check a corpus without spending engine calls.
+
+These are the inputs this document calls unrecoverable, and they are untracked
+scratch: a `/tmp` wipe loses them. Re-deriving them means re-authoring the
+corpora, which is why the figures here are otherwise uncheckable by a reader.
+
+
 ## Canonical list: everything measured, and what happened to it
 
 This list is the source of truth. Every count quoted elsewhere in this
@@ -364,8 +425,11 @@ conclusions about the question stand.
 One thing the gate could legitimately be used for. A matched
 construction/verification pair separates by **+0.57 in English and +0.33 in
 German** -- the question degrades on non-English input but does not flip sign.
-So a readability check makes any future triage path *weaker*, never
-wrong-signed, which is a usable precondition rather than a fix.
+Note the direction that runs: German is *screened out*, so that +0.33 describes
+text the gate prevents rather than text it admits. The equivalent figure for
+French, which passes the gate, has not been measured. "Weaker, never
+wrong-signed" is therefore verified for the input the gate screens and
+unverified for the input it lets through.
 
 `src/laya-readability.ts` exposes it, with every failure mode returning `null`
 rather than a confident "unreadable": no engine, a crashed engine, an undecided

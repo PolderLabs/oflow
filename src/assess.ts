@@ -37,10 +37,15 @@ async function triageAssessment(
     .filter((part) => typeof part === "string" && part.trim() !== "")
     .join("\n");
 
-  // A precondition, not a fix. Measured across 23 cases the readability check
-  // has no false "readable", so text it cannot read never reaches the
-  // question. It makes the signal weaker on non-English input, never
-  // wrong-signed, so this is worth having and not worth believing.
+  // A precondition, not a fix. Measured over 23 cases against the real
+  // engine, the readability check never calls text it cannot read "readable"
+  // for the scripts it screens -- German, Japanese, Hindi, Korean, Chinese,
+  // Russian, Greek, Arabic, Hebrew and Thai all read false. It is not a
+  // language filter: French, Portuguese and Dutch read TRUE and pass
+  // through, so non-English text does reach the question in those languages.
+  // For what it screens the signal is weaker on non-English input and never
+  // wrong-signed, which is worth having; for what it lets through that is
+  // unverified. Do not read this as "safe on any language".
   // Pass the arguments through. Handing probeReadability to the module as a
   // bare reference meant it was called with one argument, so options defaulted
   // to {} and the interpreter resolved from PATH rather than
