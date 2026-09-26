@@ -343,10 +343,40 @@ test("the band edges are uncalibrated on realistic story-shaped input", () => {
 // construction ones. summariseBoard stays exported and tested because the
 // counting is sound; only the scoring is unfit.
 test("the board path is withheld on story-shaped input unless overridden", { skip: !process.env.OFLOW_LAYA_SCRUM_E2E }, async () => {
+  const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
   const { summariseBoardText } = await import("../dist/laya-scrum.js");
-  const board = ["Add a cursor to the work list", "Verify the rollback path"];
-  assert.equal(await summariseBoardText(board, { python: "/no/such/python" }), null);
-  assert.equal(await summariseBoardText([]), null);
+  const dir = mkdtempSync(join(tmpdir(), "scrum-withdraw-"));
+  try {
+    // A stub engine, not a missing one. The first version of this guard used
+    // /no/such/python, which returns null whether or not the withdrawal
+    // exists -- removing the gate did not turn it red. The point is to have
+    // the engine present so the withdrawal is what produces the null.
+    const python = join(dir, "py");
+    writeFileSync(python, [
+      "#!/usr/bin/env python3",
+      "import json, sys",
+      "json.loads(sys.stdin.read())",
+      "print(json.dumps([{'answers': {'verificationShare': {'type': 'score', 'score': 1.82}}}] * 2))",
+    ].join("\n"));
+    chmodSync(python, 0o755);
+    const board = ["Add a cursor to the work list", "Verify the rollback path"];
+    assert.equal(
+      await summariseBoardText(board, { python, timeoutMs: 30000 }),
+      null,
+      "withheld even though the engine is available",
+    );
+    process.env.OFLOW_LAYA_SCRUM_UNCALIBRATED = "1";
+    try {
+      const forced = await summariseBoardText(board, { python, timeoutMs: 30000 });
+      assert.ok(forced, "the override must restore the path, or the gate is not what withholds it");
+    } finally {
+      delete process.env.OFLOW_LAYA_SCRUM_UNCALIBRATED;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // The measurement behind the withdrawal, as a characterization test. The
