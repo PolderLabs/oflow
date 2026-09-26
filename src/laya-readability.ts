@@ -42,31 +42,43 @@ export interface Readability {
   script: string | null;
 }
 
-/** Questions that produce the engine's readability answer. */
-const READABILITY_QUESTIONS = {
-  is_english: {
-    type: "noul",
-    instructions:
-      "Is the text written in the English language?",
-  },
-} as const;
+/** One reading from a caller-supplied probe. */
+export interface ReadabilityProbeResult {
+  /** The engine's verdict, or null when it could not decide. */
+  readable: boolean | null;
+  /** Dominant script, or null when the engine did not report one. */
+  script?: string | null;
+}
 
-/** Read the text back through a caller-supplied probe, or `null` if unavailable. */
+/**
+ * Read the text back through a caller-supplied probe, or `null` if
+ * unavailable.
+ *
+ * The probe is injected rather than shelling out so this stays portable and
+ * testable: it has no dependency on where laya is installed, and the tests
+ * need no Python at all.
+ *
+ * There is deliberately no question set here. The engine exposes `is_english`
+ * and `detect_script` as direct functions, and a first version described an
+ * equivalent `noul` question that was never actually used. Shipping an unused
+ * question alongside the real path would leave two ways to do one thing, with
+ * only one of them calibrated.
+ */
 export async function readTextReadability(
   text: string,
-  probe: (texts: readonly string[]) => Promise<(boolean | null)[] | null>,
+  probe: (texts: readonly string[]) => Promise<(ReadabilityProbeResult | null)[] | null>,
 ): Promise<Readability | null> {
   const trimmed = text.trim();
   // Nothing to read is not a readability problem; calling it unreadable would
   // report a blank field as a language failure.
   if (trimmed === "") return { readable: true, script: null };
-  let answers: (boolean | null)[] | null;
+  let answers: (ReadabilityProbeResult | null)[] | null;
   try {
     answers = await probe([trimmed]);
   } catch {
     // A crashed or timed-out engine is the same class of outcome as one that
     // never ran: no reading. Letting the rejection escape would make a
-    // precondition check able to break the command it was only meant to inform.
+    // precondition check able to break the command it was meant to inform.
     return null;
   }
   if (answers === null) return null;
@@ -74,5 +86,12 @@ export async function readTextReadability(
   // A null answer means the engine could not decide, which is not the same as
   // unreadable, and must not be reported as unreadable.
   if (value === null || value === undefined) return null;
-  return { readable: value, script: null };
+  if (typeof value.readable !== "boolean") return null;
+  return {
+    readable: value.readable,
+    // Report the engine's own script. It is genuinely informative -- Japanese
+    // reads as `kana` where German reads as `latin` -- so an unreadable result
+    // can say why rather than only that.
+    script: typeof value.script === "string" ? value.script : null,
+  };
 }

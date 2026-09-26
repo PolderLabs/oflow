@@ -332,6 +332,23 @@ rather than a confident "unreadable": no engine, a crashed engine, an undecided
 answer, and blank input each resolve differently, and only a real engine
 verdict of `false` reports unreadable.
 
+Two corrections found while wiring it up, both worth recording because the first
+version looked finished:
+
+- **The `script` field was always null.** The engine reports a dominant script
+  per item, and it is genuinely informative -- German reads as `latin`, Thai as
+  `thai`, Japanese as `kana` -- so an unreadable result can say *why* rather
+  than only that. A permanently-empty field reads as a bug to every consumer,
+  which is worse than not having it.
+- **There is no question set.** A first version declared an equivalent `noul`
+  question that was never used, since the engine exposes `is_english`
+  directly. Two ways to do one thing, only one of them calibrated, is the same
+  trap as a duplicated assumption.
+
+One practical note: the check takes **~20ms**, not the ~3.7s a model forward
+pass costs. It is a heuristic, not inference, so it is cheap enough to run on
+every story without a budget argument.
+
 ## The signal is asymmetric, and short titles are its weakness
 <!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 
