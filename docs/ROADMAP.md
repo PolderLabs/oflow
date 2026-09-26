@@ -342,16 +342,20 @@ is now on 0.5.2, so the log is partly stale. Verified against `src/`:
 
 | # | Logged as | Actual state on 0.5.2 |
 |---|---|---|
-| 1 | `--add-labels` does not validate label existence | **Fixed on this branch** — `assertIssueLabelsExist` (`plan.ts:4411`) rejects an unknown added label at plan time, before anything is approved or applied |
+| 1 | `--add-labels` does not validate label existence | **Fixed on this branch** — `assertIssueLabelsExist` (`plan.ts:4437`) rejects an unknown added label at plan time, wired into the single-issue (`plan.ts:492`) and bulk (`plan.ts:609`) paths |
 | 2 | `plan issue create` has no `--type`/`--issue-type` | **Shipped** — parsed at `cli.ts:1392` and forwarded as `issue_type` at `cli.ts:629` |
 | 3 | Stale-digest guard has no escape hatch | **Still open** — no `--supersede` anywhere in `src/` |
-| 4 | `--assignee` needs `User:Read` and leaks raw JSON on 403 | **Partly fixed on this branch** — `resolveAssigneeIds` reports `ASSIGNEE_LOOKUP_FORBIDDEN` with the missing scope and a way forward, instead of the raw API body. The numeric `--assignee-id` escape hatch sketched in the log above is **still open**: `validateAssigneeIds` accepts ids, but no CLI flag reaches it, so a token without `read_user` still has no way to set an assignee by id |
-| 5 | `work --author` is case-sensitive, username-only | **Unverified** — needs a read before it is queued |
-| 6 | 50-IID bulk cap undocumented in help | **Partly shipped** — enforced at `plan.ts:2573`; help mentions it at `cli.ts:2252` and `cli.ts:2298`, not for every bulk command |
-| 7 | Apply leaves ambiguous `applied-partial` state | **Shipped** — the state is declared at `plan.ts:44`, the resume path at `plan.ts:1301` |
+| 4 | `--assignee` needs `User:Read` and leaks raw JSON on 403 | **Partly fixed on this branch** — `resolveAssigneeIds` (`plan.ts:3168`) reports `ASSIGNEE_LOOKUP_FORBIDDEN` with the missing scope and a way forward, instead of the raw API body. The numeric `--assignee-id` escape hatch sketched in the log above is **still open**: `validateAssigneeIds` accepts ids, but no CLI flag reaches it |
+| 5 | `work --author` is case-sensitive, username-only | **Still open** — `gitlab.ts:376` sends `author_username` from `filters.author.trim()`, and neither `requiredFilter` (`cli.ts:2008`) nor anything else case-folds it. The sketch's name/email resolution would not work: `author_username` accepts usernames only, so the fix is to lowercase the filter |
+| 6 | 50-IID bulk cap undocumented in help | **Partly shipped** — enforced at `plan.ts:2588`; help mentions it at `cli.ts:2252` and `cli.ts:2298`, not for every bulk command |
+| 7 | Apply leaves ambiguous `applied-partial` state | **Shipped** — the state is declared at `plan.ts:45` and the resume path is at `plan.ts:1316` |
+| 8 | `work --json` omits `issue_type` | **Shipped** — `compactWorkItems` (`context.ts:269`) maps `issueType` at `context.ts:274` straight from the wire |
+| 9 | No `labels audit` coverage command | **Still open** — the only `audit` case is the plan audit (`cli.ts:519`, calling `readAudit` at `cli.ts:520`), which has no label-coverage mode |
+| 10 | No surface to change work-item type after create | **Still open** — no `workItemConvert` GraphQL mutation anywhere in `src/` |
 
-#1 and #4 are fixed on this branch. #3 remains confirmed-open work; treat the
-rest of the log as history rather than as a backlog.
+#1 and #4 are fixed on this branch; #4's `--assignee-id` half is not. The
+confirmed-open backlog is #3, #5, #9, #10, and that half of #4. Treat the rest
+of the log as history rather than as a queue.
 
 ## Status
 
