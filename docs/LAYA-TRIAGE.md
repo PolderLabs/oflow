@@ -638,6 +638,34 @@ zero reads as "definitely construction" when it means "we do not know"; and an
 absent engine yields `null`, never an empty summary, so a caller cannot
 confuse "no reading" with "nothing is verification work".
 
+### Is recalibrating the question plausible?
+
+Before recommending a fix, three framings were tried on the same 13
+story-shaped items, scored on whether the between-class gap exceeds the
+within-class spread — the bar that short titles passed and story input does not.
+
+| framing | gap | spread | |
+|---|---:|---:|---|
+| **shipped wording** | **+0.171** | 0.138 | separates, marginally |
+| names the acceptance-criteria vocabulary | +0.075 | 0.096 | overlaps |
+| framed as reviewer cost | +0.080 | 0.067 | separates, marginally |
+
+**Both alternatives are worse than the wording already in place.** Naming the
+acceptance-criteria vocabulary — the most promising idea, since real
+descriptions carry exactly that — collapses the gap by more than half. Framing
+it as reviewer cost barely moves it.
+
+The reason is visible in the spreads: on story-shaped input the within-class
+spread is small (0.07-0.17) precisely *because* the question compresses
+everything into a narrow band whatever you ask. There is little variance left
+for a better question to exploit, so rewording trades the gap for a tighter
+cluster and no gain.
+
+**So the recommendation is to stop, not to keep rewording.** Five capabilities
+and three framings have now been measured on this checkpoint. The remaining
+route is a different model or fine-tuning, not a better prompt — and that is a
+decision about spending, not a finding available from this engine.
+
 ### The board path, measured on real input
 
 With `assess --triage` withdrawn, the board summary was the only live feature,

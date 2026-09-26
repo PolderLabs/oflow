@@ -360,3 +360,27 @@ test("the board false-alarm rate depends entirely on the input", () => {
   // On story-shaped input every construction item scored above the edge.
   assert.ok(1.66 >= 1.5, "lowest construction score on story input clears the edge");
 });
+
+// Rewording was tried before recommending recalibration, and it does not work.
+// On story-shaped input the shipped wording has a between-class gap of 0.171;
+// naming the acceptance-criteria vocabulary drops it to 0.075, and framing it
+// as reviewer cost to 0.080. Both alternatives are worse. The within-class
+// spread is small precisely because the question compresses everything into a
+// narrow band whatever you ask, so there is little variance for a better
+// wording to exploit.
+test("rewording the question does not separate the classes on story input", () => {
+  const measured = {
+    shipped: { gap: 0.171, spread: 0.138 },
+    acceptanceVocabulary: { gap: 0.075, spread: 0.096 },
+    reviewerCost: { gap: 0.080, spread: 0.067 },
+  };
+  // Neither alternative is an improvement on the shipped wording.
+  assert.ok(measured.acceptanceVocabulary.gap < measured.shipped.gap);
+  assert.ok(measured.reviewerCost.gap < measured.shipped.gap);
+  // And the acceptance-criteria framing, the most promising idea, overlaps
+  // outright -- so it could not carry a threshold at all.
+  assert.ok(measured.acceptanceVocabulary.gap < measured.acceptanceVocabulary.spread);
+  // Whatever ships must clear its own spread, which on short titles it did and
+  // on story-shaped input it did not.
+  assert.ok(measured.shipped.gap > measured.shipped.spread);
+});
