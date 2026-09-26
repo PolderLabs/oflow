@@ -1,3 +1,8 @@
+import { dashboardWorkspaceCss, dashboardWorkspaceScript } from "./dashboard-workspace.js";
+import { dashboardInsightsCss, dashboardInsightsScript } from "./dashboard-insights.js";
+import { dashboardControlsCss, dashboardControlsScript } from "./dashboard-controls.js";
+import { dashboardMapCss, dashboardMapScript } from "./dashboard-map.js";
+
 /**
  * Single-page dashboard shell served from `GET /`.
  *
@@ -11,181 +16,47 @@ export function dashboardViewHtml(): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>oflow cockpit</title>
+  <title>oflow · Workspace</title>
   <style>
-    :root {
-      color-scheme: dark;
-      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      --bg: #0d1017; --bg-glow: #1b2333; --panel: #161b25; --panel-2: #1b212e;
-      --line: #29313f; --line-soft: #212936;
-      --text: #eef1f7; --muted: #aab4c7; --dim: #7f8a9e;
-      --accent: #6ea8fe; --accent-soft: rgba(110,168,254,.14);
-      --ok: #57d9a3; --warn: #f2c14e; --bad: #f2777a;
-      --radius: 12px;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; color: var(--text);
-      background:
-        radial-gradient(1100px 620px at 82% -12%, var(--bg-glow), transparent 62%),
-        radial-gradient(760px 520px at -8% 108%, #171d29, transparent 58%),
-        var(--bg);
-      background-attachment: fixed;
-    }
-    .shell { display: grid; grid-template-columns: 244px minmax(0, 1fr); min-height: 100vh; }
-    nav {
-      border-right: 1px solid var(--line); padding: 24px 14px; position: sticky; top: 0;
-      height: 100vh; overflow-y: auto; background: rgba(11,14,20,.72);
-      backdrop-filter: blur(8px);
-    }
-    nav .brand {
-      font-size: 1.4rem; font-weight: 700; letter-spacing: -.03em;
-      display: flex; align-items: center; gap: 9px; padding: 0 10px;
-    }
-    nav .brand::before {
-      content: ""; width: 9px; height: 9px; border-radius: 3px;
-      background: linear-gradient(140deg, var(--accent), #9b7bff);
-      box-shadow: 0 0 14px rgba(110,168,254,.55);
-    }
-    nav .tag { color: var(--dim); font-size: .76rem; margin: 3px 0 20px 28px; letter-spacing: .04em; text-transform: uppercase; }
-    nav button {
-      display: block; width: 100%; text-align: left; background: none; border: 0;
-      border-left: 2px solid transparent; color: var(--muted); padding: 9px 12px;
-      border-radius: 0 8px 8px 0; cursor: pointer; font-size: .93rem; font-weight: 500;
-      margin-bottom: 2px; transition: background .12s ease, color .12s ease;
-    }
-    nav button:hover { background: rgba(255,255,255,.045); color: var(--text); }
-    nav button[aria-selected="true"] {
-      background: linear-gradient(90deg, var(--accent-soft), transparent 85%);
-      border-left-color: var(--accent); color: #fff; font-weight: 600;
-    }
-    main { padding: 30px 28px 72px; min-width: 0; }
-    main > section, main > div > section { max-width: 1240px; }
-    header {
-      display: flex; justify-content: space-between; gap: 18px; align-items: flex-end;
-      margin-bottom: 22px; flex-wrap: wrap; padding-bottom: 16px;
-      border-bottom: 1px solid var(--line-soft);
-    }
-    h1 { margin: 0; font-size: clamp(1.5rem, 2.6vw, 1.95rem); letter-spacing: -.035em; font-weight: 700; }
-    h2 {
-      margin: 0 0 14px; font-size: .72rem; color: var(--dim); font-weight: 600;
-      text-transform: uppercase; letter-spacing: .1em;
-    }
-    p { color: var(--muted); line-height: 1.55; }
-    header p { margin: 6px 0 0; max-width: 68ch; }
-    button.action {
-      cursor: pointer; border: 1px solid #42527a; border-radius: 999px; padding: 8px 15px;
-      color: #eef3ff; background: #25314a; font-size: .88rem; font-weight: 500;
-      transition: background .12s ease, border-color .12s ease;
-    }
-    button.action:hover:not(:disabled) { background: #31405e; border-color: #56699a; }
-    button.action:disabled { opacity: .5; cursor: progress; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 12px; }
-    .card, section {
-      border: 1px solid var(--line); background: var(--panel);
-      border-radius: var(--radius); padding: 16px 18px;
-      box-shadow: 0 1px 2px rgba(0,0,0,.28), 0 10px 26px -18px rgba(0,0,0,.9);
-    }
-    section { margin-top: 16px; }
-    .card {
-      display: flex; flex-direction: column; gap: 3px; position: relative; overflow: hidden;
-      border-left: 2px solid var(--line);
-    }
-    .card::after {
-      content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,.07), transparent);
-    }
-    .metric {
-      font-size: 2rem; font-weight: 700; line-height: 1.1; letter-spacing: -.03em;
-      color: var(--text); font-variant-numeric: tabular-nums;
-    }
-    .card-label {
-      font-size: .8rem; font-weight: 500; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .06em;
-    }
-    .card-note { color: var(--dim); font-size: .8rem; margin-top: 2px; }
-    .card-note.gap { color: var(--warn); }
-    .gap-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: .86rem; }
-    .gap-list li { margin: 5px 0; line-height: 1.5; word-break: break-word; }
-    .gap-source { color: var(--text); font-weight: 600; }
-    .gap-status { color: var(--warn); font-weight: 600; }
-    .gap-list details { margin-top: 4px; }
-    .gap-list summary { cursor: pointer; color: var(--dim); font-size: .78rem; }
-    .gap-list details code {
-      display: block; margin-top: 5px; white-space: pre-wrap; word-break: break-word;
-      font-size: .74rem; line-height: 1.45; color: var(--muted);
-    }
-    .muted { color: var(--dim); font-size: .86rem; }
-    .badge {
-      display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem;
-      font-weight: 500; border: 1px solid var(--line); color: var(--muted); margin-right: 5px;
-    }
-    .badge.ok { color: var(--ok); border-color: #2c5c48; background: rgba(87,217,163,.09); }
-    .badge.warn { color: var(--warn); border-color: #5d4c22; background: rgba(242,193,78,.09); }
-    .badge.bad { color: var(--bad); border-color: #6b3437; background: rgba(242,119,122,.09); }
-    .badge.live { color: var(--accent); border-color: #35507d; background: rgba(110,168,254,.1); }
-    .table-wrap {
-      max-height: 560px; overflow: auto; border: 1px solid var(--line-soft);
-      border-radius: 10px; scrollbar-width: thin;
-    }
-    table { width: 100%; border-collapse: separate; border-spacing: 0; }
-    th, td { text-align: left; padding: 9px 12px; vertical-align: top; }
-    thead th {
-      position: sticky; top: 0; z-index: 1; color: var(--dim);
-      font-size: .71rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
-      background: var(--panel-2); border-bottom: 1px solid var(--line);
-    }
-    tbody td { border-bottom: 1px solid var(--line-soft); font-size: .89rem; }
-    tbody tr:last-child td { border-bottom: 0; }
-    tbody tr:hover td { background: rgba(110,168,254,.055); }
-    tbody tr:nth-child(even) td { background: rgba(255,255,255,.012); }
-    tbody tr:hover:nth-child(even) td { background: rgba(110,168,254,.075); }
-    td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    pre {
-      background: #0b0e14; border: 1px solid var(--line-soft); border-radius: 9px;
-      padding: 12px 14px; overflow-x: auto; color: #cfe0ff; font-size: .84rem; line-height: 1.5;
-    }
-    .hidden { display: none; }
-    #notice { min-height: 1.4em; margin-bottom: 10px; color: var(--accent); font-size: .9rem; }
-    #banner { margin-bottom: 14px; border-radius: 10px; padding: 11px 14px; font-size: .9rem; }
-    #banner.bad { color: var(--bad); background: rgba(242,119,122,.1); border: 1px solid #6b3437; }
-    .tour-step { border-left: 3px solid var(--accent); padding-left: 14px; margin-bottom: 16px; }
-    .tour-step h3 { margin: 0 0 5px; font-size: 1rem; }
-    @media (max-width: 880px) {
-      .shell { grid-template-columns: 1fr; }
-      nav {
-        position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line);
-        display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 14px;
-      }
-      nav .brand, nav .tag { margin: 0 10px 0 0; }
-      nav .tag { display: none; }
-      nav button {
-        width: auto; border-left: 0; border-bottom: 2px solid transparent;
-        border-radius: 8px; padding: 7px 11px;
-      }
-      nav button[aria-selected="true"] {
-        background: var(--accent-soft); border-left-color: transparent;
-        border-bottom-color: var(--accent);
-      }
-      main { padding: 20px 16px 56px; }
-      .table-wrap { max-height: 420px; }
-    }
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; --bg:#f5f6f3; --panel:#fff; --line:#e1e6e1; --text:#20312d; --muted:#596b64; --dim:#61716a; --accent:#087f6d; --ok:#08734b; --warn:#946015; --bad:#b43d3d; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); font-size:14px; } button,input,select { font:inherit; } button,a,input,select,summary { -webkit-tap-highlight-color:transparent; }
+    .shell { display:grid; grid-template-columns:230px minmax(0,1fr); min-height:100vh; }
+    nav { padding:34px 18px; background:#162d29; color:#e8f3ed; position:sticky; top:0; height:100vh; overflow:auto; display:flex; flex-direction:column; }
+    nav .brand { font-size:29px; font-weight:750; letter-spacing:-1.5px; padding:0 16px; } .brand::before { content:'◈'; color:#7fe0bd; margin-right:9px; }
+    nav .tag { margin:5px 0 34px 17px; font-size:11px; text-transform:uppercase; letter-spacing:2px; color:#a5beb4; }
+    nav a { display:flex; align-items:center; gap:12px; color:#becfc6; padding:12px 15px; border-radius:8px; margin:3px 0; text-decoration:none; font-weight:550; } nav a:hover { background:#24413a; text-decoration:none; color:white; } nav a[aria-current="page"] { background:#304f43; color:#ceffde; } .nav-icon { width:20px; text-align:center; font-size:17px; }
+    .nav-footer { margin-top:auto; padding:30px 15px 0; font-size:12px; color:#aec7ba; line-height:1.7; } .nav-footer strong { color:#e1f0e7; display:block; }
+    main { padding:32px 42px 60px; min-width:0; max-width:1600px; width:100%; margin:auto; } header { display:flex; justify-content:space-between; align-items:center; gap:18px; margin-bottom:20px; flex-wrap:wrap; } .eyebrow { font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--accent); font-weight:700; margin-bottom:9px; }
+    h1 { font-size:32px; letter-spacing:-1.2px; margin:0; font-weight:650; } h2 { font-size:16px; letter-spacing:-.3px; margin:0 0 16px; font-weight:650; } h3 { font-size:14px; margin:0 0 6px; } p { line-height:1.65; color:var(--muted); } header p { margin:8px 0 0; max-width:70ch; font-size:13px; }
+    button { cursor:pointer; } .action,.copy { display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--line); border-radius:7px; background:white; color:var(--text); padding:9px 13px; font-weight:550; gap:6px; text-decoration:none; } .action:hover,.copy:hover { background:#eaf3ee; border-color:#afcabc; } .action.primary { background:var(--accent); color:white; border-color:var(--accent); } button:disabled { opacity:.55; cursor:progress; } :focus-visible { outline:3px solid #44b697; outline-offset:3px; } .skip-link { position:fixed; top:-60px; left:16px; z-index:10; background:white; padding:12px; } .skip-link:focus { top:8px; }
+    #view-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; } .split { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:18px; } .card,section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:23px; } section { margin-top:18px; min-width:0; } .card { display:flex; flex-direction:column; gap:8px; } .metric { font-size:30px; font-weight:650; letter-spacing:-1px; font-variant-numeric:tabular-nums; } .card-label { font-size:12px; color:var(--muted); font-weight:600; } .card-note { font-size:11px; color:var(--dim); } .card-note.gap { color:var(--warn); }
+    .snapshot { display:flex; flex-wrap:wrap; justify-content:space-between; gap:14px; padding:17px 20px; border:1px solid #cdded1; border-radius:10px; background:#edf3ed; margin-bottom:20px; font-size:12px; line-height:1.8; } .snapshot strong { color:#27624c; } .snapshot code { font-size:11px; } .hero { padding:26px; background:#e9f1e8; border-color:#d8e4d6; margin:0 0 20px; } .hero h2 { font-size:22px; letter-spacing:-.7px; margin-bottom:8px; } .hero p { margin:0; max-width:75ch; } .section-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; } .section-head h2 { margin:0; } .attention { padding:13px 0; display:flex; justify-content:space-between; gap:18px; border-bottom:1px solid var(--line); line-height:1.65; } .attention:last-child { border:0; } .attention p { margin:3px 0 0; font-size:12px; } .attention a { white-space:nowrap; align-self:center; } .command { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px; background:#f5f7f3; border-radius:8px; margin-top:10px; } .command code { overflow-wrap:anywhere; font-size:12px; } .copy { padding:6px 9px; font-size:11px; flex-shrink:0; }
+    .handoff-label { display:flex; flex-direction:column; gap:8px; font-size:12px; font-weight:600; } .handoff-label select { width:100%; min-width:0; } .handoff-step { padding:18px 0; border-bottom:1px solid var(--line); } .handoff-step h3 { display:flex; align-items:center; gap:9px; } .handoff-step h3 span { display:inline-flex; align-items:center; justify-content:center; width:25px; height:25px; border-radius:50%; background:#e3f4e9; color:var(--accent); font-size:12px; flex-shrink:0; } .handoff-step p { margin:8px 0; } .handoff-boundary { font-size:11px; } .handoff-tools { margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+    .muted { color:var(--dim); font-size:12px; } .badge { display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:550; color:var(--muted); background:#f1f4ef; margin:2px 4px 2px 0; } .badge.ok,.badge.live { color:#086342; background:#e3f4e9; } .badge.warn { color:#865308; background:#fcf2d9; } .badge.bad { color:#a73333; background:#fcebea; }
+    .table-wrap { overflow:auto; max-height:560px; scrollbar-width:thin; } table { border-collapse:separate; border-spacing:0; width:100%; } th,td { text-align:left; padding:13px 12px; vertical-align:top; } th { position:sticky; top:0; z-index:1; background:#f7f9f5; font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--dim); font-weight:600; border-bottom:1px solid var(--line); } td { font-size:12px; border-bottom:1px solid #edf0eb; line-height:1.6; } tr:last-child td { border-bottom:0; } tbody tr:hover { background:#f8faf7; } td:first-child { min-width:140px; } a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; } code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; } pre { padding:15px; border-radius:8px; background:#eef3ed; overflow:auto; font-size:12px; line-height:1.7; } details { margin:6px 0; } summary { cursor:pointer; color:var(--accent); } .gap-list { padding-left:19px; font-size:12px; color:var(--muted); line-height:1.8; } .gap-list li { margin-bottom:7px; overflow-wrap:anywhere; } .gap-source { font-weight:600; } .gap-status { color:var(--warn); } .gap-list code { display:block; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .toolbar { display:flex; gap:14px; flex-wrap:wrap; align-items:end; margin-bottom:18px; } .toolbar label { display:flex; flex-direction:column; gap:7px; font-size:11px; font-weight:600; } .toolbar label:first-child { flex:1; min-width:190px; } input,select { border:1px solid #c9d4cb; background:white; color:var(--text); border-radius:7px; padding:10px 12px; min-height:39px; } .empty { padding:30px 10px; text-align:center; } .empty p { margin:7px 0 14px; } .hidden { display:none; } #notice:empty { display:none; } #notice { color:var(--accent); padding:0 0 14px; font-size:13px; } #banner { border:1px solid #f0c3be; color:var(--bad); background:#fff0ec; padding:14px; border-radius:8px; margin-bottom:16px; } .loading { color:var(--dim); padding:32px; border:1px dashed #cbd6ca; border-radius:12px; } .tour-step { padding:12px 0 12px 17px; border-left:3px solid #9ad2b7; margin-bottom:16px; } .tour-step p { margin:0; }
+    @media(min-width:1500px) { main { padding:40px 55px 70px; } } @media(max-width:1100px) { main { padding:28px 24px; } .shell { grid-template-columns:200px minmax(0,1fr); } .split { grid-template-columns:1fr; } } @media(max-width:760px) { .shell { grid-template-columns:1fr; } nav { height:auto; position:static; padding:18px; } nav .brand { padding:0; font-size:24px; } nav .tag,.nav-footer { display:none; } #tabs { display:flex; overflow:auto; margin-top:14px; gap:4px; } nav a { white-space:nowrap; padding:9px 12px; font-size:12px; } .nav-icon { display:none; } main { padding:24px 16px 45px; } h1 { font-size:27px; } section,.card { padding:18px; } .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .attention { flex-wrap:wrap; } .toolbar label { flex:1; } }
+    @media(prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; } }
+    ${dashboardMapCss}
+    ${dashboardWorkspaceCss}
+    ${dashboardInsightsCss}
+    ${dashboardControlsCss}
   </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 <div class="shell">
   <nav aria-label="Dashboard views">
     <div class="brand">oflow</div>
-    <div class="tag">local cockpit</div>
+    <div class="tag">Your workflow, in focus</div>
     <div id="tabs"></div>
+    <div class="nav-footer"><strong>● Local workspace</strong>SQLite snapshots · Loopback only<br>No remote writes from this page.</div>
   </nav>
-  <main>
+  <main id="main" tabindex="-1">
     <header>
       <div>
+        <div class="eyebrow">Workspace / oflow</div>
         <h1 id="view-title">Overview</h1>
         <p id="subtitle" class="muted">Local read model. No GitLab token ever reaches this page.</p>
       </div>
@@ -198,7 +69,8 @@ export function dashboardViewHtml(): string {
 </div>
 <script>
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const link = (title, url) => url ? '<a href="' + esc(url) + '" target="_blank" rel="noreferrer">' + esc(title) + '</a>' : esc(title);
+const safeUrl = (url) => typeof url === 'string' && /^https?:\\/\\//i.test(url) && !/[\\u0000-\\u0020\\u007f]/.test(url);
+const link = (title, url) => safeUrl(url) ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(title) + '</a>' : esc(title);
 const age = (seconds) => seconds == null ? 'unknown' : seconds < 60 ? 'under a minute' : Math.floor(seconds / 60) + 'm ago';
 /* A machine timestamp like 2026-09-25T19:55:52.897+02:00 is 246px of a
  * ~1365px viewport. Parse defensively: anything unparseable, empty, or in the
@@ -219,6 +91,10 @@ const when = (value) => {
 const VIEWS = [
   { id: 'overview', label: 'Overview', title: 'Overview',
     subtitle: 'Cached planning state read from the local SQLite read model.' },
+  { id: 'activity', label: 'Activity', title: 'Evidence & activity', subtitle: 'Local actions and recorded observations—not a live GitLab event stream.' },
+  { id: 'work', label: 'Work', title: 'Your work, in focus', subtitle: 'Find a story, inspect its planning context, and hand it to your agent.' },
+  { id: 'delivery', label: 'Delivery', title: 'Delivery pulse', subtitle: 'Merge requests and pipeline evidence from the cached snapshot. Not live CI status.' },
+  { id: 'planning', label: 'Planning', title: 'Make room for what’s next', subtitle: 'Timeboxes, boards, and labels from your last sync.' },
   { id: 'capabilities', label: 'Capabilities', title: 'Capabilities',
     subtitle: 'What oflow can do here, and which of those are actually usable with your token.' },
   { id: 'auth', label: 'Auth', title: 'Authentication',
@@ -288,17 +164,22 @@ const isUnreadableSource = (warning) => new RegExp('^' + unreadablePrefix, 'i').
 function renderTabs() {
   const tabs = document.getElementById('tabs');
   tabs.replaceChildren();
+  const icons = { overview:'◈', activity:'↻', work:'▤', delivery:'↗', planning:'▦', capabilities:'◇', auth:'⌘', diagnostics:'⌁', lifecycle:'↻', tour:'?' };
   for (const view of VIEWS) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = view.label;
-    button.setAttribute('aria-selected', String(view.id === activeView));
-    button.addEventListener('click', () => { location.hash = view.id; });
-    tabs.append(button);
+    const anchor = document.createElement('a');
+    anchor.href = '#' + view.id;
+    anchor.innerHTML = '<span class="nav-icon" aria-hidden="true">' + icons[view.id] + '</span>' + esc(view.label);
+    if (view.id === activeView) anchor.setAttribute('aria-current', 'page');
+    tabs.append(anchor);
   }
 }
 
 let activeView = 'overview';
+
+${dashboardMapScript}
+${dashboardWorkspaceScript}
+${dashboardInsightsScript}
+${dashboardControlsScript}
 
 async function renderOverview(host) {
   const data = await api('/api/data');
@@ -350,56 +231,128 @@ async function renderOverview(host) {
     : '';
 
   const metrics = [
-    metric('Work items', counts.workItems ?? 0,
-      gapFor('work items') || (status.latestSync ? age(status.latestSync.ageSeconds) : 'no snapshot yet'),
-      gapFor('work items') ? 'gap' : ''),
-    metric('Merge requests', counts.mergeRequests ?? 0,
-      gapFor('merge requests'), gapFor('merge requests') ? 'gap' : ''),
-    metric('Pipelines', counts.pipelines ?? 0, gapFor('pipelines'), gapFor('pipelines') ? 'gap' : ''),
-    metric('Iterations', counts.iterations ?? 0,
-      gapFor('project iterations', 'iterations'), gapFor('project iterations', 'iterations') ? 'gap' : ''),
-    metric('Snapshots', counts.syncSnapshots ?? 0),
-    metric('Read model', status.state ?? 'unknown',
-      status.databaseExists ? 'sqlite ready' : 'not created yet'),
+    metric('Work items', (data.workItems || []).length, gapFor('work items') || (status.latestSync ? age(status.latestSync.ageSeconds) : 'no snapshot yet'), gapFor('work items') ? 'gap' : ''),
+    metric('Merge requests', (data.mergeRequests || []).length, gapFor('merge requests') || 'in cached snapshot', gapFor('merge requests') ? 'gap' : ''),
+    metric('Pipelines', (data.pipelines || []).length, gapFor('pipelines') || 'in cached snapshot', gapFor('pipelines') ? 'gap' : ''),
+    metric('Iterations', (data.iterations || []).length, gapFor('project iterations', 'iterations'), gapFor('project iterations', 'iterations') ? 'gap' : ''),
   ];
-  const workRows = (data.workItems || []).map((item) => [
-    rawCell(link('#' + item.iid + ' ' + item.title, item.webUrl)),
-    item.state,
-    item.type || '',
-    item.assignee || 'unassigned',
-    when(item.updatedAt),
-  ]);
-  const mrRows = (data.mergeRequests || []).map((mr) => [
-    rawCell(link('!' + mr.iid + ' ' + (mr.title || ''), mr.webUrl)),
-    mr.state,
-    mr.sourceBranch || '',
-    when(mr.updatedAt),
-  ]);
+  const open = (data.workItems || []).filter((item) => item.state === 'opened');
+  const unassigned = open.filter((item) => !(item.assignees || []).length);
+  const failed = (data.pipelines || []).filter((pipeline) => pipeline.status === 'failed');
+  const attention = [];
+  if (!status.latestSync) attention.push(['Build your first snapshot', 'Run a sync in your terminal to bring GitLab context into this workspace.', 'tour', 'Get started']);
+  if (status.invalidation && status.invalidation.at) attention.push(['Snapshot invalidated', status.invalidation.reason || 'Remote changes require a new sync before planning or applying.', 'lifecycle', 'Review lifecycle']);
+  if (status.refreshRequest && status.refreshRequest.at) attention.push(['Refresh requested', 'A local request is pending. It does not run a sync automatically.', 'tour', 'See workflow']);
+  if (failed.length) attention.push([failed.length + ' failed pipeline' + (failed.length === 1 ? '' : 's'), 'Inspect cached failures, then verify current evidence in GitLab.', 'delivery', 'Review delivery']);
+  if (unassigned.length) attention.push([unassigned.length + ' unassigned open item' + (unassigned.length === 1 ? '' : 's'), 'Clarify ownership before the next handoff.', 'work', 'Review work']);
+  if (unreadable.length) attention.push([unreadable.length + ' unreadable data source' + (unreadable.length === 1 ? '' : 's'), 'Empty counts do not prove these resources are absent.', 'diagnostics', 'Check access']);
   const planning = data.planning || {};
-  host.innerHTML =
-    (project ? '<section><h2>Project</h2><p>' + esc(project.host) + ' / ' + esc(project.path) +
-      (data.repository && data.repository.branch ? ' · ' + esc(data.repository.branch) : '') + '</p></section>' : '') +
+  host.innerHTML = snapshotStrip(data) +
+    '<section id="overview-map" class="work-map" aria-labelledby="map-title"></section>' +
+    '<div id="overview-insights"></div>' +
     '<div class="grid">' + metrics.join('') + '</div>' +
-    sourceGap +
-    advisoryNote +
-    '<section><h2>Work items</h2>' +
-      (workRows.length ? table(['Item', 'State', 'Type', 'Assignee', 'Updated'], workRows) : '<p class="muted">No cached work items.</p>') +
-    '</section>' +
-    '<section><h2>Merge requests</h2>' +
-      (mrRows.length ? table(['MR', 'State', 'Branch', 'Updated'], mrRows) : '<p class="muted">No cached merge requests.</p>') +
-    '</section>' +
-    '<section><h2>Delivery and planning</h2><div class="grid">' +
-      metric('Labels', (planning.labels || []).length, gapFor('project labels'), gapFor('project labels') ? 'gap' : '') +
-      metric('Milestones', (planning.milestones || []).length, gapFor('project milestones'), gapFor('project milestones') ? 'gap' : '') +
-      metric('Boards', (planning.boards || []).length, gapFor('project boards'), gapFor('project boards') ? 'gap' : '') +
-      '</div></section>' +
-    '<section><h2>Sync history</h2>' +
-      (data.syncHistory && data.syncHistory.length
-        ? table(['Generated', 'Branch', 'Source', 'Warnings'], data.syncHistory.map((entry) => [
-            when(entry.generatedAt), entry.branch || '', entry.source || '', entry.warningCount,
-          ]))
-        : '<p class="muted">No sync history yet. Run <code>oflow sync --refresh</code>.</p>') +
-    '</section>';
+    '<div class="split"><section><div class="section-head"><h2>Needs attention</h2><span class="badge">' + attention.length + ' signals</span></div>' +
+    (attention.length ? attention.map(([title, detail, view, label]) => '<div class="attention"><div><h3>' + esc(title) + '</h3><p>' + esc(detail) + '</p></div><a href="#' + view + '">' + label + ' →</a></div>').join('') : '<p>No attention signals in this bounded snapshot. Cached evidence is not proof of current remote health.</p>') +
+    '</section><section id="agent-handoff" aria-labelledby="handoff-title"></section></div>' +
+    sourceGap + advisoryNote +
+    '<section><div class="section-head"><h2>Planning at a glance</h2><a href="#planning">Explore planning →</a></div><div class="grid">' +
+    metric('Labels', (planning.labels || []).length, gapFor('project labels'), gapFor('project labels') ? 'gap' : '') +
+    metric('Milestones', (planning.milestones || []).length, gapFor('project milestones'), gapFor('project milestones') ? 'gap' : '') +
+    metric('Boards', (planning.boards || []).length, gapFor('project boards'), gapFor('project boards') ? 'gap' : '') + '</div></section>' +
+    '<section><h2>Local read model</h2><div class="grid">' + metric('Snapshots', counts.syncSnapshots ?? 0, 'stored locally; not a project total') + metric('Read model', status.state || 'missing', status.databaseExists ? 'sqlite ready' : 'not created yet') + '</div><h3 style="margin-top:22px">Sync history</h3>' +
+    (data.syncHistory && data.syncHistory.length ? table(['Generated', 'Branch', 'Source', 'Warnings'], data.syncHistory.map((entry) => [when(entry.generatedAt), entry.branch || '', entry.source || '', entry.warningCount])) : '<p class="muted">No sync history yet. Run <code>oflow sync --refresh</code>.</p>') + '</section>';
+  const mapHost = host.querySelector && host.querySelector('#overview-map');
+  if (mapHost) renderWorkMap(mapHost, data);
+  const handoffHost = host.querySelector && host.querySelector('#agent-handoff');
+  if (handoffHost) renderAgentHandoff(handoffHost, data);
+  const insightsHost = host.querySelector && host.querySelector('#overview-insights');
+  if (insightsHost) await renderDashboardInsights(insightsHost, data);
+}
+
+const command = (value, label) => '<div class="command"><code>' + esc(value) + '</code><button type="button" class="copy" data-copy="' + esc(value) + '" aria-label="Copy command: ' + esc(label || value) + '">Copy</button></div>';
+function renderAgentHandoff(host, data) {
+  const stories = (data.workItems || []).filter((item) => Number.isSafeInteger(item.iid) && item.iid > 0);
+  host.innerHTML = '<div class="eyebrow">Continue with confidence</div><h2 id="handoff-title">Your next agent handoff</h2>' +
+    '<p>Choose a story, copy the command for your next step, then run it in your repository terminal. Share its output with your agent—not just the command.</p>' +
+    '<label class="handoff-label" for="handoff-story">Story to work on<select id="handoff-story"><option value="">Choose a cached story…</option>' + stories.map((item,index) => '<option value="'+index+'">'+esc('#'+item.iid+' · '+item.title+' ('+(item.state || 'state unknown')+')')+'</option>').join('') + '</select></label>' +
+    '<div id="handoff-steps" role="region" aria-label="Story handoff commands" aria-live="polite"></div>' +
+    '<details class="handoff-tools"><summary>Need a fresher starting point?</summary>' +
+    '<p class="muted">Find your assigned work in GitLab. This fetches work when run in your terminal; it does not select or start a story.</p>'+command('oflow work --mine --refresh --json','Refresh my assigned work')+
+    '<p class="muted">Refresh the dashboard snapshot from GitLab, then use Reload local data here.</p>'+command('oflow sync --refresh','Refresh dashboard snapshot')+
+    '<p class="muted">Read a compact project summary from the local cache without fetching GitLab data.</p>'+command('oflow sync --summary --cached --json','Read cached project summary')+'</details>';
+  const select = host.querySelector('#handoff-story');
+  const steps = host.querySelector('#handoff-steps');
+  const draw = () => {
+    const item = stories.find((_,index) => String(index) === select.value);
+    if (!item) { steps.innerHTML = '<p class="muted">'+(stories.length ? 'Choose a story above to get exact commands. No story is selected automatically.' : 'No valid cached stories yet. Refresh the snapshot in your terminal, then reload local data.')+'</p>'; return; }
+    const step = (number,title,detail,cmd) => '<div class="handoff-step"><h3><span aria-hidden="true">'+number+'</span>'+title+'</h3><p class="muted">'+detail+'</p>'+command(cmd,title)+'</div>';
+    steps.innerHTML = '<p><a class="action primary" href="#story/'+item.iid+'">Open connected story workspace →</a></p><p class="muted">Commands below target <strong>'+esc('#'+item.iid+' '+item.title)+'</strong>. Run only the step you need. These commands may read GitLab; they do not implement or close the story.</p>' +
+      step('1','Start or resume work','Use at session start. Gives the agent story context, acceptance criteria, a branch recommendation and execution-backend guidance.','oflow start --story '+item.iid+' --json') +
+      step('2','Check what is still missing','Use before calling the work done. Reports acceptance-criteria evidence, local changes, MR/pipeline status and blockers; it does not run your test suite.','oflow assess --story '+item.iid+' --json') +
+      step('3','Prepare the next agent’s brief','Use when switching agents or sessions. Produces a compact brief with criteria evidence, branch and changed files, recent commits, MR/pipeline status, blockers and next actions.','oflow handoff --story '+item.iid+' --json') +
+      '<p class="handoff-boundary">Copy only · nothing runs in this browser. Review the output for sensitive details before sharing. A handoff is not approval to apply changes.</p>';
+  };
+  select.addEventListener('change',draw);
+  draw();
+}
+const badge = (value) => '<span class="badge ' + (['success','passed','merged','closed'].includes(value) ? 'ok' : ['failed','invalid'].includes(value) ? 'bad' : ['running','pending','opened'].includes(value) ? 'warn' : '') + '">' + esc(value || 'not recorded') + '</span>';
+const empty = (title, detail) => '<div class="empty"><h3>' + esc(title) + '</h3><p class="muted">' + esc(detail || 'No records in this cached scope. Run oflow sync --refresh to update it.') + '</p></div>';
+function snapshotStrip(data) {
+  const status = data.status || {};
+  const query = data.query;
+  return '<div class="snapshot"><div><strong>● Cached snapshot · not live</strong><br>' +
+    (data.project ? link(data.project.path, data.project.webUrl) + ' · ' : '') + esc(status.latestSync ? 'Synced ' + age(status.latestSync.ageSeconds) : 'no snapshot yet') +
+    (data.repository && data.repository.branch ? ' · branch ' + esc(data.repository.branch) : '') + '<br><span>Counts describe the displayed snapshot, not project totals.</span>' +
+    (query ? '<br>Scope: ' + esc(query.state) + ' work · limit ' + esc(query.issueLimit) + (query.issueFilters && Object.keys(query.issueFilters).length ? ' · filters ' + esc(JSON.stringify(query.issueFilters)) : '') : '<br>Query scope unavailable') +
+    (data.workItemsMayBeTruncated ? '<br><strong>Work items may be truncated.</strong>' : '') +
+    (status.invalidation && status.invalidation.at ? '<br><strong>Invalidated — refresh before remote changes.</strong>' : '') +
+    (status.refreshRequest && status.refreshRequest.at ? '<br>Refresh requested locally; run the CLI to sync.' : '') +
+    '</div><div><button type="button" class="action" data-refresh>Request sync</button><p class="muted">Records a local request only. No GitLab sync.</p></div></div>';
+}
+function sourceWarnings(data) {
+  return (data.warnings || []).length ? '<section><h2>Snapshot coverage</h2><ul class="gap-list">' + data.warnings.map((warning) => '<li><strong>' + (isUnreadableSource(warning) ? 'Unreadable source: ' : 'Advisory: ') + '</strong>' + esc(warning) + '</li>').join('') + '</ul></section>' : '';
+}
+function workTable(items) {
+  return items.length ? table(['Story', 'State', 'Owner', 'Planning / handoff'], items.map((item) => [
+    rawCell((Number.isSafeInteger(item.iid) && item.iid > 0 ? '<a href="#story/'+item.iid+'">'+esc('#'+item.iid+' '+item.title)+'</a><br>'+link('Open in GitLab',item.webUrl) : link('#'+item.iid+' '+item.title,item.webUrl))), rawCell(badge(item.state)), (item.assignees || []).join(', ') || 'Unassigned',
+    rawCell('<span class="muted">' + esc([item.milestone, item.iteration].filter(Boolean).join(' · ') || 'No timebox') + '</span><details><summary>Story details & commands</summary><p>Labels: ' + esc((item.labels || []).join(', ') || 'None') + '<br>Updated: ' + esc(when(item.updatedAt) || 'Not recorded') +
+      '<br>Due: ' + esc(item.dueDate || 'Not set') + '<br>Weight: ' + esc(item.weight ?? 'Not set') + (item.taskCompletion ? '<br>Tasks: ' + esc(item.taskCompletion.completed) + ' / ' + esc(item.taskCompletion.total) : '') + '</p>' +
+      (Number.isSafeInteger(item.iid) && item.iid > 0 ? command('oflow context --story ' + item.iid + ' --json', 'Story context') + command('oflow assess --story ' + item.iid + ' --json', 'Assess story') : '') + '</details>'),
+  ])) : empty('No matching work items', 'Try another filter, or refresh the cached scope from your terminal.');
+}
+function filterWork(items, search, state, ownership) {
+  const needle = search.trim().toLowerCase();
+  return items.filter((item) => (state === 'all' || item.state === state) && (ownership === 'all' || (ownership === 'unassigned' ? !(item.assignees || []).length : (item.assignees || []).length > 0)) &&
+    [item.iid, item.title, ...(item.labels || []), ...(item.assignees || []), item.milestone, item.iteration].join(' ').toLowerCase().includes(needle));
+}
+async function renderWork(host) {
+  const data = await api('/api/data');
+  const items = data.workItems || [];
+  host.innerHTML = snapshotStrip(data) + '<section><h2>Work queue</h2><div class="toolbar"><label for="work-search">Search stories, labels, or owners<input id="work-search" type="search" placeholder="Find your next story…" autocomplete="off"></label><label for="work-state">State<select id="work-state"><option value="all">All states</option><option value="opened">Open</option><option value="closed">Closed</option></select></label><label for="work-owner">Ownership<select id="work-owner"><option value="all">All owners</option><option value="assigned">Assigned</option><option value="unassigned">Unassigned</option></select></label></div><p id="work-count" class="muted" role="status"></p><div id="work-results"></div></section>' + sourceWarnings(data);
+  const search = host.querySelector('#work-search');
+  const state = host.querySelector('#work-state');
+  const owner = host.querySelector('#work-owner');
+  const update = () => {
+    const matches = filterWork(items, search.value, state.value, owner.value);
+    host.querySelector('#work-count').textContent = matches.length + ' of ' + items.length + ' cached items';
+    host.querySelector('#work-results').innerHTML = workTable(matches);
+  };
+  search.addEventListener('input', update); state.addEventListener('change', update); owner.addEventListener('change', update); update();
+}
+async function renderDelivery(host) {
+  const data = await api('/api/data');
+  const mrs = data.mergeRequests || []; const pipelines = data.pipelines || [];
+  host.innerHTML = snapshotStrip(data) + '<div class="grid">' + metric('Open merge requests', mrs.filter((mr) => mr.state === 'opened').length, 'in snapshot') + metric('Failed pipelines', pipelines.filter((p) => p.status === 'failed').length, 'in snapshot; not latest per branch') + metric('Running pipelines', pipelines.filter((p) => p.status === 'running').length, 'cached status') + '</div><section><h2>Merge requests</h2>' +
+    (mrs.length ? table(['Merge request', 'State', 'Branches', 'Updated'], mrs.map((mr) => [rawCell(link('!' + mr.iid + ' ' + mr.title, mr.webUrl) + (mr.draft ? ' <span class="badge">Draft</span>' : '')), rawCell(badge(mr.state)), (mr.sourceBranch || '—') + ' → ' + (mr.targetBranch || '—'), when(mr.updatedAt)])) : empty('No cached merge requests')) + '</section><section><h2>Pipeline evidence</h2><p class="muted">A successful cached pipeline does not prove the current head is verified. Use story assessment before finishing.</p>' +
+    (pipelines.length ? table(['Pipeline', 'Status', 'Ref', 'Commit', 'Updated'], pipelines.map((p) => [rawCell(link('#' + p.id, p.webUrl)), rawCell(badge(p.status)), p.ref || '—', rawCell('<code>' + esc((p.sha || '').slice(0, 12)) + '</code>'), when(p.updatedAt)])) : empty('No cached pipelines')) + '</section>' + sourceWarnings(data);
+}
+async function renderPlanning(host) {
+  const data = await api('/api/data'); const planning = data.planning || {};
+  const timeboxes = (items) => items.length ? table(['Timebox', 'State', 'Starts', 'Due'], items.map((item) => [rawCell(link(item.title || 'Iteration #' + item.iid, item.webUrl)), item.state || 'Not recorded', item.startDate || 'Not set', item.dueDate || 'Not set'])) : empty('No timeboxes in this snapshot');
+  host.innerHTML = snapshotStrip(data) + '<div class="split"><section><h2>Iterations</h2>' + timeboxes(data.iterations || []) + '</section><section><h2>Milestones</h2>' + timeboxes(planning.milestones || []) + '</section></div><section><h2>Boards & lists</h2>' +
+    ((planning.boards || []).length ? table(['Board', 'Lists'], planning.boards.map((board) => [board.name, rawCell((board.lists || []).map((list) => '<span class="badge">' + esc(list.label || 'List #' + list.id) + '</span>').join('') || '<span class="muted">No cached lists</span>')])) : empty('No cached boards')) + '</section><section><h2>Label vocabulary</h2>' +
+    ((planning.labels || []).length ? table(['Label', 'Open issues', 'Closed issues', 'Open MRs'], planning.labels.map((label) => [rawCell('<span class="badge">' + esc(label.name) + '</span>'), label.openIssues ?? 'Not recorded', label.closedIssues ?? 'Not recorded', label.openMergeRequests ?? 'Not recorded'])) : empty('No cached labels')) + '</section>' +
+    (data.planningHealth && data.planningHealth.findings.length ? '<section><h2>Planning findings</h2>' + table(['Finding', 'Stories'], data.planningHealth.findings.map((finding) => [finding.message, finding.storyIids.map((iid) => '#' + iid).join(', ')])) + '</section>' : '') + sourceWarnings(data);
 }
 
 async function renderCapabilities(host) {
@@ -429,24 +382,26 @@ async function renderCapabilities(host) {
         ])) + '</section>';
   }).join('');
   host.innerHTML = sections || '<p class="muted">No capabilities reported.</p>';
-  document.getElementById('view-actions').innerHTML =
+  host.actions.innerHTML =
     '<button class="action" id="probe" type="button">Run capability probe</button>';
-  document.getElementById('probe').addEventListener('click', runProbe);
+  host.actions.querySelector('#probe').addEventListener('click', runProbe);
 }
 
 async function runProbe(event) {
+  const generation = renderGeneration;
   const button = event.currentTarget;
   busy(button, true, 'Run capability probe');
   banner('');
   try {
     const report = await api('/api/check-api', { method: 'POST' });
+    if (generation !== renderGeneration) return;
     const checks = report.apiChecks || [];
     const failed = checks.filter((check) => check.status === 'failed');
     notice(failed.length
       ? failed.length + ' of ' + checks.length + ' capability checks failed.'
-      : 'All ' + checks.length + ' capability checks passed.');
+      : checks.filter((check) => check.status === 'passed').length + ' passed · ' + checks.filter((check) => check.status === 'skipped').length + ' skipped · ' + checks.filter((check) => check.status === 'not-probed').length + ' not probed.');
   } catch (error) {
-    banner('Capability probe failed: ' + esc(error.message));
+    if (generation === renderGeneration) banner('Capability probe failed: ' + error.message);
   } finally {
     busy(button, false, 'Run capability probe');
   }
@@ -469,9 +424,9 @@ async function renderAuth(host) {
       '<pre>' + esc(status.loginCommand || 'cd into the GitLab repository, then run: oflow auth login') + '</pre>' +
       '<p class="muted">oflow keeps the token in its own config directory, outside the repository, and never sends it to this page.</p>' +
     '</section>';
-  document.getElementById('view-actions').innerHTML =
+  host.actions.innerHTML =
     '<button class="action" id="recheck" type="button">Re-check status</button>';
-  document.getElementById('recheck').addEventListener('click', () => { void show(activeView); });
+  host.actions.querySelector('#recheck').addEventListener('click', () => { void show(activeView); });
 }
 
 async function renderDiagnostics(host) {
@@ -485,10 +440,12 @@ async function renderDiagnostics(host) {
 }
 
 async function runDiagnostics(host, button) {
+  const generation = renderGeneration;
   busy(button, true, 'Run API check');
   banner('');
   try {
     const report = await api('/api/check-api', { method: 'POST' });
+    if (generation !== renderGeneration) return;
     const statusClass = { passed: 'ok', failed: 'bad', skipped: 'warn', 'not-probed': '' };
     const checks = (report.apiChecks || []).map((check) => [
       rawCell('<code>' + esc(check.id) + '</code>'),
@@ -512,9 +469,12 @@ async function runDiagnostics(host, button) {
         ((report.warnings || []).length
           ? '<ul>' + report.warnings.map((w) => '<li class="muted">' + esc(w) + '</li>').join('') + '</ul>'
           : '<p class="muted">No warnings.</p>') + '</section>';
+    const retry = document.createElement('button');
+    retry.type = 'button'; retry.className = 'action'; retry.textContent = 'Run API check again';
+    retry.addEventListener('click', () => { void runDiagnostics(host, retry); }); host.append(retry);
     notice('API check complete: ' + report.apiCheck + '.');
   } catch (error) {
-    banner('API check failed: ' + esc(error.message));
+    if (generation === renderGeneration) banner('API check failed: ' + error.message);
   } finally {
     busy(button, false, 'Run API check');
   }
@@ -522,12 +482,10 @@ async function runDiagnostics(host, button) {
 
 async function renderLifecycle(host) {
   const [plans, verification, audit] = await Promise.all([
-    api('/api/plans').catch(() => ({ plans: [] })),
-    api('/api/verification').catch(() => null),
-    api('/api/audit').catch(() => ({ events: [] })),
+    api('/api/plans'), api('/api/verification'), api('/api/audit'),
   ]);
   const planRows = (plans.plans || []).map((plan) => [
-    rawCell('<code>' + esc(plan.id) + '</code>'),
+    rawCell('<code>' + esc(plan.id) + '</code><br><button type="button" class="action" data-preview-plan="'+esc(plan.id)+'">Preview saved plan</button>'),
     rawCell('<span class="badge ' + (plan.state === 'approved' || plan.state === 'applied-partial' ? 'warn' : plan.state === 'invalid' ? 'bad' : '') + '">' + esc(plan.state) + '</span>'),
     plan.operation,
     plan.target,
@@ -545,20 +503,26 @@ async function renderLifecycle(host) {
             verification.nextCommand || '',
           ]])
         : '<p class="muted">No verification contract configured.</p>') + '</section>' +
-    '<section><h2>Local plans</h2>' +
+    '<section><h2>Local plans</h2><p class="muted">Preview only. Approval, application and verification remain explicit CLI operations.</p><div id="plan-preview" role="region" aria-label="Saved plan preview" aria-live="polite"></div>' +
       (planRows.length ? table(['Plan', 'State', 'Operation', 'Target', 'Age'], planRows)
         : '<p class="muted">No local plans. Create one with <code>oflow plan</code>.</p>') + '</section>' +
     '<section><h2>Audit trail</h2>' +
       (events.length ? table(['When', 'Action', 'Plan', 'State'], events.map((event) => [
         when(event.at), event.action, rawCell('<code>' + esc(event.planId) + '</code>'), event.state,
       ])) : '<p class="muted">No audit events yet.</p>') + '</section>';
+  host.querySelectorAll('[data-preview-plan]').forEach((button)=>button.addEventListener('click',async()=>{
+    const preview=host.querySelector('#plan-preview');button.disabled=true;
+    try {const result=await api('/api/plans/'+encodeURIComponent(button.dataset.previewPlan));preview.innerHTML='<h3>Saved plan '+esc(result.id)+'</h3><pre>'+esc(result.preview)+'</pre><p class="muted">This preview does not grant approval or verify remote state.</p>';}
+    catch(error){preview.textContent='Preview unavailable: '+error.message;}
+    finally{button.disabled=false;}
+  }));
 }
 
 function renderTour(host) {
   const steps = [
     ['Start with context', 'Run <code>oflow start --json</code>. One compact record of your story, acceptance criteria, and the commands that are safe right now.'],
     ['Plan before you write', 'Remote changes go through <code>oflow plan</code>, <code>oflow approve</code>, <code>oflow apply</code>, <code>oflow verify</code>. oflow never mutates GitLab on its own.'],
-    ['Check the cache is fresh', 'Planning data is cached locally. <code>oflow sync --refresh</code> refreshes it; this dashboard only reads what is already cached.'],
+    ['Check the cache is fresh', 'Planning data is cached locally. <code>oflow sync --refresh</code> refreshes it; navigation reads the cache; explicit actions in Activity can refresh it.'],
     ['Prove it before finishing', 'Add repository checks under <code>workflow.verification</code>, run <code>oflow verify-local</code>, and <code>oflow finish</code> refuses to close a story on stale evidence.'],
   ];
   host.innerHTML = '<section><h2>The workflow</h2>' +
@@ -574,8 +538,20 @@ function renderTour(host) {
   }
 }
 
+async function renderActivity(host) {
+  const data = await api('/api/data');
+  host.innerHTML = '<div id="activity-actions"></div><div id="activity-insights"></div>';
+  const controls = host.querySelector('#activity-actions');
+  host.dispose = () => { if(controls.dispose) controls.dispose(); };
+  await Promise.all([renderActionConsole(controls),renderDashboardInsights(host.querySelector('#activity-insights'),data)]);
+}
+
 const RENDERERS = {
+  activity: renderActivity,
   overview: renderOverview,
+  work: renderWork,
+  delivery: renderDelivery,
+  planning: renderPlanning,
   capabilities: renderCapabilities,
   auth: renderAuth,
   diagnostics: renderDiagnostics,
@@ -583,25 +559,81 @@ const RENDERERS = {
   tour: renderTour,
 };
 
+let renderGeneration = 0;
+let disposeView = null;
+function bindInteractions(host) {
+  host.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-copy], [data-refresh]');
+    if (!button || !host.contains(button)) return;
+    const generation = renderGeneration;
+    const label = button.textContent;
+    busy(button, true, label);
+    try {
+      if (button.hasAttribute('data-copy')) {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('Clipboard unavailable. Select and copy the visible command instead.');
+        await navigator.clipboard.writeText(button.dataset.copy);
+        if (generation === renderGeneration) notice(button.dataset.copyKind === 'brief' ? 'Agent brief copied. Review it before sharing with your agent.' : 'Command copied. Run it in your repository terminal.');
+      } else {
+        const result = await api('/api/refresh', { method: 'POST' });
+        if (generation === renderGeneration) {
+          notice(result.message || 'Refresh requested locally. Run oflow sync --refresh in your terminal.');
+          button.textContent = result.accepted ? 'Refresh requested' : 'Run a sync first';
+        }
+      }
+    } catch (error) {
+      if (generation === renderGeneration) banner(error.message);
+    } finally {
+      button.disabled = false;
+      if (button.hasAttribute('data-copy') || button.textContent === 'Working…') button.textContent = label;
+    }
+  });
+}
 async function show(id) {
+  const generation = ++renderGeneration;
+  if(disposeView) {disposeView();disposeView=null;}
+  const storyMatch = /^story\\/([1-9][0-9]*)$/.exec(id);
+  const storyIid = storyMatch && Number.isSafeInteger(Number(storyMatch[1])) ? Number(storyMatch[1]) : null;
   const view = VIEWS.find((entry) => entry.id === id) || VIEWS[0];
-  activeView = view.id;
-  document.getElementById('view-title').textContent = view.title;
-  document.getElementById('subtitle').textContent = view.subtitle;
-  document.getElementById('view-actions').innerHTML = '';
-  banner('');
-  notice('');
-  renderTabs();
-  const host = document.getElementById('view');
+  activeView = storyIid ? 'work' : view.id;
+  document.getElementById('view-title').textContent = storyIid ? 'Story #'+storyIid : view.title;
+  document.getElementById('subtitle').textContent = storyIid ? 'Connected context, evidence and agent handoff. GitLab reads run only when requested.' : view.subtitle;
+  const actions = document.getElementById('view-actions');
+  actions.innerHTML = '';
+  const reload = document.createElement('button');
+  reload.type = 'button'; reload.className = 'action'; reload.textContent = 'Reload local data';
+  reload.addEventListener('click', () => { void show(storyIid ? 'story/'+storyIid : view.id); });
+  banner(''); notice(''); renderTabs();
+  const container = document.getElementById('view');
+  container.setAttribute('aria-busy', 'true');
+  container.innerHTML = '<div class="loading" role="status">Loading local workspace…</div>';
+  // Each request owns a detached host and toolbar. An older response cannot
+  // replace the current view or install actions after the user navigates away.
+  const host = document.createElement('div');
+  host.actions = document.createElement('div');
   try {
-    await RENDERERS[view.id](host);
+    if(storyIid) await renderStoryWorkspace(host,storyIid); else await RENDERERS[view.id](host);
+    if (generation !== renderGeneration) {if(host.dispose) host.dispose();return;}
+    disposeView = () => {if(host.dispose) host.dispose();};
+    bindInteractions(host);
+    container.replaceChildren(host);
+    actions.replaceChildren(reload, host.actions);
   } catch (error) {
-    host.innerHTML = '';
-    banner('Could not load this view: ' + esc(error.message));
+    if(host.dispose) host.dispose();
+    if (generation !== renderGeneration) return;
+    container.innerHTML = '<div class="empty"><h3>This view is unavailable</h3><p>No empty-data assumptions were made. Check local setup and retry.</p><button type="button" class="action" id="retry-view">Try again</button></div>';
+    container.querySelector('#retry-view').addEventListener('click', () => { void show(storyIid ? 'story/'+storyIid : view.id); });
+    banner('Could not load this view: ' + error.message);
+  } finally {
+    if (generation === renderGeneration) container.setAttribute('aria-busy', 'false');
   }
 }
 
-window.addEventListener('hashchange', () => { void show(location.hash.slice(1) || 'overview'); });
+window.addEventListener('hashchange', () => { if (location.hash !== '#main') void show(location.hash.slice(1) || 'overview'); });
+document.querySelector('.skip-link').addEventListener('click', (event) => {
+  event.preventDefault();
+  const main = document.getElementById('main');
+  main.focus(); main.scrollIntoView();
+});
 void show(location.hash.slice(1) || 'overview');
 </script>
 </body>

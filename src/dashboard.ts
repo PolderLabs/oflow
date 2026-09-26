@@ -2,13 +2,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { URL } from "node:url";
 import { OflowError } from "./errors.js";
 import { dropSecretFields, redactLocalPath } from "./dashboard-redaction.js";
+import { DashboardActions, type ActionRunner } from "./dashboard-actions.js";
 import { dashboardViewHtml } from "./dashboard-view.js";
 import { getCapabilities } from "./capabilities.js";
 import { loadConfig } from "./config.js";
 import { doctor } from "./doctor.js";
 import { getGitLabTokenSource, listStoredGitLabHosts, credentialsPath } from "./auth.js";
 import { getGitLabRemote } from "./git.js";
-import { listPlans } from "./plan.js";
+import { listPlans, loadPlanArtifact, formatPlanMarkdown } from "./plan.js";
 import { readAudit } from "./audit.js";
 import { getLocalVerificationStatus } from "./local-verification.js";
 import {
@@ -20,6 +21,7 @@ import type { DoctorReport } from "./types.js";
 
 export interface DashboardOptions {
   port?: number;
+  actionRunner?: ActionRunner;
 }
 
 export interface DashboardServer {
@@ -38,15 +40,19 @@ export async function startDashboard(
   if (!Number.isSafeInteger(port) || port < 0 || port > 65535) {
     throw new OflowError("Dashboard port must be an integer between 0 and 65535.", "INVALID_DASHBOARD_PORT");
   }
+  const actions = new DashboardActions(root, options.actionRunner);
+  await actions.ready;
   const server = createServer((request, response) => {
-    void handleRequest(root, request, response, port);
+    const address = server.address();
+    const actualPort = address && typeof address === "object" ? address.port : port;
+    void handleRequest(root, request, response, actualPort, actions);
   });
   await listen(server, port);
   const address = server.address();
   const actualPort = address && typeof address === "object" ? address.port : port;
   return {
     url: "http://127.0.0.1:" + String(actualPort) + "/",
-    close: () => closeServer(server),
+    close: async () => { actions.close(); await actions.flush(); return closeServer(server); },
   };
 }
 
@@ -55,6 +61,7 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
   boundPort: number,
+  actions: DashboardActions,
 ): Promise<void> {
   try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -62,7 +69,7 @@ async function handleRequest(
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'");
     // No CORS headers on purpose: a foreign page may not read any response.
-    if (originAllowed(request, boundPort) === false) {
+    if (request.headers.host !== "127.0.0.1:" + String(boundPort) || originAllowed(request, boundPort) === false) {
       writeJson(response, 403, { error: "Cross-origin request rejected." });
       return;
     }
@@ -73,6 +80,24 @@ async function handleRequest(
       return;
     }
 
+    if (url.pathname === "/api/actions") {
+      if (method === "GET") writeJson(response, 200, { jobs: actions.list() });
+      else if (method === "POST") writeJson(response, 202, await actions.start(await readJsonBody(request)));
+      else writeJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    const actionRoute = /^\/api\/actions\/([a-zA-Z0-9-]+)(\/cancel)?$/.exec(url.pathname);
+    if (actionRoute) {
+      const cancel = Boolean(actionRoute[2]);
+      if (method !== (cancel ? "POST" : "GET")) { writeJson(response, 405, { error: "Method not allowed" }); return; }
+      if (cancel) {
+        const body = await readJsonBody(request);
+        if (body && Object.keys(body).length) throw new OflowError("Cancel does not accept options.", "INVALID_DASHBOARD_BODY");
+      }
+      const job = cancel ? actions.cancel(actionRoute[1]) : actions.get(actionRoute[1]);
+      writeJson(response, job ? 200 : 404, job ?? { error: "Action not found" });
+      return;
+    }
     if (method === "GET" && url.pathname === "/") {
       writeText(response, 200, dashboardViewHtml());
       return;
@@ -118,6 +143,21 @@ async function handleRequest(
       writeJson(response, 200, { plans: await listPlans(root) });
       return;
     }
+    if (method === "GET" && url.pathname.startsWith("/api/plans/")) {
+      const id = url.pathname.slice("/api/plans/".length);
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(id)) {
+        writeJson(response, 400, { error: "Use a local plan ID, not a path." });
+        return;
+      }
+      const summary = (await listPlans(root)).find((plan) => plan.id === id);
+      if (!summary || summary.state === "invalid") {
+        writeJson(response, 404, { error: "Valid local plan not found." });
+        return;
+      }
+      const stored = await loadPlanArtifact(root, id);
+      writeJson(response, 200, { id, state: summary.state, preview: formatPlanMarkdown(stored), readOnly: true });
+      return;
+    }
     if (method === "GET" && url.pathname === "/api/verification") {
       const config = await loadConfig(root);
       writeJson(
@@ -146,6 +186,9 @@ async function handleRequest(
 }
 
 const CLIENT_ERROR_STATUS: Record<string, number> = {
+  INVALID_DASHBOARD_ACTION: 400,
+  DASHBOARD_ACTION_BUSY: 409,
+  DASHBOARD_CHECKS_UNCONFIGURED: 400,
   INVALID_AUTH_REQUEST: 400,
   DASHBOARD_HOST_NOT_ACCEPTED: 400,
   INVALID_DASHBOARD_BODY: 400,
@@ -264,7 +307,8 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
   if (chunks.length === 0) return null;
   const text = Buffer.concat(chunks).toString("utf8").trim();
   if (!text) return null;
-  const parsed: unknown = JSON.parse(text);
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { throw new OflowError("Dashboard request body must be valid JSON.", "INVALID_DASHBOARD_BODY"); }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new OflowError("Dashboard request body must be a JSON object.", "INVALID_DASHBOARD_BODY");
   }

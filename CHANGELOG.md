@@ -2,6 +2,20 @@
 
 ## Unreleased
 ### Added
+- Overview stage counts now focus the work map while retaining parent context.
+  Guided agent handoffs explain story-specific start, assessment and resume
+  brief commands, with explicit copy-only and terminal-read boundaries.
+- Overview now includes an interactive Scrum work map with board/iteration
+  filters, parent-to-child connections, selected-item context, and zoom.
+  Missing parents and ambiguous stage labels stay explicit; the map never
+  infers dependencies from shared labels or matching issue numbers.
+- Redesigned local dashboard with a responsive workspace, searchable story
+  handoffs, dedicated delivery and planning views, and explicit snapshot
+  coverage, freshness and next-action guidance. No frontend dependencies or
+  implicit GitLab writes.
+- Dashboard read API now includes snapshot query, work-item truncation and
+  planning-health metadata. README and dashboard documentation describe the
+  daily workflow and the maintained design contract.
 - `oflow labels audit` reports labels defined on a project against the ones
   actually used by issues, so an unused label is visible without opening the
   project settings. Read-only: it opens no plan and applies nothing. The report
@@ -9,6 +23,8 @@
   a partial result is never read as a complete one.
 
 ### Fixed
+- Same-origin browser actions now work when the dashboard uses `--port 0`;
+  Origin validation uses the actual bound port rather than zero.
 - `plan issue update --add-labels` accepted a label the project does not
   define. GitLab took the request and added nothing, so the command reported
   success and showed a label that does not exist. It is now rejected before the

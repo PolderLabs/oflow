@@ -92,6 +92,9 @@ test("sync read model stores planning, delivery, history, and diagnostics", asyn
 
     const data = await readDashboardData(root);
     assert.equal(data.workItems[0].iid, 1);
+    assert.deepEqual(data.query, snapshot().query);
+    assert.equal(data.workItemsMayBeTruncated, false);
+    assert.deepEqual(data.planningHealth, snapshot().planningHealth);
     assert.equal(data.mergeRequests[0].iid, 2);
     assert.equal(data.pipelines[0].status, "success");
     assert.equal(data.iterations[0].title, "Iteration 1");
@@ -113,7 +116,7 @@ test("dashboard is loopback-only, read-only for GitLab, and has explicit refresh
     assert.match(dashboard.url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
     const page = await fetch(dashboard.url);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /oflow cockpit/);
+    assert.match(await page.text(), /oflow · Workspace/);
 
     const status = await fetch(new URL("api/status", dashboard.url));
     assert.equal(status.status, 200);
@@ -171,6 +174,26 @@ test("a source the token cannot read is reported, not shown as empty", async () 
     } finally {
       await rm(clean, { recursive: true, force: true });
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("dashboard exposes snapshot scope and truncation, and honest missing defaults", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-dashboard-scope-"));
+  try {
+    const empty = await readDashboardData(root);
+    assert.equal(empty.query, null);
+    assert.equal(empty.planningHealth, null);
+    assert.equal(empty.workItemsMayBeTruncated, false);
+    const result = snapshot();
+    result.workItemsMayBeTruncated = true;
+    result.query.issueFilters = { labels: "Ready" };
+    await saveSyncReadModel({ root, host: "gitlab.example.test", projectPath: "team/project", result });
+    const data = await readDashboardData(root);
+    assert.deepEqual(data.query, result.query);
+    assert.equal(data.workItemsMayBeTruncated, true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

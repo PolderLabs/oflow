@@ -7,8 +7,55 @@ import { dashboardViewHtml } from "../dist/dashboard-view.js";
 
 const html = dashboardViewHtml();
 
-test("the shell renders all six views", () => {
-  for (const id of ["overview", "capabilities", "auth", "diagnostics", "lifecycle", "tour"]) {
+// Run the served browser script with local DOM and HTTP seams; no GitLab calls.
+function pageHarness(data = {}, { responses = {}, hash = "", clipboard } = {}) {
+  const elements = new Map();
+  const element = () => ({
+    innerHTML: "", textContent: "", className: "", value: "", disabled: false,
+    dataset: {}, listeners: new Map(), children: [],
+    classList: { add() {}, remove() {}, toggle() {} },
+    setAttribute(name, value) { this[name] = value; },
+    getAttribute(name) { return this[name]; },
+    hasAttribute(name) { return name === "data-copy" ? this.dataset.copy !== undefined : this[name] !== undefined; },
+    contains() { return true; },
+    addEventListener(name, callback) { this.listeners.set(name, callback); },
+    append(child) { this.children.push(child); },
+    replaceChildren(...children) { this.children = children; },
+    querySelectorAll() { return []; },
+    querySelector(selector) { return get(selector.slice(1)); },
+    focus() {},
+  });
+  const get = (id) => {
+    if (!elements.has(id)) elements.set(id, element());
+    return elements.get(id);
+  };
+  const requests = [];
+  const document = {
+    getElementById: get, querySelectorAll: () => [], createElement: element,
+    addEventListener() {},
+  };
+  const context = vm.createContext({
+    document, location: { hash }, window: { addEventListener() {} },
+    navigator: { clipboard }, URL, console, setTimeout, clearTimeout,
+    fetch: async (path, options) => {
+      requests.push({ path, options });
+      const response = await (responses[path] ?? { data });
+      if (response.error) throw response.error;
+      return {
+        ok: response.status == null || response.status < 400,
+        status: response.status ?? 200,
+        text: async () => JSON.stringify(response.data),
+      };
+    },
+  });
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+  assert.ok(script.includes("window.addEventListener('hashchange'"), "page bootstrap boundary exists");
+  new vm.Script(script.split("window.addEventListener('hashchange'")[0]).runInContext(context);
+  return { context, get, requests, element, evaluate: (expression) => vm.runInContext(expression, context) };
+}
+
+test("the shell keeps the core workflow views", () => {
+  for (const id of ["overview", "work", "delivery", "planning", "capabilities", "auth", "diagnostics", "lifecycle", "tour"]) {
     assert.match(html, new RegExp("id: '" + id + "'"), "missing view: " + id);
   }
 });
@@ -28,7 +75,7 @@ test("the shell references every dashboard API route it consumes", () => {
 });
 
 test("the page never offers a token input", () => {
-  assert.equal(/<input/i.test(html), false, "the dashboard must not contain any input element");
+  assert.equal(/<input[^>]+(?:name|id)=["'][^"']*(?:token|password|credential)/i.test(html), false, "search controls must not become credential inputs");
   assert.equal(/type=["']?password/i.test(html), false);
 });
 
@@ -39,7 +86,7 @@ test("the page loads no cross-origin asset", () => {
   assert.equal(/url\(\s*['"]?https?:/i.test(html), false);
 });
 
-test("the page performs no network request until the user asks", () => {
+test("the page uses event listeners rather than inline handlers", () => {
   const fetchCalls = html.match(/fetch\(/g) ?? [];
   assert.ok(fetchCalls.length > 0);
   assert.equal(/onclick\s*=/i.test(html), false, "inline handlers are not allowed");
@@ -50,14 +97,7 @@ test("a hostile table cell is rendered as text, not markup", () => {
   // Execute the page's own helper definitions instead of regexing their source:
   // the invariant under test is that a GitLab-controlled string cannot become
   // markup in the DOM, not that a particular spelling appears in the file.
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
-  const start = script.indexOf("const esc = ");
-  const end = script.indexOf("const table = ");
-  assert.ok(start > -1 && end > start, "escaping helpers not found in the served page");
-  const tableEnd = script.indexOf("const metric = ");
-  const { esc, cell, rawCell, table } = new Function(
-    script.slice(start, tableEnd) + "; return { esc, cell, rawCell, table };",
-  )();
+  const { esc, cell, rawCell, table } = pageHarness().evaluate("({ esc, cell, rawCell, table })");
 
   const payload = '<img src=x onerror="window.__pwned=1">';
   const rendered = cell(payload);
@@ -91,23 +131,7 @@ test("every table cell passes through the escaping helper", () => {
 });
 
 test("overview notes describe the read model and snapshot state honestly", async () => {
-  // renderOverview writes into the host element it is handed, so a plain object
-  // is enough: the notes are proven to follow the data, not to match a spelling.
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
-  const render = async (status) => {
-    const context = vm.createContext({
-      document: { getElementById: () => null, querySelectorAll: () => [], addEventListener() {} },
-      location: { hash: "" },
-      fetch: async () => ({ ok: true, text: async () => JSON.stringify({ status }) }),
-      console, setTimeout, clearTimeout,
-    });
-    // Everything from the hashchange registration onward is bootstrap that
-    // auto-runs on load; this test drives renderOverview directly.
-    new vm.Script(script.split("window.addEventListener('hashchange'")[0]).runInContext(context);
-    const host = { innerHTML: "" };
-    await context.renderOverview(host);
-    return host.innerHTML;
-  };
+  const render = (status) => renderOverviewHtml({ status });
 
   const empty = await render({ state: "missing", databaseExists: false, latestSync: null, counts: {} });
   assert.match(empty, /no snapshot yet/);
@@ -127,12 +151,7 @@ test("overview notes describe the read model and snapshot state honestly", async
 test("a __html field in API data cannot forge raw markup", () => {
   // rawCell() tags with a Symbol, which JSON cannot express, so a hostile
   // field in a GitLab-sourced response stays inert text.
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
-  const start = script.indexOf("const esc = ");
-  const end = script.indexOf("const metric = ");
-  const { cell, table, rawCell } = new Function(
-    script.slice(start, end) + "; return { cell, table, rawCell };",
-  )();
+  const { cell, table, rawCell } = pageHarness().evaluate("({ cell, table, rawCell })");
 
   const forged = { __html: '<img src=x onerror="window.__pwned=1">' };
   assert.equal(cell(forged).includes("<img"), false, "a string key must not opt out of escaping");
@@ -146,13 +165,7 @@ test("timestamps render compactly and never as injectable markup", () => {
   // The raw ISO string occupied 246px of a ~1365px viewport. `when` compacts
   // it, and must degrade to the original text rather than throw or emit
   // markup when the input is hostile or unparseable.
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
-  const start = script.indexOf("const esc = ");
-  const end = script.indexOf("function renderTabs() ");
-  assert.ok(start > -1 && end > start, "helpers not found in the served page");
-  const { esc, cell, when } = new Function(
-    script.slice(start, end) + "; return { esc, cell, when };",
-  )();
+  const { cell, when } = pageHarness().evaluate("({ cell, when })");
 
   const now = Date.now();
   assert.equal(when(new Date(now - 30_000).toISOString()), "just now");
@@ -177,28 +190,9 @@ test("timestamps render compactly and never as injectable markup", () => {
 // Drives the real renderOverview so assertions are about rendered output,
 // not a regex restated in the test.
 async function renderOverviewHtml(data) {
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
-  const start = script.indexOf("const esc = ");
-  const end = script.indexOf("window.addEventListener('hashchange'");
-  assert.ok(start > -1 && end > start, "page script not found");
-  const host = { innerHTML: "" };
-  const stubDocument = {
-    getElementById: () => ({
-      textContent: "",
-      className: "",
-      classList: { add() {}, remove() {} },
-    }),
-  };
-  const stubFetch = async () => ({
-    ok: true,
-    status: 200,
-    text: async () => JSON.stringify(data),
-  });
-  const render = new Function(
-    "document", "location", "fetch", "window",
-    script.slice(start, end) + "; return renderOverview;",
-  )(stubDocument, { hash: "" }, stubFetch, {});
-  await render(host);
+  const page = pageHarness(data);
+  const host = page.get("view");
+  await page.context.renderOverview(host);
   return host.innerHTML;
 }
 
@@ -235,7 +229,7 @@ test("a scope gap is attributed to the card that owns that source", async () => 
     "Could not read pipelines: GitLab API 403",
   ]));
   assert.ok(out.includes("cannot read"), "the gap section must render");
-  assert.equal((html.match(/<li>/g) ?? []).length, 2, "both gaps listed");
+  assert.equal((out.match(/class="gap-source"/g) ?? []).length, 2, "both gaps listed");
   // Per-card attribution, not one blanket caption on whichever card came first.
   assert.equal(cardsByLabel(out).get("Merge requests").includes("not readable"), false,
     "Merge requests is readable and must not carry a gap caption");
@@ -353,4 +347,259 @@ test("no lone backslash in the served page's source template", () => {
     [],
     "unpaired backslash in the dashboardViewHtml template literal: it cooks away in the served page",
   );
+});
+
+test("opening diagnostics does not probe GitLab until explicitly requested", async () => {
+  const page = pageHarness();
+  await page.context.renderDiagnostics(page.get("view"));
+  assert.deepEqual(page.requests, []);
+  assert.match(page.get("view").innerHTML, /API check|diagnostic/i);
+});
+
+test("unknown navigation falls back to the overview and only reads local data", async () => {
+  const page = pageHarness(overviewData([]));
+  await page.context.show("not-a-view");
+  assert.match(page.get("view-title").textContent, /overview/i);
+  assert.deepEqual(page.requests.map(({ path }) => path), ["/api/data", "/api/actions", "/api/audit", "/api/verification"]);
+  assert.ok(page.requests.every(({ options }) => !options?.method || options.method === "GET"));
+});
+
+test("a failed local data request is visible instead of looking like empty work", async () => {
+  const page = pageHarness({}, {
+    responses: { "/api/data": { status: 500, data: { error: "Snapshot unavailable" } } },
+  });
+  await page.context.show("overview");
+  assert.match(page.get("banner").textContent, /Snapshot unavailable/);
+  assert.doesNotMatch(page.get("view").innerHTML, /No cached work items/);
+});
+
+const workItems = [
+  { iid: 12, title: "Build search", state: "opened", assignees: ["developer"], labels: ["frontend"], milestone: "Release one", iteration: "Sprint A" },
+  { iid: 13, title: "Fix delivery", state: "opened", assignees: [], labels: ["backend"] },
+  { iid: 14, title: "Search docs", state: "closed", assignees: ["writer"], labels: [] },
+];
+
+test("work search finds identifiers, owners, labels and timeboxes case-insensitively", () => {
+  const { filterWork } = pageHarness().evaluate("({ filterWork })");
+  for (const search of ["12", " BUILD ", "DEVELOPER", "frontend", "Release one", "Sprint A"]) {
+    assert.deepEqual(Array.from(filterWork(workItems, search, "all", "all"), (item) => item.iid), [12], search);
+  }
+});
+
+test("work filters combine state and ownership rather than broadening search", () => {
+  const { filterWork } = pageHarness().evaluate("({ filterWork })");
+  assert.deepEqual(Array.from(filterWork(workItems, "", "opened", "unassigned"), (item) => item.iid), [13]);
+  assert.deepEqual(Array.from(filterWork(workItems, "search", "opened", "assigned"), (item) => item.iid), [12]);
+  assert.equal(filterWork(workItems, "missing", "all", "all").length, 0);
+});
+
+test("changing work filters updates the queue without another HTTP request", async () => {
+  const page = pageHarness({ ...overviewData([]), workItems });
+  page.get("work-state").value = "all";
+  page.get("work-owner").value = "all";
+  await page.context.renderWork(page.get("view"));
+  assert.equal(page.get("work-count").textContent, "3 of 3 cached items");
+  page.get("work-search").value = "delivery";
+  page.get("work-search").listeners.get("input")();
+  assert.equal(page.get("work-count").textContent, "1 of 3 cached items");
+  assert.match(page.get("work-results").innerHTML, /Fix delivery/);
+  assert.doesNotMatch(page.get("work-results").innerHTML, /Build search/);
+  page.get("work-owner").value = "assigned";
+  page.get("work-owner").listeners.get("change")();
+  assert.match(page.get("work-results").innerHTML, /No matching work items/);
+  assert.equal(page.requests.length, 1);
+});
+
+test("external links permit HTTP(S) but reject executable and relative URLs", () => {
+  const { link } = pageHarness().evaluate("({ link })");
+  for (const url of ["javascript:alert(1)", "data:text/html,hello", "//example.test/x", "/api/refresh", "file:///tmp/example"]) {
+    assert.doesNotMatch(link("<unsafe>", url), /<a\b/, url);
+    assert.match(link("<unsafe>", url), /&lt;unsafe&gt;/);
+  }
+  const safe = link('Read "story"', "https://gitlab.example.test/demo/-/issues/12?x=1&y=2");
+  assert.match(safe, /href="https:\/\/gitlab\.example\.test/);
+  assert.match(safe, /&amp;y=2/);
+  assert.match(safe, /rel="[^"]*noopener/);
+});
+
+test("story handoff commands use validated issue numbers and never execute", () => {
+  const page = pageHarness();
+  const { workTable } = page.evaluate("({ workTable })");
+  const out = workTable(workItems);
+  assert.match(out, /data-copy="oflow context --story 12 --json"/);
+  assert.match(out, /data-copy="oflow assess --story 12 --json"/);
+  const hostile = workTable([{ ...workItems[0], iid: "12; echo unsafe", title: "<img src=x>", assignees: ["<svg>"] }]);
+  assert.doesNotMatch(hostile, /data-copy=/);
+  assert.doesNotMatch(hostile, /<img|<svg/);
+  assert.deepEqual(page.requests, []);
+});
+
+test("delivery shows branches and cached pipeline evidence without claiming current verification", async () => {
+  const page = pageHarness({ ...overviewData([]),
+    mergeRequests: [{ iid: 2, title: "Deliver search", state: "opened", sourceBranch: "feature/search", targetBranch: "main", draft: true }],
+    pipelines: [{ id: 9, status: "failed", ref: "feature/search", sha: "abcdef1234567890" }],
+  });
+  await page.context.renderDelivery(page.get("view"));
+  const out = page.get("view").innerHTML;
+  for (const expected of [/Deliver search/, /Draft/, /feature\/search → main/, /abcdef123456/, /does not prove the current head/]) assert.match(out, expected);
+  assert.match(cardsByLabel(out).get("Failed pipelines"), /1/);
+});
+
+test("planning displays real timeboxes, board lists and label counts", async () => {
+  const page = pageHarness({ ...overviewData([]),
+    iterations: [{ title: "Sprint 7", state: "current", startDate: "2026-09-21", dueDate: "2026-10-02" }],
+    planning: {
+      milestones: [{ title: "Autumn release", state: "active", dueDate: "2026-10-30" }],
+      boards: [{ name: "Delivery board", lists: [{ id: 1, label: "In progress" }] }],
+      labels: [{ name: "<frontend>", openIssues: 0, closedIssues: 2 }],
+    },
+  });
+  await page.context.renderPlanning(page.get("view"));
+  const out = page.get("view").innerHTML;
+  for (const text of ["Sprint 7", "2026-10-02", "Autumn release", "Delivery board", "In progress", "&lt;frontend&gt;", "<td>0</td>"]) assert.ok(out.includes(text), text);
+  assert.doesNotMatch(out, /<frontend>/);
+});
+
+test("snapshot context distinguishes invalidated and truncated data from live project totals", async () => {
+  const page = pageHarness({ ...overviewData([]), workItems: workItems.slice(0, 1), workItemsMayBeTruncated: true,
+    query: { state: "opened", issueLimit: 1, issueFilters: { assignee: "developer" } },
+    status: { state: "ready", counts: { workItems: 99 }, latestSync: { ageSeconds: 7200 }, invalidation: { at: "2026-09-26T00:00:00Z", reason: "Remote change" } },
+  });
+  await page.context.renderOverview(page.get("view"));
+  const out = page.get("view").innerHTML;
+  assert.match(out, /not live/);
+  assert.match(out, /not project totals/);
+  assert.match(out, /may be truncated/);
+  assert.match(out, /Invalidated/);
+  assert.match(cardsByLabel(out).get("Work items"), /^1 Work items/);
+  assert.doesNotMatch(cardsByLabel(out).get("Work items"), /99/);
+});
+
+test("copying a handoff writes only to the clipboard and restores its button", async () => {
+  const copied = [];
+  const page = pageHarness({}, { clipboard: { writeText: async (value) => copied.push(value) } });
+  const host = page.get("view");
+  const button = page.element();
+  button.dataset.copy = "oflow context --story 12 --json";
+  button.textContent = "Copy";
+  page.context.bindInteractions(host);
+  await host.listeners.get("click")({ target: { closest: () => button } });
+  assert.deepEqual(copied, ["oflow context --story 12 --json"]);
+  assert.deepEqual(page.requests, []);
+  assert.equal(button.disabled, false);
+  assert.equal(button.textContent, "Copy");
+  assert.match(page.get("notice").textContent, /copied/i);
+});
+
+test("clipboard denial provides manual-copy guidance instead of executing a command", async () => {
+  const page = pageHarness();
+  const host = page.get("view");
+  const button = page.element();
+  button.dataset.copy = "oflow sync --refresh";
+  button.textContent = "Copy";
+  page.context.bindInteractions(host);
+  await host.listeners.get("click")({ target: { closest: () => button } });
+  assert.match(page.get("banner").textContent, /Select and copy/);
+  assert.equal(button.disabled, false);
+  assert.deepEqual(page.requests, []);
+});
+
+test("request refresh posts only a local request and explains the terminal sync", async () => {
+  const page = pageHarness({}, { responses: { "/api/refresh": { data: { accepted: true } } } });
+  const host = page.get("view");
+  const button = page.element();
+  button.textContent = "Request refresh";
+  page.context.bindInteractions(host);
+  await host.listeners.get("click")({ target: { closest: () => button } });
+  assert.deepEqual(page.requests.map(({ path, options }) => [path, options.method]), [["/api/refresh", "POST"]]);
+  assert.match(page.get("notice").textContent, /Run oflow sync --refresh in your terminal/);
+  assert.equal(button.textContent, "Refresh requested");
+  assert.equal(button.disabled, false);
+});
+
+test("a late overview response cannot replace the newly selected tour", async () => {
+  let resolveData;
+  const delayed = new Promise((resolve) => { resolveData = resolve; });
+  const page = pageHarness({}, { responses: { "/api/data": delayed } });
+  const pending = page.context.show("overview");
+  await page.context.show("tour");
+  const selected = page.get("view").children[0];
+  assert.match(selected.innerHTML, /Start with context/);
+  resolveData({ data: overviewData([]) });
+  await pending;
+  assert.equal(page.get("view").children[0], selected);
+  assert.equal(page.get("view-title").textContent, "What oflow does");
+  assert.equal(page.get("view")["aria-busy"], "false");
+});
+
+test("reload local data repeats only the current local read", async () => {
+  const page = pageHarness(overviewData([]));
+  await page.context.show("overview");
+  const reload = page.get("view-actions").children[0];
+  assert.equal(reload.textContent, "Reload local data");
+  await reload.listeners.get("click")();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(page.requests.map(({ path }) => path), ["/api/data", "/api/actions", "/api/audit", "/api/verification", "/api/data", "/api/actions", "/api/audit", "/api/verification"]);
+  assert.ok(page.requests.every(({ options }) => !options?.method || options.method === "GET"));
+});
+
+test("agent handoff explains story-specific actions without fetching or choosing work", () => {
+  const harness = pageHarness();
+  const host = harness.element();
+  harness.evaluate("renderAgentHandoff")(host, { workItems: [{iid:42,title:'Review flow',state:'opened'}] });
+  assert.match(host.innerHTML, /Share its output with your agent/);
+  assert.match(host.innerHTML, /Choose a cached story/);
+  assert.match(harness.get('handoff-steps').innerHTML, /No story is selected automatically/);
+  harness.get('handoff-story').value = '0';
+  harness.get('handoff-story').listeners.get('change')();
+  const output = harness.get('handoff-steps').innerHTML;
+  for (const action of ['start','assess','handoff']) assert.ok(output.includes('data-copy="oflow '+action+' --story 42 --json"'));
+  assert.match(output, /does not run your test suite/);
+  assert.match(output, /branch and changed files/);
+  assert.match(output, /nothing runs in this browser/);
+  assert.deepEqual(harness.requests, []);
+  harness.get('handoff-story').value = '';
+  harness.get('handoff-story').listeners.get('change')();
+  assert.doesNotMatch(harness.get('handoff-steps').innerHTML, /data-copy/);
+});
+
+test("agent handoff rejects invalid IDs and escapes remote story titles", () => {
+  const harness = pageHarness();
+  const host = harness.element();
+  harness.evaluate('renderAgentHandoff')(host, {workItems:[{iid:'42; evil',title:'invalid'},{iid:-1,title:'negative'},{iid:7,title:'<img src=x onerror=evil>'}]});
+  assert.doesNotMatch(host.innerHTML, /<img|42; evil|negative/);
+  assert.match(host.innerHTML, /&lt;img/);
+  harness.get('handoff-story').value = '0';
+  harness.get('handoff-story').listeners.get('change')();
+  assert.match(harness.get('handoff-steps').innerHTML, /oflow handoff --story 7 --json/);
+  assert.doesNotMatch(harness.get('handoff-steps').innerHTML, /<img/);
+  harness.evaluate('renderAgentHandoff')(host, {});
+  assert.match(harness.get('handoff-steps').innerHTML, /No valid cached stories/);
+});
+
+test('story routes open a connected workspace and preserve the route when reloading', async () => {
+  const page = pageHarness({workItems:[{iid:42,title:'Example',labels:[],assignees:[]} ]}, {responses:{'/api/actions':{data:{jobs:[]}}}});
+  await page.evaluate("show('story/42')");
+  assert.equal(page.get('view-title').textContent, 'Story #42');
+  assert.ok(page.requests.every(({options}) => !options?.method || options.method === 'GET'));
+  const reload = page.get('view-actions').children[0];
+  await reload.listeners.get('click')();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(page.get('view-title').textContent, 'Story #42');
+});
+
+test('action console requires explicit launch and configured-check acknowledgement', async () => {
+  const page = pageHarness({}, {responses:{'/api/actions':{data:{jobs:[]}}}});
+  const host=page.element();
+  await page.evaluate('renderActionConsole')(host);
+  assert.deepEqual(page.requests.map(r=>r.path), ['/api/actions']);
+  assert.equal(page.get('run-checks').disabled,true);
+  page.get('run-checks').listeners.get('click')();
+  assert.equal(page.requests.length,1);
+  page.get('run-refresh').listeners.get('click')();
+  await new Promise(resolve=>setImmediate(resolve));
+  const writes=page.requests.filter(r=>r.options?.method==='POST');
+  assert.equal(writes.length,1);
+  assert.deepEqual(JSON.parse(writes[0].options.body),{action:'refresh'});
+  host.dispose();
 });

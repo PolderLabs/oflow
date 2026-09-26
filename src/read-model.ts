@@ -74,6 +74,9 @@ export interface DashboardData {
   project: SyncResult["project"] | null;
   repository: SyncResult["repository"] | null;
   workItems: SyncWorkItem[];
+  query: SyncResult["query"] | null;
+  workItemsMayBeTruncated: boolean;
+  planningHealth: SyncResult["planningHealth"] | null;
   mergeRequests: SyncMergeRequest[];
   pipelines: SyncPipeline[];
   iterations: SyncIteration[];
@@ -498,6 +501,9 @@ export async function readDashboardData(root: string): Promise<DashboardData> {
       project: snapshot?.project ?? null,
       repository: snapshot?.repository ?? null,
       workItems: snapshot?.workItems ?? storedWorkItems,
+      query: snapshot?.query ?? null,
+      workItemsMayBeTruncated: snapshot?.workItemsMayBeTruncated ?? storedWorkItems.length >= 100,
+      planningHealth: snapshot?.planningHealth ?? null,
       mergeRequests: snapshot?.mergeRequests ?? [],
       pipelines: snapshot?.pipelines ?? [],
       iterations: snapshot?.planning.iterations ?? [],
@@ -642,6 +648,9 @@ function emptyDashboardData(status: ReadModelStatus): DashboardData {
     project: null,
     repository: null,
     workItems: [],
+    query: null,
+    workItemsMayBeTruncated: false,
+    planningHealth: null,
     mergeRequests: [],
     pipelines: [],
     iterations: [],

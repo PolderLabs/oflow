@@ -1,152 +1,142 @@
-# Dashboard v2
+# Dashboard workspace
 
-`oflow dashboard` is the human-facing surface of the local read model. v2 turns
-the single-view page into a small multi-view application and adds an
-authentication path, an API capability check, and a capabilities catalog — all
-without ever handing a GitLab token to the browser.
+`oflow dashboard --open` serves a dependency-free local workspace for humans
+supervising agent-assisted delivery. The original v2 endpoint contract is
+preserved; the redesigned UI separates daily work from setup and diagnostics.
+Visual and interaction decisions live in [`../DESIGN.md`](../DESIGN.md).
+
+## Start and daily flow
+
+1. Run `oflow sync --refresh` in the repository to populate the local read model.
+2. Run `oflow dashboard --open` (default `http://127.0.0.1:4173/`).
+3. Use Overview to inspect cache state and attention items.
+4. Search/filter Work and copy a story command into your terminal or agent.
+5. Inspect Delivery, Planning and Lifecycle as needed.
+
+A missing snapshot is supported: the UI explains how to create it. Local view
+reloads do not contact GitLab. Request sync records a local marker only; run
+`oflow sync --refresh` yourself, then reload. There is no background sync worker.
+CLI commands shown or copied by the UI are never executed by the browser.
+
+## Views
+
+| View | Evidence and interactions |
+| --- | --- |
+| Overview | Interactive Scrum work map, parent connections, item inspector, cached scope, attention items and sync history. |
+| Work | Search and filters over cached work; ownership, labels, timeboxes and story-specific command handoffs. |
+| Delivery | Cached merge requests and pipelines with safe GitLab links. |
+| Planning | Iterations, milestones, board lists and labels from the snapshot. |
+| Lifecycle | Local plans, verification state and audit events. Failed local reads are errors, not evidence of no plans. |
+| Capabilities | Declarative catalog; optional explicit API probe. |
+| Authentication | Redacted credential status and terminal login instructions. |
+| Diagnostics | Explicit bounded read-only API check; no probe on navigation or page load. |
+| Tour | Workflow orientation and safe CLI next steps. |
+
+Views are hash-addressable (for example `/#work`), with browser back/forward
+navigation. Small screens adapt navigation and content while tables scroll
+inside their containers. Controls are keyboard accessible and status is text,
+not color alone. Clipboard failures leave the command visible for selection.
+
+## Interactive Overview map
+
+The work map is a local, read-only visualization of the same `/api/data`
+snapshot. It does not discover extra relationships or run new GitLab requests.
+
+- Choose a board to arrange work by its labeled lists in configured order.
+- Search cached items or filter by iteration, then select a card to inspect
+  ownership, timebox and connected items, or copy context/assessment commands.
+- Zoom and reset the scrollable canvas; keyboard users can activate cards as
+  buttons and read the same relationships in the inspector.
+- Arrows run **parent → child**. They are not dependency/blocker links and do
+  not prove that an item moved through earlier Scrum stages.
+- Internal parents are identified by matching resource URLs, not by issue
+  number alone. An epic or another project can share the same number.
+- Parents absent from the visible snapshot remain explicit reference nodes.
+  Missing URLs are not evidence that two same-named parents are the same item.
+- Unmapped items and conflicting board labels are not silently assigned a
+  stage. Closed items are separate. Without a labeled board, the UI explains
+  its conventional label-based stage mapping rather than inventing a board.
+- Shared labels, owners and iterations describe grouping, not relationships.
+
+The map preserves the existing snapshot coverage and unreadable-source notices.
+No drag-and-drop updates, automatic stage transitions, or remote mutations are
+introduced. Use the CLI’s guarded lifecycle to change work.
+
+## Coverage and freshness
+
+Snapshot data is bounded by the original CLI query, its filters and limits.
+The dashboard is not a project-wide inventory. `/api/data` includes `query`,
+`workItemsMayBeTruncated`, and `planningHealth` alongside the existing data.
+The query/health values are null without a sync snapshot; fallback work-item
+reads are conservatively marked possibly truncated when their 100-row limit
+is reached. Counts in the UI describe displayed snapshot arrays, rather than
+cumulative SQLite table counts.
+
+Invalidation and pending refresh markers are distinct from snapshot age. A
+recent snapshot is not a remote-write precondition. Warnings beginning with
+"Could not read" describe unavailable sources; advisory warnings remain
+separate. A zero from an unreadable source must not imply absence in GitLab.
 
 ## Trust boundary
 
-The invariant from [`GITLAB-INTEGRATION.md`](GITLAB-INTEGRATION.md) holds: a
-browser never receives GitLab token material, and the browser never supplies
-the host that credentialed requests target.
-
-| Rule | Enforcement |
-| --- | --- |
-| Loopback only, no LAN bind | `startDashboard` builds `http://127.0.0.1:<port>/`; there is deliberately no `--host` bind flag. |
-| No token in any HTTP response or DOM | No response field carries token material. `redactLocalPath` strips home paths; `sanitizeDoctorReport` reduces the doctor report to booleans, enums, and statuses. |
-| No token in the browser | The browser never sends a token. Token entry stays a terminal prompt, exactly like `oflow auth login`. |
-| Host is resolved server-side | `POST /api/auth/request` accepts an action only. The host comes from the repository's Git remote via `resolveAuthHost`, the same source `oflow auth` uses. A browser-supplied host is rejected. |
-| No implicit remote calls on page load | Capability probes and API checks run only on an explicit user action. |
-| Cross-origin requests rejected | Every mutating route validates `Origin`. No CORS headers are ever set. |
-
-### Where credentialed work actually runs
-
-The dashboard process is a long-lived local process, and it resolves a token
-locally when the user explicitly asks for an API check. `doctor` and
-`resolveAuth` read the same machine-local credential store the CLI already
-uses. That is the point of the boundary: token material stays inside a
-loopback server process and the local config directory. It is never
-transmitted to the browser, never written into a response body, and never
-reachable by a remote page.
-
-The original v2 draft proposed a file-mediated `--auth-bridge` so that token
-entry would happen in a separate process. That was rejected: it added two
-files, a polling loop, and a second lifecycle for a UX that a terminal prompt
-already provides. Authentication from the browser is therefore **action-only**:
-the browser asks the server to do the same work `oflow auth login` does, and
-the user completes the token entry in their terminal.
-
-```text
-browser  POST /api/auth/request  {action: "login"|"clear"}
-              |  (action only; host resolved server-side from the Git remote)
-              v
-        dashboard process -> same credential store + probe as `oflow auth`
-              |
-              v
-        200 {action, host, activeSource, storedForHost}   (no token)
-```
-
-Because the browser cannot type a token, the Auth view tells the user to run
-`oflow auth login` in their terminal and then re-check. The server-side action
-exists for scripted and non-interactive use; it never widens what a page in
-the browser can reach.
-
-The request body is `{action: "login" | "clear"}` and nothing else. A `host`
-field in the body is rejected. Both actions resolve the host from the
-repository's Git remote, so the dashboard cannot be pointed at an arbitrary
-GitLab instance by a page that reaches the loopback port.
-
-### Cross-origin defence
-
-A loopback server is reachable by any page the user visits, so every mutating
-route validates the `Origin` header. A request with no `Origin` (the CLI) or
-with an origin equal to the server's own `http://127.0.0.1:<port>` is allowed;
-any other origin is rejected with 403. No CORS headers are set, so a foreign
-page cannot read a response even when it can send a request.
+- Bind only to `127.0.0.1`; no LAN bind option.
+- No token input, browser token storage, or token response fields.
+- Credential setup/clearing remains a terminal operation.
+- A browser cannot supply the host used by credentialed operations. The server
+  resolves it from the repository Git remote.
+- No implicit remote API calls. The explicit check/probe invokes the bounded
+  read-only doctor in the server process; credentials never reach the browser.
+- No remote mutations or arbitrary command execution routes.
+- Escape remote text centrally; outbound links accept only HTTP(S).
+- Reject foreign `Origin` headers, including on ephemeral ports. No CORS.
+- Responses use `no-store`, `nosniff`, and a self-only default CSP. Embedded
+  styles/scripts are allowed; no third-party assets are loaded.
 
 ## HTTP surface
 
-| Method | Path | Behaviour |
+| Method | Path | Behavior |
 | --- | --- | --- |
-| GET | `/` | Single-page app shell. |
-| GET | `/api/data` | Local read model: project, work items, MRs, pipelines, iterations, planning, sync history. |
-| GET | `/api/status` | Read-model status and cache age. |
-| POST | `/api/refresh` | Records a local refresh request for the CLI. Never calls GitLab. |
-| GET | `/api/capabilities` | Declarative catalog from `getCapabilities()` with probing off. No network. |
-| POST | `/api/check-api` | Runs `doctor({checkApi: true})` server-side, then returns a sanitized report. Explicit user action only. |
-| GET | `/api/auth/status` | Redacted auth status. Never a token. |
-| POST | `/api/auth/request` | `{action}` only; host resolved server-side. Rejects a supplied host. |
-| GET | `/api/plans` | Local plan lifecycle summary. |
-| GET | `/api/verification` | Repository verification status for the current tree. |
-| GET | `/api/audit` | Recent plan audit events. |
+| GET | `/` | Embedded application shell. |
+| GET | `/api/data` | Cached project, work, delivery, planning, query coverage, warnings and history. |
+| GET | `/api/status` | Read-model state, age, invalidation and refresh request. |
+| POST | `/api/refresh` | Records a local request; returns the CLI refresh instruction. No GitLab call. |
+| GET | `/api/capabilities` | Declarative catalog without probing. |
+| POST | `/api/check-api` | Explicit server-side `doctor({checkApi: true})`; sanitized results. |
+| GET | `/api/auth/status` | Credential source and redacted storage location, never a token. |
+| POST | `/api/auth/request` | `{action: "login" \| "clear"}`; returns terminal instructions with `applied: false`. A supplied `host` is rejected. |
+| GET | `/api/plans` | Local plan summaries. |
+| GET | `/api/verification` | Current local verification status. |
+| GET | `/api/audit` | Recent local audit events. |
 
-All responses set `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
-and a `default-src 'self'` content security policy.
+Auth requests do not launch a prompt, clear credentials, or create a bridge.
+Token entry and clearing use `oflow auth login` / `oflow auth clear` in the
+terminal. Doctor responses use an explicit allowlist, omit the raw remote URL,
+and redact the local root. This is not a generic sanitization promise for
+arbitrary strings in user-authored project data.
 
-## Views
+## Cross-platform and troubleshooting
 
-1. **Overview** — metrics, work items, MRs, delivery and planning, sync history.
-2. **Capabilities** — the catalog with access, state, backend, and permission,
-   plus a probe-driven run and its transport lifecycle.
-3. **Auth** — status, stored hosts, active source, and the terminal command to
-   run. No token input, ever.
-4. **Diagnostics** — the sanitized `doctor` report: per-capability status,
-   latency, transport state, and warnings.
-5. **Lifecycle** — local plans, repository verification, and audit events.
-6. **Tour** — a short capability showcase so the surface explains itself to
-   someone who has never run `oflow`.
+`--open` uses the platform browser opener and does not fail the server if the
+opener is unavailable. Open the printed URL manually in that case. `--port 0`
+selects a free port and validates browser Origin against the actual bound
+port. On WSL the printed loopback address can be forwarded by the host.
 
-## Cross-platform ergonomics
+If a view fails, check its error, rerun the suggested CLI command if appropriate,
+and reload local data. For GitLab access failures use Authentication and an
+explicit Diagnostics check. Never paste credentials into the dashboard.
 
-`--open` launches the default browser using the platform's own opener
-(`open` on macOS, `start` on Windows, `xdg-open` on Linux and WSL) and never
-fails the command if the opener is missing. On WSL the printed URL stays
-`127.0.0.1`, which WSL forwards to the Windows host.
+## Development validation
 
-## Redaction
+Run `npm test`, `npm run typecheck`, `npm run check:public`, and
+`npm pack --dry-run`. Dashboard tests cover escaped data, snapshot coverage,
+local endpoint boundaries and view behavior. Browser checks should use only
+synthetic fixtures, with desktop and mobile widths, all navigation destinations,
+filtering, empty/error states and command handoffs.
 
-`redactLocalPath` collapses a leading home directory to `~` and falls back to a
-basename for anything else. `sanitizeDoctorReport` replaces the absolute
-repository root with its redacted form and drops any secret-looking field. Both
-run on every value that crosses the HTTP boundary, so a browser never displays
-a machine-specific home directory. Both are unit-tested because the invariant
-is user-visible, not merely internal.
-| POST | `/api/refresh` | Records a local refresh request for the CLI. Never calls GitLab. |
-| GET | `/api/capabilities` | Declarative catalog from `getCapabilities()` with probing off. No network. |
-| POST | `/api/check-api` | Runs `doctor({checkApi: true})`. Explicit user action only. |
-| GET | `/api/auth/status` | Redacted auth status. Never a token. |
-| POST | `/api/auth/request` | Records a bridge request. `bridgeRequired` when no bridge. |
-| GET | `/api/plans` | Local plan lifecycle summary. |
-| GET | `/api/verification` | Repository verification status for the current tree. |
-| GET | `/api/audit` | Recent plan audit events. |
+### Guided agent handoff
 
-All responses set `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
-and a `default-src 'self'` content security policy.
-
-## Views
-
-1. **Overview** — metrics, work items, MRs, delivery and planning, sync history.
-2. **Capabilities** — the catalog with access, state, backend, and permission,
-   plus a probe-driven run and its transport lifecycle.
-3. **Auth** — status, stored hosts, active source, and the connect/clear bridge.
-4. **Diagnostics** — `doctor --check-api` results: per-capability status,
-   latency, transport state, and warnings.
-5. **Lifecycle** — local plans, repository verification, and audit events.
-6. **Guided tour** — a short capability showcase so the surface explains itself
-   to someone who has never run `oflow`.
-
-## Cross-platform ergonomics
-
-`--open` launches the default browser using the platform's own opener
-(`open` on macOS, `start` on Windows, `xdg-open` on Linux and WSL) and never
-fails the command if the opener is missing. On WSL the printed URL stays
-`127.0.0.1`, which WSL forwards to the Windows host.
-
-## Redaction
-
-`redactLocalPath` collapses a leading home directory to `~` and falls back to a
-basename for anything else. Every path that crosses the HTTP boundary is
-passed through it, so a browser never displays a machine-specific home
-directory. The helper is unit-tested because the invariant is user-visible, not
-merely internal.
+Overview includes an explicit cached-story selector and explained start, assess,
+and handoff commands. Each action states when to use it and what it returns.
+Nothing runs from the copy controls; users run commands in their repository
+terminal and share the resulting output. Assessment does not run tests and a
+handoff does not approve changes. Refresh helpers remain separately disclosed.

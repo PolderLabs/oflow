@@ -394,32 +394,70 @@ truth:
 This gives agents a useful split: refresh deliberately at session boundaries
 and mutation boundaries, then use cheap local reads while exploring and coding.
 
-### Local planning dashboard
-
-After a successful sync, run:
+### Your local workflow workspace
 
 ```bash
-oflow dashboard            # add --open to launch your default browser
-# open http://127.0.0.1:4173/
+oflow sync --refresh       # explicitly fetch a bounded GitLab snapshot
+oflow dashboard --open     # launch the local workspace in your browser
+# http://127.0.0.1:4173/ — use --port 0 to select an available port
 ```
 
-The dashboard has six views: **Overview** (the latest SQLite snapshot, work
-items, merge requests, pipelines, iterations, planning collections, and sync
-history), **Capabilities** (the catalog plus a live probe), **Auth** (token
-state only), **Diagnostics** (`doctor` results), **Lifecycle** (plans,
-verification, audit trail), and a short **Tour**.
+A redesigned dashboard puts daily work ahead of configuration: a focused
+workspace with a light canvas, dark navigation, responsive layouts, and
+clear cached-data status. No frontend install, CDN, or extra service required.
 
-It binds to `127.0.0.1` only and never sends GitLab token material to the
-browser. The Auth view cannot accept a token: token entry stays a terminal
-prompt, and the host an auth action applies to is always resolved server-side
-from your Git remote, so no page that reaches the loopback port can point it at
-another GitLab instance. Mutating routes reject a cross-origin `Origin`, and no
-CORS headers are ever sent. **Request sync** records a local request and tells
-you to run `oflow sync --refresh`; the CLI remains the explicit network
-boundary. Use `--port 0` in integrations that need an available ephemeral port.
+| View | Use it to |
+| --- | --- |
+| **Overview** | Explore an interactive Scrum work map, follow parent connections, inspect a story, and see snapshot age and attention items. |
+| **Work** | Search and filter cached stories, inspect ownership and timeboxes, and copy a story-specific CLI handoff. |
+| **Delivery** | Inspect merge requests and pipeline status, branches and links to GitLab. |
+| **Planning** | Read actual iterations, milestones, board lists and labels instead of just counts. |
+| **Lifecycle** | Review local plans, repository verification and the audit trail. |
+| **Capabilities** | Explore implemented, optional and planned features; explicitly request a capability probe. |
+| **Authentication** | Check credential source and get terminal setup instructions—never enter a token in the browser. |
+| **Diagnostics** | Explicitly run bounded, read-only API checks and inspect failures. |
+| **Tour** | Learn the context → plan → approve → apply → verify workflow. |
 
-See [`docs/DASHBOARD-V2.md`](docs/DASHBOARD-V2.md) for the full HTTP surface and
-trust model.
+**Explore the work map:** Overview lays out cached work items by the selected
+board’s label lists. Select an item to inspect its parent/children and copy a
+story command; narrow the canvas with search and iteration filters, or zoom
+out for the wider picture. Closed, unmapped and conflicting-label items stay
+explicit. Parent arrows are relationships—not blockers or transition history.
+Unresolved parents remain references, and a conventional label-based flow is
+clearly marked when there is no configured board.
+
+**Stage focus:** use the stage counts above the canvas to focus a lane without
+losing recorded parent context. Counts reflect your search and iteration filters;
+closed and unmapped items remain distinct from the ordered board stages.
+
+**Your next agent handoff:** choose a cached story to see explained, exact
+commands for starting/resuming work, assessing missing evidence, and producing
+a compact handoff brief. Copy the command, run it in your repository terminal,
+then share the output with your next agent. No command executes in the browser;
+terminal commands may read GitLab. Refresh and cached-summary tools are grouped
+under “Need a fresher starting point?”.
+
+**A typical session:** sync in the terminal, explore Overview or open Work, narrow the cached list,
+copy a story context command, and continue in your agent or terminal. Use
+Delivery for pipeline evidence and Lifecycle for local verification and plan
+state. Copying a command does not run it or approve a change.
+
+**Cached, not live.** Counts and filters describe the locally available,
+bounded snapshot—not every item in GitLab. Snapshot query/truncation metadata,
+unreadable-source warnings, invalidation, and pending refresh requests remain
+visible. Reloading a view re-reads local data; **Request sync** records a local
+request and tells you to run `oflow sync --refresh`. It does not schedule a
+background sync. After running that command, reload the view.
+
+**Local by design.** The server binds to `127.0.0.1` only. Browser requests stay
+on that loopback origin; GitLab tokens stay in the server-side credential
+store. API probes contact GitLab only after an explicit action. No dashboard
+control writes to GitLab or bypasses plan → approve → apply → verify.
+Cross-origin requests are rejected and no CORS headers are sent.
+
+See [`docs/DASHBOARD-V2.md`](docs/DASHBOARD-V2.md) for the HTTP surface,
+interaction details and trust model, and [`DESIGN.md`](DESIGN.md) for the
+maintained design contract.
 
 ## Command map
 
@@ -494,7 +532,7 @@ resumed safely.
 | Merge-request and pipeline reads | ✅ | Compact status and verification evidence |
 | `glab` fallback | ◐ Optional | Explicit GET-only diagnostics and unwrapped reads |
 | GitLab MCP | ◐ Optional | Agent-facing companion; not required by oflow |
-| Local planning dashboard | ✅ | SQLite-backed, loopback-only, six-view cockpit that never sends GitLab credentials to the browser |
+| Local planning dashboard | ✅ | SQLite-backed workflow workspace with searchable work, delivery, planning and local lifecycle evidence |
 | Copilot / VS Code handoff | ✅ | `.github/copilot-instructions.md` plus shared CLI JSON contract |
 | Merge-request writes | ✅ | Plan-backed create/update, including multiline description files |
 | Issue, label, and milestone descriptions from a file | ✅ | `--description` and `--description-file` on every plan command that writes a description |
