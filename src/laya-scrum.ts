@@ -150,3 +150,54 @@ export function describeVerificationShare(
     ? "mostly verification and evidence work"
     : "partly verification and evidence work";
 }
+
+export interface BoardSummary {
+  /** Items examined. */
+  items: number;
+  /** Items scoring at or above the construction/verification boundary. */
+  flagged: number;
+  /** Mean score, or null when there was nothing to score. */
+  mean: number | null;
+  /**
+   * Items that the measurement flags on a board that is in fact entirely
+   * construction. Measured at 5 of 16 for the default checkpoint, so a flagged
+   * count is a direction, not a measurement.
+   */
+  knownFalsePositiveFloor: string;
+}
+
+/**
+ * Summarise a board from already-scored items.
+ *
+ * A board figure is only useful comparatively -- this board against last
+ * sprint's -- because the flagged count carries a measured false-positive
+ * floor even when no item is genuinely verification work. The floor is
+ * reported alongside the number so a reader cannot quote the count alone.
+ */
+export function summariseBoard(scores: number[]): BoardSummary {
+  const items = scores.length;
+  if (items === 0) {
+    return { items: 0, flagged: 0, mean: null, knownFalsePositiveFloor: "no items" };
+  }
+  const flagged = scores.filter((score) => score >= CONSTRUCTION_MAX).length;
+  const mean = scores.reduce((total, score) => total + score, 0) / items;
+  return {
+    items,
+    flagged,
+    mean,
+    knownFalsePositiveFloor: "about 5 in 16 on a board with no verification work",
+  };
+}
+
+/**
+ * Render a board summary as one advisory line, or null when there is nothing
+ * worth saying. Comparative by design: the number is only meaningful next to
+ * another board measured the same way.
+ */
+export function describeBoard(summary: BoardSummary): string | null {
+  if (summary.items === 0) return null;
+  const share = Math.round((summary.flagged / summary.items) * 100);
+  return `${summary.flagged} of ${summary.items} items read as verification-heavy ` +
+    `(${share}%); treat that as a direction, not a count -- ` +
+    `${summary.knownFalsePositiveFloor} scores the same way.`;
+}

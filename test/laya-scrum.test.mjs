@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  summariseBoard,
+  describeBoard,
   SCRUM_QUESTIONS,
   VERIFICATION_SHARE,
   readVerificationShare,
@@ -115,4 +117,33 @@ test("the uncertainty margin covers one measured miss and not the other", () => 
   const clear = readVerificationShare(score(1.16, "1"));
   assert.equal(clear.band, "construction");
   assert.equal(clear.uncertain, false);
+});
+
+// A board summary is the one aggregation the measurements support, and only as
+// a direction: a pure-construction board still flags 5 of 16 items on the
+// default checkpoint, so the floor must travel with the number.
+test("a board summary counts flagged items and reports the false-positive floor", () => {
+  // 0/6, 3/6, 6/6 -- the measured board ladder.
+  const mixed = summariseBoard([1.35, 1.30, 1.40, 1.60, 1.70, 1.90]);
+  assert.equal(mixed.items, 6);
+  assert.equal(mixed.flagged, 3);
+  assert.ok(mixed.mean > 1.4 && mixed.mean < 1.6);
+  const text = describeBoard(mixed);
+  assert.match(text, /3 of 6/);
+  // The floor is the whole point: without it the count reads as a measurement.
+  assert.match(text, /direction, not a count/);
+  assert.match(text, /5 in 16/);
+});
+
+test("a board with nothing to score says nothing", () => {
+  assert.equal(describeBoard(summariseBoard([])), null);
+  assert.equal(summariseBoard([]).items, 0);
+});
+
+test("the board count is monotone as verification items are added", () => {
+  // The measured ladder, asserted so a regression in the boundary is visible.
+  const con = [1.2, 1.3, 1.4];
+  const ver = [1.7, 1.8, 1.9];
+  const counts = [0, 1, 2, 3].map((k) => summariseBoard([...con, ...ver.slice(0, k)]).flagged);
+  assert.deepEqual(counts, [0, 1, 2, 3]);
 });

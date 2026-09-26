@@ -459,6 +459,60 @@ No checkpoint changes the verdict. A grading primitive that scores 77 words
 about nothing above a test assertion must never sit near `verify`, and switching
 checkpoints makes that worse, not better.
 
+## The one place it aggregates: a sprint board
+
+Every shipped result scores a single item. Scrum planning acts on a board, so
+the question is whether the signal survives aggregation -- and a board-level
+claim is only worth anything if the number tracks the board's actual mix.
+
+It does, on the current default. Three boards built from the same item pool:
+
+| board | mean score | items at or above the 1.5 edge |
+|---|---:|---:|
+| all construction | 1.35 | **0 / 6** |
+| mixed | 1.63 | **3 / 6** |
+| all verification | 1.85 | **6 / 6** |
+
+The ordering also holds on all three checkpoints, though the separation
+shrinks on the others (+0.51 typed-decisions, +0.68 english, +0.27
+multilingual -- and multilingual has every item above the edge regardless of
+mix, which is the same defect already recorded).
+
+### The hard case, one item apart
+
+Clean separations are easy; real boards are not. Boards differing by a single
+item:
+
+| board | flagged |
+|---|---:|
+| 4 construction, 4 verification | 4/8 |
+| 5 construction, 3 verification | 3/8 |
+| 6 construction, 2 verification | 2/8 |
+| 7 construction, 1 verification | 2/8 |
+| 8 construction, 0 verification | 1/8 |
+
+Monotone across the range, and a single verification item moves the count
+(7 construction: 1/8; plus one verify: 2/8; plus two: 3/8). That is the property
+a planning summary needs.
+
+### The limit, stated plainly
+
+A **pure-construction** board still flags items:
+
+| checkpoint | flagged on a 16-item all-construction board | max score |
+|---|---:|---:|
+| typed-decisions (default) | **5 / 16** | 1.69 |
+| english | 1 / 16 | 1.62 |
+
+So a board figure is a rough indicator, not a measurement. The honest reading
+is a *direction* -- "this board leans verification-heavy" -- and the correct
+way to use it is comparative: this board against last sprint's, not an absolute
+claim about a review burden.
+
+That is why nothing is wired into `sync` or the dashboard yet. A board summary
+that is right in direction and wrong by a third in magnitude is a good
+conversation starter and a bad number to put on a wall.
+
 ## How others are using it
 
 Three public integrations, read to see whether the patterns here are unusual or
