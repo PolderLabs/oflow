@@ -512,6 +512,14 @@ not assume the warm-agent figure: inside one already-loaded Python agent the
 same comparison is 1.81 s against 1.04 s, a mere 1.75x. The larger win is not
 the forward pass, it is **one process per board instead of one per item**.
 
+`summariseBoardText` adds nothing measurable to that: three alternating runs
+gave 4.20 s, 4.29 s and 4.20 s for the summary against 4.24 s, 4.26 s and
+4.25 s for a bare batched call, i.e. the same. An earlier single reading of
+8.28 s did not reproduce, and its cause was not established -- a cold-engine
+control ran three items in 3.69 s, which is faster per item than the warm
+figure and so does not support a cold-start explanation. Recorded as an open
+observation rather than a conclusion.
+
 Bit-identical matters more than fast here. Given the false-positive floor this
 summary already has to report, a batching optimisation that quietly moved a
 score would be worse than no optimisation at all. `runCustomQuestionsBatch` and `summariseBoardText` use it; the
