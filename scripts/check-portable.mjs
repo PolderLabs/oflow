@@ -62,6 +62,37 @@ for (const name of PORTABLE_MODULES) {
   }
 }
 
+// A deleted source leaves its compiled output behind, because tsc never
+// removes it -- and dist ships in the published tarball. That is how a module
+// with no source behind it reached a pack listing before.
+const distDir = join(here, "..", "dist");
+let stale = [];
+try {
+  const built = new Set(
+    readdirSync(distDir)
+      .filter((file) => file.endsWith(".js"))
+      .map((file) => file.replace(/\.js$/, "")),
+  );
+  const sources = new Set(
+    readdirSync(srcDir)
+      .filter((file) => file.endsWith(".ts"))
+      .map((file) => file.replace(/\.ts$/, "")),
+  );
+  stale = [...built].filter((name) => !sources.has(name));
+} catch {
+  // No dist yet (typecheck-only run). Nothing to check.
+}
+
+if (stale.length > 0) {
+  failures += 1;
+  process.stderr.write(
+    `FAIL dist has ${stale.length} module(s) with no matching src/*.ts: ${stale.join(", ")}\n` +
+    "     npm run build now cleans dist first; run it before packing.\n",
+  );
+} else {
+  process.stdout.write("ok   dist matches src: no orphaned build output\n");
+}
+
 if (failures > 0) {
   process.stderr.write(`\n${failures} module(s) are not portable\n`);
   process.exit(1);

@@ -331,30 +331,56 @@ permission-aware, and independently verified.
 
 ### Experimental — local decision-engine triage (not wired in)
 
-- [x] `src/laya-triage.ts`: an advisory, dependency-free wrapper around a local
-  decision engine, with 12 tests and five mutation-verified guarantees
-- [x] Calibration measured and recorded in [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md)
-- [x] External integrations researched; upstream ships an MCP server that is
-  the cleaner agent-facing path (see the open question below)
-- [ ] Do **not** wire a rubric grader near `verify`: `LayaEvaluator` grades
-  verbosity rather than content, so it would accept confident prose and reject
-  real test evidence
-- [x] `assess --triage`: an opt-in advisory verification-share hint that never
-  becomes a blocker, a warning, or a status change
-- [x] `src/laya-runner.ts`: a portable engine wrapper (text in, answers out, no
-  oflow or GitLab types, question set passed on stdin) plus the calibrated
-  question set in `src/laya-scrum.ts`
+- [x] `src/laya-triage.ts` — advisory wrapper over the stock CLI questions
+- [x] `src/laya-runner.ts` — portable engine wrapper: text in, answers out, no
+  oflow or GitLab types, question set on stdin. 15 tests
+- [x] `src/laya-scrum.ts` — the one question that survived calibration, plus a
+  board summary that is comparative by design. 13 tests
+- [x] `assess --triage` — opt-in advisory hint that can never become a blocker,
+  a warning, or a status change. 4 tests
+- [x] Portability proven by extraction into an empty package, and enforced in CI
+  by `npm run check:portable` (also an AGENTS.md handoff gate)
+- [x] Calibration, nine negative results, checkpoint comparison, MCP cost
+  measurement, and version provenance all recorded in
+  [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md)
 - [ ] Decide whether `oflow-workflow` should gain an `exports` map so these
   modules are importable by another planning tool. That makes the package a
-  library as well as a CLI, so it is a packaging decision, not a detail
+  library as well as a CLI, so it is a packaging decision, not a detail. The
+  code is proven liftable either way
 
-Measured, not assumed: the engine's difficulty score correlates 0.82 with input
-word count, and on equal-length trivial-vs-hard pairs it separated them by
-+0.02, -0.08, and +0.75. It is close to a length meter, so the module exposes
-no difficulty band and nothing may branch on its score. Its domain guess is
-usable as a weak hint. Wiring this into the plan lifecycle needs a calibrated
-checkpoint that clears the equal-length control first; the full reasoning and
-the mutation table live in the linked document.
+**A standing prohibition, not a task.** No rubric grader may be wired near
+`verify`. `LayaEvaluator` grades verbosity rather than content -- empty prose
+outscores real test evidence on all three checkpoints, and one of them calls
+genuine assertions "contradicted" -- so it would accept confident prose and
+reject real tests, failing in the direction that makes a verification tool
+actively harmful. This is recorded here as a constraint, deliberately outside
+the checklist so it cannot be closed as if it were work to do.
+
+**The current state in one paragraph.** Ten capabilities were probed; one
+survived. The signal is a custom question -- how much of a work item is
+checking existing behaviour rather than writing new -- which clears the
+equal-length control at r=+0.022 where the engine's stock difficulty score
+fails it at 0.82. It answers on a single item via `assess --triage` and
+aggregates to a board, where the flagged count is a *direction* rather than a
+measurement: a pure-construction board still flags 5 of 16 items on the default
+checkpoint, and every figure carries that floor.
+
+Three decisions are load-bearing and all three are recorded in the linked
+document with the numbers behind them:
+
+- **The default checkpoint is `typed-decisions`**, chosen for 0.75 recall at
+  0.94 precision. `english` is safer but says nothing about two thirds of the
+  work it exists to surface; `multilingual` looked best on the two items it was
+  chosen for and prints a false positive on 15 of 20 construction items.
+- **The stock difficulty score is dropped** as a length meter, and no difficulty
+  band exists in the code.
+- **A rubric grader stays out of `verify`**, for the reason above.
+
+Nine other capabilities were measured and dropped, including prompt-injection
+screening, which looked clean on crafted examples and failed on real work-item
+prose. The reasoning, the numbers, and the mutation table are in
+[`LAYA-TRIAGE.md`](LAYA-TRIAGE.md), so the next reader does not re-derive
+them.
 
 ### Friction log reconciliation — 2026-09-26
 

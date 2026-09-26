@@ -13,7 +13,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "check:public": "node scripts/check-public-content.mjs",
     "test": "npm run check:public && npm run check:portable && npm run build && node --test test/*.test.mjs",
