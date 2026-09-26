@@ -158,3 +158,46 @@ test("topChoice is null for a missing or noul answer", () => {
   assert.equal(topChoice({ a: { type: "noul", noul: 0.5 } }, "a"), null);
   assert.equal(topChoice({ a: { type: "score", score: 1, top: "2", probabilities: {} } }, "a"), "2");
 });
+
+// Three checkpoints ship and they disagree: multilingual reads "gating" and
+// "ordering" as verification where the default reads them as construction, but
+// separates matched-length pairs far less cleanly. The choice must reach the
+// engine through the payload rather than being interpolated into the script.
+test("the checkpoint choice reaches the engine through the payload", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "oflow-runner-"));
+  try {
+    // A python stub that fails outright unless the checkpoint arrives on stdin,
+    // so an interpolation-based implementation cannot pass this.
+    const python = stub(dir, "assert-cp", [
+      "#!/usr/bin/env python3",
+      "import json, sys",
+      "p = json.loads(sys.stdin.read())",
+      "if p.get('checkpoint') != 'multilingual':",
+      "    sys.exit('checkpoint not delivered')",
+      "print(json.dumps({'answers': {'q': {'type': 'noul', 'noul': 0.4}}}))",
+    ].join("\n"));
+    const answers = await runCustomQuestions("x", { q: { type: "noul", instructions: "y" } },
+      { python, checkpoint: "multilingual" });
+    assert.equal(answers.q.noul, 0.4);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the default checkpoint is english", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "oflow-runner-"));
+  try {
+    const python = stub(dir, "assert-default", [
+      "#!/usr/bin/env python3",
+      "import json, sys",
+      "p = json.loads(sys.stdin.read())",
+      "if p.get('checkpoint') != 'english':",
+      "    sys.exit('default should be english, got ' + str(p.get('checkpoint')))",
+      "print(json.dumps({'answers': {'q': {'type': 'noul', 'noul': 0.1}}}))",
+    ].join("\n"));
+    const answers = await runCustomQuestions("x", { q: { type: "noul", instructions: "y" } }, { python });
+    assert.equal(answers.q.noul, 0.1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

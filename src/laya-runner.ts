@@ -81,9 +81,20 @@ export type LayaAnswer =
 
 export type LayaAnswers = Record<string, LayaAnswer>;
 
+/**
+ * Which checkpoint to answer with. Three ship and they behave differently:
+ * `multilingual` reads domain vocabulary the default misses -- "gating",
+ * "ordering" -- but separates matched-length pairs far less cleanly, while
+ * `typed-decisions` sits between the two. None is uniformly better, so the
+ * default is the one calibrated most thoroughly here.
+ */
+export type LayaCheckpoint = "english" | "multilingual" | "typed-decisions";
+
 export interface RunnerOptions {
   /** Override the `laya` executable. Defaults to $OFLOW_LAYA_BIN, then PATH. */
   executable?: string;
+  /** Which checkpoint to use. Defaults to `english`. */
+  checkpoint?: LayaCheckpoint;
   /** Override the Python interpreter used for the custom-question path. */
   python?: string;
   /** Milliseconds before the probe is abandoned. */
@@ -210,7 +221,12 @@ export async function runCustomQuestions(
 import json, sys
 import laya
 payload = json.loads(sys.stdin.read())
-agent = laya.Agent(device="cpu")
+subfolder = payload.get("checkpoint")
+agent = laya.Agent(
+    model_id_or_path="convaiinnovations/laya",
+    subfolder=None if subfolder == "english" else subfolder,
+    device="cpu",
+)
 result = agent.predict({"request": payload["text"]}, payload["questions"])
 sys.stdout.write(json.dumps(result.get("answers", {})))
 `;
@@ -218,7 +234,11 @@ sys.stdout.write(json.dumps(result.get("answers", {})))
     const stdout = await runWithInput(
       python,
       ["-c", script],
-      JSON.stringify({ text: trimmed, questions }),
+      JSON.stringify({
+        text: trimmed,
+        questions,
+        checkpoint: options.checkpoint ?? "english",
+      }),
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     );
     return parseAnswers(stdout);

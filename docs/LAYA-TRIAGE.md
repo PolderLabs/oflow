@@ -292,6 +292,53 @@ one is worse than no signal, and it is the reason no evaluator surface is
 shipped. A grading primitive that can be gamed by writing 77 words about
 nothing must never sit anywhere near a verify gate.
 
+## The model axis: three checkpoints, one usable surface
+
+Every negative result above is a property of *one* checkpoint. Three ship --
+`english` (the default), `multilingual`, and `typed-decisions` -- and only the
+first has been tested. The RuntimeWarning that disowns the confidences names a
+specific entry, `choice:11`, so the defect may not be shared.
+
+### `multilingual` fixes the domain misses
+
+The two items the kept question gets wrong, across all three checkpoints:
+
+| checkpoint | gating | ordering | control separation |
+|---|---:|---:|---|
+| english (current) | 1.16 | 1.47 | **+1.001** |
+| **multilingual** | **2.43** | **2.14** | +0.315 |
+| typed-decisions | 1.63 | 1.70 | +0.592 |
+
+`multilingual` puts both firmly in the verification band, where english leaves
+them in construction. That is the single most interesting result in the whole
+investigation.
+
+It is also the weaker signal: matched-length control separation falls from
++1.001 to +0.315. So it trades a much stronger core signal for correctly reading
+two domain items. Whether that is a good trade depends on which failure hurts
+more, and that is a judgement about how oflow uses the hint -- not something the
+numbers settle. It stays unadopted until someone decides that deliberately.
+
+### The evaluator's verbosity trap is universal
+
+A first cross-checkpoint run appeared to show all three handling the empty-prose
+case correctly. That was an artefact: the placeholder text used contained the
+words "names no evidence at all", so it described its own insufficiency. Re-run
+with the original 77-word paragraph that demonstrates nothing:
+
+| checkpoint | real evidence | empty prose |
+|---|---|---|
+| english | sufficient, p=0.66 | **sufficient, p=0.81** |
+| multilingual | **contradicted, p=0.006** | sufficient, p=0.76 |
+| typed-decisions | sufficient, p=0.70 | **sufficient, p=0.75** |
+
+Empty prose outscores real evidence on **all three** checkpoints. `multilingual`
+is worse still: it calls genuine test evidence *contradicted* at p=0.006.
+
+No checkpoint changes the verdict. A grading primitive that scores 77 words
+about nothing above a test assertion must never sit near `verify`, and switching
+checkpoints makes that worse, not better.
+
 ## How others are using it
 
 Three public integrations, read to see whether the patterns here are unusual or
