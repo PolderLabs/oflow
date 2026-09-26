@@ -263,9 +263,36 @@ never calibrated on.
 
 Neither edge is tuned here. Moving them would be fitting four data points, and
 the honest statement is narrower: **on the input the shipping command actually
-sends, the band edges and uncertainty margin are uncalibrated.** The per-item
-number should be read as a weak indication on any single story, and the board
-summary carries the same caveat with the word counts that make it checkable.
+sends, the band edges and uncertainty margin are uncalibrated.**
+
+### Measured properly, and the path was then withdrawn
+
+Four stories were a hint, not a rate. Measuring twenty-four, assembled the same
+way `triageAssessment` assembles them:
+
+| class | n | scores | mean | what a reader is told |
+|---|---:|---|---:|---|
+| construction | 12 | 1.63 – 2.02 | 1.80 | **flagged 9 times — 75%** |
+| verification | 12 | 1.70 – 2.23 | 2.01 | surfaced 8 times — 67% |
+
+**Precision 0.47.** Every construction story scored above the 1.5 edge that
+triggers speech, and the highest-scoring one was "Add iteration listing" —
+plainly new work. The between-class gap is **0.21** against a within-class
+spread of **0.39**: the classes overlap so heavily that no separator exists.
+Moving an edge cannot help, because construction already sits above it.
+
+**So `assess --triage` is withdrawn.** It returns nothing unless
+`OFLOW_LAYA_TRIAGE_UNCALIBRATED=1` is set, which exists so the measurement can
+still be reproduced. The module, the question set and every finding here stay;
+what is withdrawn is the claim that the per-item number is a usable weak hint.
+It is not — on this input it is wrong three times in four.
+
+The board summary keeps its own weaker claim, which the measurements do support:
+a direction, a measured false-positive floor, and the word counts that let a
+reader judge comparability.
+
+Recalibrating means re-fitting the question on real story text, not moving a
+threshold. Until that is done with a held-out set, the per-item path stays off.
 
 ## The signal is asymmetric, and short titles are its weakness
 <!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->

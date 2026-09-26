@@ -456,14 +456,21 @@ Use server-side filters to keep responses small:
 
 ### Optional: verification-share hint
 
-`oflow assess --story <iid> --triage` adds one advisory line about how much of
-a story is checking existing behaviour and evidence rather than writing new
-behaviour. That is a review-effort signal rather than a size estimate: a story
-that is mostly verification costs a reviewer far more attention than its length
-suggests. On mixed-length prose it is partly length-sensitive, so treat a high
-score as suggestive and compare like with like; on equal-length inputs it
-discriminates reliably. The measurements are in
-[docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md).
+`oflow assess --story <iid> --triage` would add one advisory line about how much
+of a story is checking existing behaviour rather than building new behaviour.
+
+**It currently returns nothing, and that is deliberate.** Measured on 24 stories
+built the way the command assembles them -- title plus a description carrying
+acceptance criteria -- the question scored construction work 1.63-2.02 and
+verification work 1.70-2.23. Every construction story landed above the
+threshold, giving 75% false alarms and 0.47 precision. The two classes overlap
+too far to separate by moving the threshold, so the question needs
+recalibrating on real story text first.
+
+Set `OFLOW_LAYA_TRIAGE_UNCALIBRATED=1` to force the old behaviour and
+reproduce the measurement. `--triage` remains available and harmless, and the
+assess output is unchanged either way. Full reasoning and every rejected
+alternative are in [docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md).
 
 It is off by default and depends on nothing. Without a local
 [Laya](https://github.com/NandhaKishorM/laya) install it simply returns

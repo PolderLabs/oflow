@@ -25,6 +25,16 @@ async function triageAssessment(
   if (value === null) return undefined;
   const note = describeVerificationShare(value);
   if (note === null) return undefined;
+  // Refused on story-shaped input. Measured on 24 stories built the way this
+  // function assembles them -- title plus a description with acceptance
+  // criteria -- the question put construction work at 1.63-2.02 and
+  // verification work at 1.70-2.23: 75% false alarms, precision 0.47. Every
+  // construction story sat above the 1.5 edge, and the highest-scoring one was
+  // "Add iteration listing", which is plainly new work. The classes overlap
+  // too far to separate by moving an edge, so the band is not the problem and
+  // no threshold would fix this. The question needs recalibrating on real
+  // story text before this path says anything.
+  if (process.env.OFLOW_LAYA_TRIAGE_UNCALIBRATED !== "1") return undefined;
   return {
     verificationShare: { score: value.score, band: value.band, uncertain: value.uncertain },
     note: note + " (advisory; verification-share estimate from an uncalibrated checkpoint)",
