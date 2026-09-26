@@ -190,3 +190,16 @@ test("the batch path scores a board the same way as one call per item", { skip: 
     }
   }
 });
+
+// The module does NOT length-adjust, deliberately. Subtracting a length-only
+// fit removes the correlation (r -> -0.000) and makes the board summary
+// worse: on a realistic board it tripled false positives (1 -> 3) and
+// introduced a miss. See docs/LAYA-TRIAGE.md. This pins the choice, so a
+// future "improvement" has to confront the measurement rather than the idea.
+test("the board summary reports raw scores rather than length-adjusted ones", () => {
+  // A long construction item and a short verification item. Length-adjusted
+  // scoring would drag the long one down and lift the short one up.
+  const summary = summariseBoard([2.04, 0.85]);
+  assert.equal(summary.flagged, 1, "only the genuinely verification item counts");
+  assert.ok(summary.mean > 1.0 && summary.mean < 2.0, "mean is of the raw scores");
+});

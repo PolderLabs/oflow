@@ -119,6 +119,21 @@ The practical consequence: on real work-item text of mixed length, treat a
 high score as *suggestive* rather than established, and compare like with like
 in length when the number matters. On equal-length inputs it behaves.
 
+**Length-adjusting the summary was tried and rejected.** Subtracting a
+length-only linear fit from each score removes the correlation exactly as
+intended (`r` → −0.000 on both sets) and makes the summary worse:
+
+| set | | raw | length-adjusted |
+|---|---|---:|---:|
+| balanced ten | false positives / missed | 4 / 0 | **3 / 0** |
+| realistic sprint board | false positives / missed | **1 / 0** | **3 / 1** |
+
+On a real board the adjustment triples false positives and introduces a miss,
+so the length signal is carrying real information about which items are
+verification work rather than only counting words. The advice stays
+like-for-like comparison, and the flag rate is reported with its measured
+false-positive floor rather than corrected after the fact.
+
 One caveat found while reading the table: the engine's score and its
 highest-probability *bucket* can disagree. "Confirm the helper output matches
 expectations" scored **1.90** — above the 1.5 band edge — while its top
