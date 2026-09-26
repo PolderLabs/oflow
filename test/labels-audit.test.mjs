@@ -274,3 +274,29 @@ test("a page cap smaller than the listing reports truncation", async () => {
   assert.equal(result.mayBeTruncated, true);
   assert.ok(result.warnings.some((w) => /truncated/i.test(w)));
 });
+
+// The default cap is 20 pages, and the CLI never raises it, so a project with
+// more than 2000 work items stops early. That stop must never read as a
+// complete listing. The stub always claims another page, so the loop can only
+// end at the cap -- this is the case that would otherwise report a partial
+// count as a total.
+test("a listing longer than the page cap is reported truncated, not complete", async () => {
+  let calls = 0;
+  const client = {
+    listIssuesPage: async (_p, _s, _l, _f, pageNumber) => {
+      calls += 1;
+      return page([issue(pageNumber, ["bug"])], true);
+    },
+  };
+  const result = await auditLabels({
+    host: "gitlab.example.test",
+    projectPath: "team/project",
+    maxPages: 1,
+    client,
+    generatedAt: AT,
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.scanned, 1);
+  assert.equal(result.mayBeTruncated, true);
+  assert.ok(result.warnings.some((w) => /truncated/i.test(w)));
+});
