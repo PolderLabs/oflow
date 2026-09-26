@@ -300,3 +300,33 @@ test("an unreadable item leaves the range describing only the scored items", { s
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// The band edges and the 0.2 margin were fitted on short hand-written items.
+// On the input `assess --triage` actually sends -- title plus a full
+// description including acceptance criteria -- two of four realistic stories
+// come out wrong: a 2.36 verification story is silenced by the margin, and a
+// 1.82 construction story is described as verification work.
+//
+// This pins those measurements. It is a characterization test, not a
+// correctness claim: if the edges are ever re-fitted on real input, update it
+// with the new numbers rather than deleting the expectation.
+test("the band edges are uncalibrated on realistic story-shaped input", () => {
+  const at = (score) => readVerificationShare({ verificationShare: { type: "score", score, probabilities: {} } });
+
+  // 0.06 from the 2.3 edge: silenced, though it is the clearest verification
+  // item measured.
+  const clearVerification = at(2.36);
+  assert.equal(clearVerification.band, "verification");
+  assert.equal(clearVerification.uncertain, true);
+  assert.equal(describeVerificationShare(clearVerification), null);
+
+  // Clear of any edge, yet constructive: described as verification work.
+  const construction = at(1.82);
+  assert.equal(construction.band, "mixed");
+  assert.equal(construction.uncertain, false);
+  assert.match(describeVerificationShare(construction), /verification/);
+
+  // The two that come out right, so the ratio is visible: two of four.
+  assert.equal(describeVerificationShare(at(2.09)), "partly verification and evidence work");
+  assert.equal(describeVerificationShare(at(1.67)), null);
+});

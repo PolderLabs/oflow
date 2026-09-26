@@ -233,6 +233,40 @@ disowned, so the module reports `confidence: 0` and callers must not gate on it.
 - **`src/laya-scrum.ts`** — the calibrated question set and the band reader, with
   the calibration table in its header.
 
+## The shipping path's own input was never measured
+
+`assess --triage` sends the story title joined to its full description, which
+includes the acceptance-criteria block. Every calibration in this document used
+short titles or hand-written one-liners. The input the command actually
+produces had not been measured, so it was — on four stories shaped like real
+ones:
+
+| story | words | score | band | what a reader is told |
+|---|---:|---:|---|---|
+| verification, long | 107 | 2.36 | verification | **nothing** |
+| verification, short | 41 | 2.09 | mixed | "partly verification work" |
+| construction, short | 37 | 1.82 | mixed | **"partly verification work"** |
+| construction, long | 97 | 1.67 | mixed | nothing |
+
+**Two of the four are handled wrongly, and both errors are structural.**
+
+- The clearest verification story — the one the signal exists to surface — sits
+  0.06 from the 2.3 edge, so the uncertainty margin silences it.
+- A plainly constructive story scores 1.82, clear of any edge, so it is
+  described as verification work.
+
+Separation itself *improves* with length here (+0.27 short, +0.69 long), which
+is the opposite of the board finding. The band edges and the 0.2 margin were
+fitted on short hand-written items and do not hold on realistic input: real
+descriptions carry acceptance criteria, which is vocabulary the question was
+never calibrated on.
+
+Neither edge is tuned here. Moving them would be fitting four data points, and
+the honest statement is narrower: **on the input the shipping command actually
+sends, the band edges and uncertainty margin are uncalibrated.** The per-item
+number should be read as a weak indication on any single story, and the board
+summary carries the same caveat with the word counts that make it checkable.
+
 ## The signal is asymmetric, and short titles are its weakness
 <!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 
