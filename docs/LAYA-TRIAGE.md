@@ -497,19 +497,24 @@ a planning summary needs.
 
 ### Batching makes it practical
 
-A board is many items, and the single-item path costs one engine call each.
-`predict_batch` packs many states into shared forward passes. On a ten-item
-board:
+A board is many items, and oflow's runner spawns a fresh interpreter per call,
+so a ten-item board meant ten process starts and ten model loads. `predict_batch`
+packs many states into shared forward passes. Measured **through oflow's own
+runner**, ten items, real engine, same checkpoint:
 
-| | time | per item |
+| | wall clock | per item |
 |---|---:|---:|
-| one call per item | 1.81 s | 0.18 s |
-| `predict_batch` | 1.04 s | 0.10 s |
+| ten sequential single calls | **34.37 s** | 3.44 s |
+| one batched call | **4.33 s** | 0.43 s |
 
-**1.75x, with bit-identical scores.** Every one of the ten matched to the
-digit, so this is a cost win rather than a trade of accuracy for speed -- the
-only kind worth having, given the false-positive floor the summary already has
-to report. `runCustomQuestionsBatch` and `summariseBoardText` use it; the
+**7.93x, and all ten scores bit-identical.** A reader who only sees this must
+not assume the warm-agent figure: inside one already-loaded Python agent the
+same comparison is 1.81 s against 1.04 s, a mere 1.75x. The larger win is not
+the forward pass, it is **one process per board instead of one per item**.
+
+Bit-identical matters more than fast here. Given the false-positive floor this
+summary already has to report, a batching optimisation that quietly moved a
+score would be worse than no optimisation at all. `runCustomQuestionsBatch` and `summariseBoardText` use it; the
 single-item path is unchanged and still serves `assess --triage`.
 
 Two details that are load-bearing rather than cosmetic: an item the engine

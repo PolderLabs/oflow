@@ -149,9 +149,14 @@ test("the board count is monotone as verification items are added", () => {
   assert.deepEqual(counts, [0, 1, 2, 3]);
 });
 
-// The batch path exists because a board is many items: measured at 1.75x
-// faster than one call per item with bit-identical scores, so the difference
-// is cost rather than accuracy.
+// The batch path exists because a board is many items, and oflow's runner
+// spawns a fresh interpreter per call. Measured through the runner, ten items,
+// real engine: 34.37s for ten sequential single calls against 4.33s for one
+// batched call -- 7.93x, with all ten scores bit-identical. (Inside one
+// already-warm agent the same comparison is only 1.81s vs 1.04s, so the win is
+// one process per board rather than one per item, not the forward pass.) If a
+// future change regresses that, these tests still hold correctness; the timing
+// itself is recorded in docs/LAYA-TRIAGE.md.
 test("an absent engine yields no board summary rather than an empty one", async () => {
   // "no reading" and "nothing is verification work" must never look alike.
   assert.equal(await summariseBoardText(["a", "b"], { python: "/no/such/python" }), null);
