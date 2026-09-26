@@ -39,11 +39,11 @@ without the experiment.
 A local decision engine, entirely optional. Both scoring paths are **withdrawn on measurement**: `assess --triage` at 75%
 false alarms on story-shaped input, and `summariseBoardText` at 100%.
 
-Fourteen further capabilities were rejected outright, among them a label
+[Ff]ifteen further capabilities were rejected outright, among them a label
 shortlister that scored *below* chance, and a phishing screen whose worst
 false alarm -- "Approval is required before apply" -- outranks three of the
 five real attacks it was meant to catch. Counting the two withdrawn paths as
-well, that is sixteen measured and not shipped — the fourteen rejections above, plus the two withdrawn paths. A per-item checkpoint router and a version upgrade are among the fourteen, and both were expected to help. The portable runner, question
+well, that is seventeen measured and not shipped — the fifteen rejections above, plus the two withdrawn paths. A per-item checkpoint router, a version upgrade and a moderation preset are among the fifteen, and each was expected to help. The portable runner, question
 set and full measurement record remain, and
 [LAYA-TRIAGE.md](LAYA-TRIAGE.md) carries the canonical numbered list every
 other count here is derived from. The measurements — including the ones

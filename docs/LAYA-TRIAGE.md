@@ -32,8 +32,9 @@ table of 7 rows alongside prose claiming twelve, and the two disagreed.
 | 14 | `multilingual` checkpoint as default | rejected | 15 of 20 construction items falsely flagged |
 | 15 | `LayaRouter` / per-item checkpoint selection | rejected | on a German board neither checkpoint separates: typed-decisions 7 of 8 construction items falsely flagged, multilingual 8 of 8 |
 | 16 | a laya version upgrade | rejected | 0.3.20 is byte-identical to 0.3.10: same RuntimeWarning, same score, same confidence |
+| 17 | `moderation_questions` (toxicity on issue text) | rejected | separated on a first benign set, then inverted: blunt technical criticism scored 0.38-0.45 against 0.38 for real abuse |
 
-**Sixteen measured and not shipped: 2 withdrawn after shipping, 14 rejected
+**Seventeen measured and not shipped: 2 withdrawn after shipping, 15 rejected
 outright.** One capability is kept and wired — the readability precondition,
 which is not a classifier. The underlying engine is judged on every item above
 with the input each figure was measured on, stated in the same row.
@@ -953,6 +954,41 @@ That is why nothing is wired into `sync` or the dashboard yet. A board summary
 that is right in direction and wrong by a third in magnitude is a good
 conversation starter and a bad number to put on a wall.
 
+## The moderation questions looked right, and were not
+
+`moderation_questions` is a preset I had judged out of scope — it asks about a
+`post`, and oflow holds issue descriptions rather than social posts. But oflow
+does hold text written by people outside the team, so out of scope was an
+assumption rather than a measurement.
+
+On five blunt-but-legitimate notes and three plainly abusive ones, all four
+questions separated with margin: toxic benign max 0.25 against abusive min
+0.38, harassment 0.20 against 0.52, threat 0.24 against 0.60, spam 0.12
+against 0.42. That is the first clean result of the whole investigation.
+
+Then the benign set got harder — five more blunt technical notes, which is what
+real review threads actually contain:
+
+| text | toxic |
+|---|---:|
+| "Whoever wrote this deserves a stern talking to; it is slow and wrong." | **0.44** |
+| "Absolutely ridiculous that verify passes on a branch with no remote." | **0.45** |
+| "This is nonsense, the whole plan is backwards and nobody reviewed it." | **0.38** |
+| abusive min ("you are an idiot and a moron, go kill yourself") | **0.38** |
+
+**Margin −0.08. It does not separate.** Blunt technical disagreement is scored
+as abuse, which is exactly the judgement oflow must not automate: a reviewer who
+is told their own criticism is "toxic" stops making it, or argues instead of
+fixing. The first set looked right because the criticism in it was mild; the
+signal tracks *how forcefully* something is put, not whether it targets a
+person. A moderation preset tuned for social posts answers a different question
+than an issue thread asks.
+
+`laya.router.analyse`, the last unrun name in the surface, turned out to return
+language metadata rather than a routing decision — `script`, `language`,
+`is_english`, `diacritic_rate`. The `is_english` field is the readability
+precondition that is already wired, and nothing else in it is new.
+
 ## Two things checked after the fourteen: the version, and the router
 
 Every measurement above was made on **laya 0.3.10**. PyPI serves **0.3.20**,
@@ -977,7 +1013,7 @@ looked sound: `multilingual` was rejected as a *global* default on English
 items, which is exactly the case you would never route to it. The English
 checkpoint is only usable on English text, so for a German project a two-line
 router — English to `typed-decisions`, everything else to `multilingual` —
-would be a capability none of the fourteen rejections covers.
+would be a capability none of the earlier rejections covers.
 
 It is not. On a German board of eight construction and six verification items:
 
@@ -992,7 +1028,7 @@ the 1.5 edge, from 1.73 to 2.22, against `typed-decisions`' 1.45 to 2.01. Its
 verification scores are also nearly flat (2.04-2.19), so it is not trading
 construction false alarms for verification recall.
 
-So the fifteenth idea closes the same way: the failure is not the checkpoint,
+So this idea closes the same way as the ones before it: the failure is not the checkpoint,
 it is the question. Routing cannot rescue a signal that does not separate in
 the language it is reading.
 
