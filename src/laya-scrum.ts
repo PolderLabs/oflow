@@ -244,7 +244,10 @@ export function summariseBoard(
     flagged,
     mean,
     wordCounts,
-    knownFalsePositiveFloor: "about 5 in 16 on a board with no verification work",
+    // The input matters as much as the rate: this floor was measured on short
+    // board titles. On story-shaped input the rate is far higher, which is why
+    // the per-item path is withheld -- see docs/LAYA-TRIAGE.md.
+    knownFalsePositiveFloor: "about 5 in 16 on short-titled items with no verification work",
   };
 }
 

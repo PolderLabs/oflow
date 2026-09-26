@@ -367,9 +367,15 @@ survived. The signal is a custom question -- how much of a work item is
 checking existing behaviour rather than writing new -- which clears the
 matched-length control (r=+0.04 there, though +0.61 on unmatched prose) where the engine's stock difficulty score
 fails it at 0.61. It aggregates to a board, where the flagged count is a
-*direction* rather than a measurement: a pure-construction board still flags 5
-of 16 items on the default checkpoint, and every figure carries that floor and
-the word counts that make it checkable.
+*direction* rather than a measurement. The false-alarm rate depends entirely on
+the input, and the two figures below are for different material:
+
+- **short board titles** — 5 of 16 flagged, roughly 31%;
+- **story-shaped input** (title + a description carrying acceptance criteria) —
+  9 of 12, 75%, which is why the per-item path is withheld.
+
+Every board figure carries its floor and the word counts that make it
+checkable.
 
 It does **not** answer usefully on a single story. On story-shaped input the
 two classes overlap almost completely, so the per-item path is off pending

@@ -641,6 +641,10 @@ confuse "no reading" with "nothing is verification work".
 
 A **pure-construction** board still flags items:
 
+Measured on short board titles, which is the weaker of the two false-alarm
+figures. On story-shaped input — a title plus a description carrying acceptance
+criteria — the rate is 75%, and that is the input `assess --triage` sends.
+
 | checkpoint | flagged on a 16-item all-construction board | max score |
 |---|---:|---:|
 | typed-decisions (default) | **5 / 16** | 1.69 |
