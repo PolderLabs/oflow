@@ -35,6 +35,11 @@
   shapes crossed to the browser intact. Names are now matched per word across
   camelCase and separators, with the transport health signals the auth panel
   renders kept explicitly.
+- The dashboard's cross-origin check was never actually exercised. The test
+  sent a forged `Host` header through `fetch`, which drops that header before
+  it reaches the wire, so the request arrived legitimately and the test read
+  the success as an accepted forgery. The protection was sound and is now
+  proven on a raw socket, so a regression in it fails the suite.
 - Same-origin browser actions now work when the dashboard uses `--port 0`;
   Origin validation uses the actual bound port rather than zero.
 - `plan issue update --add-labels` accepted a label the project does not
