@@ -10,13 +10,16 @@
  *
  * | Question | Verdict | Evidence |
  * |---|---|---|
- * | `verificationShare` | **kept** | 7/8 correct on cases with a clear expected answer; repeated runs bit-identical |
+ * | `verificationShare` | **kept** | 7/10 on a hand-labelled probe; 6/6 matched-length pairs, all positive; correlation with input length +0.022; repeated runs bit-identical |
  * | `executorFit` | dropped | 5/10; called every verify/audit/confirm task agent-suitable, including those needing human judgement |
  * | `specificationGap` | dropped | 0.07-0.54 with no ordering matching obvious specificity; "rename the button label" scored 0.09, the most specific item in the set |
  * | difficulty band | dropped | 0.82 correlation with input word count; equal-length trivial-vs-hard pairs separated by +0.02, -0.08, +0.75 |
  *
  * A hint that is wrong in these ways is worse than no hint, so only the one
  * that separated its cases is offered.
+ *
+ * What the kept signal is *not*: it measures how much evidence work an item
+ * implies, not how good the item is, and nothing at all about story quality.
  */
 import type { LayaQuestion, LayaQuestions } from "./laya-runner.js";
 

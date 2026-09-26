@@ -302,6 +302,11 @@ Priority signal from the session: the **type axis** (#2, #8, #10) and
 REST fallbacks. The **interruption model** (#3, #7) is the lifecycle
 gap F1's partial-progress work must close.
 
+## Current work
+
+Everything below is open. The v0.3.0 release record ends above; what follows
+is the live roadmap, tracked by section rather than by release.
+
 ### Stretch, considered after the must-ship gates
 
 - [ ] Package a thin Codex plugin/skill layer that calls `oflow` JSON.
@@ -329,8 +334,14 @@ permission-aware, and independently verified.
 - [x] `src/laya-triage.ts`: an advisory, dependency-free wrapper around a local
   decision engine, with 12 tests and five mutation-verified guarantees
 - [x] Calibration measured and recorded in [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md)
-- [ ] Decide whether to surface a triage hint on `assess`, and if so behind an
-  explicit opt-in flag
+- [x] `assess --triage`: an opt-in advisory verification-share hint that never
+  becomes a blocker, a warning, or a status change
+- [x] `src/laya-runner.ts`: a portable engine wrapper (text in, answers out, no
+  oflow or GitLab types, question set passed on stdin) plus the calibrated
+  question set in `src/laya-scrum.ts`
+- [ ] Decide whether `oflow-workflow` should gain an `exports` map so these
+  modules are importable by another planning tool. That makes the package a
+  library as well as a CLI, so it is a packaging decision, not a detail
 
 Measured, not assumed: the engine's difficulty score correlates 0.82 with input
 word count, and on equal-length trivial-vs-hard pairs it separated them by

@@ -60,11 +60,20 @@ expectations" scored **1.90** — above the 1.5 band edge — while its top
 probability was still level 1, "mostly construction". The continuous score and
 the argmax are not the same signal. oflow therefore bands on the score, never
 on the engine's own bucket, and marks anything within 0.2 of an edge as
-uncertain rather than rounding it to a side. On a labelled ten-item probe
-it was right on **6 of the 8 cases that had a clear expected answer** (the two
-labelled "mid" are excluded, since the answer there is a judgement call), and
-repeated runs are bit-identical. The two misses were both verification items it
-called mid rather than high.
+uncertain rather than rounding it to a side.
+
+On a hand-labelled ten-item probe it was right on **7 of 10**, and repeated
+runs are bit-identical. The three misses, stated rather than filtered: two are
+items it scored `mid` that I had labelled `high` (a criteria-parsing check, and
+the partial-apply resume decision), and one is "make it faster somehow", which
+I had labelled `mid` and it scored `low`. Two of those three labels are
+themselves contestable -- whether the resume decision is verification work or
+construction is a judgement call -- so 7/10 is the raw figure, not one narrowed
+after the fact.
+
+That probe also says what the signal is *not*. It measures how much evidence
+work an item implies, **not** how good the item is, and nothing about story
+quality.
 
 That is a genuine review-effort signal: an item that is mostly verification
 costs a reviewer far more attention than its length suggests, which is exactly
