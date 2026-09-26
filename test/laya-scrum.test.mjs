@@ -234,3 +234,24 @@ test("mismatched texts and scores are not paired up", () => {
   const summary = summariseBoard([2.04, 0.85], ["only one text here"]);
   assert.equal(summary.wordCounts, null);
 });
+
+// The like-for-like caveat matters most when the board is mixed, which is what
+// a real sprint board is: short construction items beside long verification
+// ones. A 3-4 word spread does not exercise the rendering.
+test("a widely mixed board renders its full length range", () => {
+  const summary = summariseBoard(
+    [2.04, 0.85, 1.90, 0.60, 2.10],
+    [
+      "Fix login redirect",
+      "Audit every label for unused or duplicated coverage across the whole project",
+      "Verify the rollback procedure restores the previous release exactly",
+      "Bump deps",
+      "Confirm the acceptance criteria still parse after the criteria refactor",
+    ],
+  );
+  assert.deepEqual(summary.wordCounts, [3, 12, 9, 2, 10]);
+  const text = describeBoard(summary);
+  assert.match(text, /ranges 2-12 words/);
+  // A wide spread is exactly when the reader needs the warning most.
+  assert.match(text, /compare items of similar length/);
+});

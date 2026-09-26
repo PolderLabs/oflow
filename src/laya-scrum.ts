@@ -193,18 +193,20 @@ export async function summariseBoardText(
   const answers = await runCustomQuestionsBatch(texts, SCRUM_QUESTIONS, options);
   if (answers === null) return null;
   const scores: number[] = [];
-  for (const entry of answers) {
+  const scoredTexts: string[] = [];
+  for (const [index, entry] of answers.entries()) {
     const value = readVerificationShare(entry);
     // An unreadable item is left out rather than scored as zero, which would
-    // read as "definitely construction" when it means "we do not know".
-    if (value !== null) scores.push(value.score);
+    // read as "definitely construction" when it means "we do not know". Its
+    // length is left out with it, so the reported range describes exactly the
+    // items the count was computed from.
+    if (value === null) continue;
+    scores.push(value.score);
+    if (index < texts.length) scoredTexts.push(texts[index]);
   }
   if (scores.length === 0) return null;
-  // Keep the texts alongside the scores so the summary can report length. The
-  // engine may have skipped an unreadable item, so lengths are only attached
-  // when every item scored.
-  return answers.length === texts.length
-    ? summariseBoard(scores, texts)
+  return scores.length === scoredTexts.length
+    ? summariseBoard(scores, scoredTexts)
     : summariseBoard(scores);
 }
 
