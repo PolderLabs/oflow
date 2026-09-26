@@ -480,10 +480,12 @@ It is off by default and depends on nothing. Without a local
 nothing, and it never changes a story's status, adds a blocker, or emits a
 warning. Treat it as a prompt to look, never as a decision.
 
-The measurement behind it, including the signals that were tried and rejected,
+The measurement behind it, including every signal that was tried and rejected,
 is in [docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md). The short version: the
-engine's own difficulty score was dropped because it tracks input length, and
-one custom question survived. Ten capabilities were probed; one shipped.
+engine's own difficulty score was dropped because it tracks input length; a
+custom question about verification work was shipped and then withdrawn on
+measurement; and eleven further capabilities were rejected outright. What
+remains enabled is the ~20ms readability check above.
 
 ### Plan and change safely
 

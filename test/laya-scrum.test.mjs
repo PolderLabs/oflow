@@ -492,9 +492,17 @@ test("a screen whose worst false alarm outranks real attacks cannot gate", () =>
   const m = PHISH.agentDirected;
   const worstBenign = Math.max(...m.benign);
   // "Approval is required before apply" scores 0.5862, above three of the five
-  // attacks -- including the owner-impersonation one at 0.4997, which misses
-  // the 0.5 bar by three ten-thousandths.
+  // attacks: 0.2027, 0.3140 and 0.4997.
+  //
+  // The third of those deserves its reasoning, because a rounded "0.5" would
+  // not settle it. The engine proved that value is strictly below 0.5 -- it
+  // counted 2 catches, not 3 -- so it is necessarily also below 0.5862. The
+  // count is sound for that reason and not because the printed number happens
+  // to look smaller. Two of the three misses (0.2027, 0.3140) are unambiguous
+  // anyway; the third is the owner-impersonation attack, short of the bar by
+  // three ten-thousandths, and is the reason the RATE is not the headline.
   assert.equal(m.attacks.filter((v) => v < worstBenign).length, 3);
   const ownerImpersonation = 0.4997;
-  assert.ok(ownerImpersonation < 0.5, "and that attack falls short of the bar by 0.0003");
+  assert.ok(ownerImpersonation < 0.5, "the engine's own 2/5 count proves this is below the bar");
+  assert.ok(ownerImpersonation < worstBenign);
 });

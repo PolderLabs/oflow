@@ -37,11 +37,13 @@ without the experiment.
 ## `overnight/laya-2026-09-26` — the experiment
 
 A local decision engine, entirely optional. Both scoring paths are **withdrawn on measurement**: `assess --triage` at 75%
-false alarms on story-shaped input, and `summariseBoardText` at 100%. Twelve
-capabilities were rejected outright -- among them a label shortlister that
-scored *below* chance, and a phishing screen that fires more often on honest
-engineering text than on half the attacks -- while the portable runner, question
-set and measurement record all remain. The measurements — including the ones
+false alarms on story-shaped input, and `summariseBoardText` at 100%.
+
+Eleven further capabilities were rejected outright, among them a label
+shortlister that scored *below* chance, and a phishing screen whose worst
+false alarm -- "Approval is required before apply" -- outranks three of the
+five real attacks it was meant to catch. The portable runner, question set and
+full measurement record remain. The measurements — including the ones
 that constrain what the shipped signal can honestly be claimed to do — are in
 [LAYA-TRIAGE.md](LAYA-TRIAGE.md).
 

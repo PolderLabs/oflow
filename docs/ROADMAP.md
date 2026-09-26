@@ -363,9 +363,13 @@ reject real tests, failing in the direction that makes a verification tool
 actively harmful. This is recorded here as a constraint, deliberately outside
 the checklist so it cannot be closed as if it were work to do.
 
-**The current state in one paragraph.** Ten capabilities were probed; one
-survived. The signal is a custom question -- how much of a work item is
-checking existing behaviour rather than writing new -- which clears the
+**The current state in one paragraph.** No scoring capability survived. Two
+paths shipped and were then withdrawn on measurement; eleven more were rejected
+outright. What works is a separate, non-scoring capability -- a ~20ms
+readability precondition with no false "readable" across 23 cases -- which is
+wired in front of the triage path. The withdrawn signal was a custom question
+-- how much of a work item is checking existing behaviour rather than writing
+new -- which clears the
 matched-length control (r=+0.04 there, though +0.61 on unmatched prose) where the engine's stock difficulty score
 fails it at 0.61. It aggregates to a board, where the flagged count is a
 *direction* rather than a measurement. The false-alarm rate depends entirely on
@@ -396,7 +400,7 @@ document with the numbers behind them:
   band exists in the code.
 - **A rubric grader stays out of `verify`**, for the reason above.
 
-Twelve other capabilities were measured and dropped, including prompt-injection
+Eleven other capabilities were measured and dropped, including prompt-injection
 screening, which looked clean on crafted examples and failed on real work-item
 prose. The reasoning, the numbers, and the mutation table are in
 [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md), so the next reader does not re-derive
