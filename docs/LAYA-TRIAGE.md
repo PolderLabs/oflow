@@ -539,6 +539,58 @@ wired into a command, and it has been removed rather than left as a surface
 someone could promote into a gate later. The measurements above are the
 artefact worth keeping.
 
+## Portability, proven rather than asserted
+
+The modules are described as portable, so that was checked by extraction rather
+than by reading. Both files were copied into an empty directory with its own
+`package.json` and `tsconfig.json` — no oflow source, no repo — and:
+
+1. `tsc` compiled them, emitting `.js` **and** `.d.ts`, with only `@types/node`
+   required. The failures before that were missing type definitions, not
+   missing modules.
+2. The compiled output ran, against the real engine:
+
+   ```
+   default checkpoint : typed-decisions
+   raw score         : 1.9847
+   band              : mixed
+   advisory          : partly verification and evidence work
+   absent engine     : null
+   ```
+
+That is the whole claim: copy two files, compile, use. The absence path returns
+`null` outside oflow exactly as it does inside it.
+
+**What still blocks a consumer** is only the packaging decision, deliberately not
+taken here: `package.json` has no `exports` map, so
+`import "oflow-workflow/laya-runner"` is not resolvable yet. The modules are
+portable; the package is not yet a library. That distinction is the maintainer's
+call, and it is recorded as an open question rather than assumed.
+
+### Keeping it portable
+
+`scripts/check-portable.mjs` enforces the property in CI, wired into
+`npm run typecheck`. It fails on any import that is not a `node:` builtin or one
+of the two Laya modules, and it reports the exported surface so a change to that
+surface shows up in review:
+
+```
+ok   laya-runner.ts: no oflow coupling, 11 exports
+ok   laya-scrum.ts: no oflow coupling, 6 exports
+```
+
+Verified against a real violation: adding `import { OflowError } from "./errors.js"`
+turns the check red, so it is not passing vacuously.
+
+The exported surface, for anyone porting these:
+
+| from `laya-runner` | from `laya-scrum` |
+|---|---|
+| `runCustomQuestions`, `runDefaultQuestions` | `SCRUM_QUESTIONS`, `VERIFICATION_SHARE` |
+| `parseAnswers`, `topChoice` | `readVerificationShare`, `describeVerificationShare` |
+| `DEFAULT_CHECKPOINT`, `LayaCheckpoint` | `VerificationShare`, `VerificationShareBand` |
+| `LayaQuestion`, `LayaQuestions`, `LayaAnswer`, `LayaAnswers`, `RunnerOptions` | |
+
 ## Open questions for the maintainer
 
 1. **Should `oflow-workflow` gain an `exports` map** so these modules are
