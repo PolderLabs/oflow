@@ -582,16 +582,19 @@ one in-process capability probe, and it runs only on an explicit click.
   states for each backend. *(Implemented: `TransportState` in `src/transport.ts`,
   probed by `probeTransport`, and surfaced per capability by
   `buildPerCapabilityState`.)*
-- [ ] Make core reads honor the selected read transport. The selection already
-  exists — `pickReadBackend` in `src/auth-resolver.ts:152`, consulted at
-  `src/context.ts:43` — and `resolveContextRead` records it on
-  `ContextReadResolution.read` (`src/context.ts:51-52`). Nothing ever reads
-  that field, and `client` is always `new GitLabClient(remote.host)`, so a
-  `glab` selection changes nothing observable. The six direct constructions
-  that would each need the resolved transport: `src/context.ts:51, 94, 124,
-  146, 169, 479`. Separately, `reduced` is assigned in exactly one place, inside
-  the `--probe` branch (`src/capabilities.ts:118`) and initialised false at
-  `:86`, so `oflow capabilities --json` reports `reduced: false`
+- [ ] Make core reads honor a `glab` selection. The selection is computed and
+  partially honored: `pickReadBackend` returns `"glab"` when glab is the only
+  authenticated source (`src/auth-resolver.ts:155`), and `resolveContextRead`
+  gates on `"none"` at `src/context.ts:44`. But `src/context.ts:52` collapses
+  anything that is not `"graphql"` to `"rest"`, and `context.ts` contains no
+  glab read path at all — its only mention of glab is the unreachable
+  `ContextReadResolution.read: "rest" | "glab" | "graphql"` type at
+  `src/context.ts:21`. So a glab-selected project silently reads over REST
+  while every report claims otherwise. Six `new GitLabClient(remote.host)`
+  construction sites sit downstream of that decision: `src/context.ts:51, 94,
+  124, 146, 169, 479`. Separately, `reduced` is assigned in exactly one place,
+  inside the `--probe` branch (`src/capabilities.ts:118`) and initialised false
+  at `:86`, so `oflow capabilities --json` reports `reduced: false`
   unconditionally — the one thing this item existed to prevent.
 - [x] Add `oflow identity --json` with GitLab principal and
   credential/backend metadata; make `work --mine` ID/server based.
