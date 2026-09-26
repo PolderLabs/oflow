@@ -72,13 +72,16 @@ Do not make token minting a normal setup requirement. Any future credential-
 minting flow is opt-in, short-lived, explicitly scoped, tested, and followed
 by explicit bootstrap-token revocation instructions.
 
-## Next release target — v0.3.0
+## Release target — v0.3.0 (shipped)
 
-The recommended next release is a reliability and agent-integration release,
-not an attempt to wrap every GitLab endpoint. The detailed execution plan is
-kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
+This section records what the v0.3.0 milestone covered and is kept for
+history: the project is now past it, and the reliability and agent-integration
+work described below all landed. The detailed execution plan lived in a local
+`.omx/` artifact, which is untracked, so nothing here depends on a reader
+having it. For what is still open, see the friction reconciliation below and
+[LAYA-TRIAGE.md](LAYA-TRIAGE.md).
 
-### Must ship
+### Shipped
 
 - [x] Make transport state truthful: distinguish configured, authenticated,
   readable, mutable, and verifiable for REST, `glab`, and runtime-owned MCP.
@@ -116,7 +119,8 @@ kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
 ### Mandatory session-friction closure
 
 The following items came from an actual near-miss and repeated agent
-operability friction. They are all part of v0.3.0, not optional backlog. The
+operability friction. They were scoped into v0.3.0, not treated as optional
+backlog. Most shipped; the rest are tracked with the open items below. The
 implementation order is impact-first: lifecycle safety, capability truth,
 delivery writes, verification flexibility, discoverability, then ergonomics.
 
@@ -285,7 +289,7 @@ block F3; several fold into F6.
 | 1 | `--add-labels` does not validate label existence before approval; missing labels silently no-op at apply | F6 | Dry-run lists labels being added with `[MISSING]` markers; approval blocked while any are missing unless `--force`; hint surfaces `oflow plan label create` |
 | 2 | `plan issue create` has no `--type`/`--issue-type` flag; work items default to `issue` | F6 | Forward `issue_type` through `GitLabIssueCreate`; add `--type task\|issue\|incident\|requirement` to the create command |
 | 3 | Stale-digest guard on bulk plans has no escape hatch; interrupted applies orphan approved plans | F1/F6 | `oflow plan <id> --supersede` atomically rebuilds against current IID state; partial-progress recovery reuses the existing bulk per-IID result tracking; auto-archive failed applies |
-| 4 | `--assignee <username>` requires User:Read scope and fails with raw GitLab JSON | F6 | On granular-scope 403, accept numeric `--assignee-id` without the user lookup; print the oflow-level remediation inline (reuse `normalizeForbidden`) |
+| 4 | `--assignee <username>` requires User:Read scope and fails with raw GitLab JSON | F6 | On granular-scope 403, accept numeric `--assignee-id` without the user lookup; print the oflow-level remediation inline (reuse `normalizeForbidden`). *Remediation landed; `--assignee-id` still open — see the reconciliation below.* |
 | 5 | `work --author` is case-sensitive and username-only; no human-name resolution | F5 | Accept username, display name, or email; resolve via a local member cache populated at `install`/first `work` invocation |
 | 6 | Bulk plans silently capped at 50 IIDs; cap undocumented in `--help` | F6 | Auto-split into chunked plans of ≤50 (oflow already knows batching) and/or document the cap in help text |
 | 7 | Apply interrupted mid-batch leaves ambiguous state; no resumable `applied-partial` | F1 | Add `applied-partial` state with `oflow apply --resume`; per-IID results already tracked for bulk ops — expose them for recovery |
@@ -298,7 +302,12 @@ Priority signal from the session: the **type axis** (#2, #8, #10) and
 REST fallbacks. The **interruption model** (#3, #7) is the lifecycle
 gap F1's partial-progress work must close.
 
-### Stretch, only after the must-ship gates pass
+## Current work
+
+Everything below is open. The v0.3.0 release record ends above; what follows
+is the live roadmap, tracked by section rather than by release.
+
+### Stretch, considered after the must-ship gates
 
 - [ ] Package a thin Codex plugin/skill layer that calls `oflow` JSON.
 - [ ] Package a thin native OMP extension/skills layer over the existing bridge
@@ -307,8 +316,9 @@ gap F1's partial-progress work must close.
   setup.
 
 If the native plugin surfaces cannot be installed and smoke-tested in the same
-release workflow, ship the corrected bridge and compatibility fixtures in
-v0.3.0 and move the distributable plugin artifacts to v0.3.1.
+release workflow, the fallback was to ship the corrected bridge and
+compatibility fixtures and move the distributable plugin artifacts to the
+following patch.
 
 ### Explicitly deferred
 
@@ -317,6 +327,82 @@ approvals, pipeline mutations, destructive deletion, repository push, and
 credential minting remain later milestones. The explicitly scoped MR create/
 update work above is not a general delivery API; it must remain plan-backed,
 permission-aware, and independently verified.
+
+
+### Experimental — local decision-engine triage (not wired in)
+
+- [x] `src/laya-triage.ts` — advisory wrapper over the stock CLI questions
+- [x] `src/laya-runner.ts` — portable engine wrapper: text in, answers out, no
+  oflow or GitLab types, question set on stdin. 15 tests
+- [x] `src/laya-scrum.ts` — the one question that survived calibration, plus a
+  board summary that is comparative by design. 13 tests
+- [x] `assess --triage` — opt-in advisory hint that can never become a blocker,
+  a warning, or a status change. 4 tests
+- [x] Portability proven by extraction into an empty package, and enforced in CI
+  by `npm run check:portable` (also an AGENTS.md handoff gate)
+- [x] Calibration, nine negative results, checkpoint comparison, MCP cost
+  measurement, and version provenance all recorded in
+  [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md)
+- [ ] Decide whether `oflow-workflow` should gain an `exports` map so these
+  modules are importable by another planning tool. That makes the package a
+  library as well as a CLI, so it is a packaging decision, not a detail. The
+  code is proven liftable either way
+
+**A standing prohibition, not a task.** No rubric grader may be wired near
+`verify`. `LayaEvaluator` grades verbosity rather than content -- empty prose
+outscores real test evidence on all three checkpoints, and one of them calls
+genuine assertions "contradicted" -- so it would accept confident prose and
+reject real tests, failing in the direction that makes a verification tool
+actively harmful. This is recorded here as a constraint, deliberately outside
+the checklist so it cannot be closed as if it were work to do.
+
+**The current state in one paragraph.** Ten capabilities were probed; one
+survived. The signal is a custom question -- how much of a work item is
+checking existing behaviour rather than writing new -- which clears the
+matched-length control (r=+0.04 there, though +0.61 on unmatched prose) where the engine's stock difficulty score
+fails it at 0.61. It answers on a single item via `assess --triage` and
+aggregates to a board, where the flagged count is a *direction* rather than a
+measurement: a pure-construction board still flags 5 of 16 items on the default
+checkpoint, and every figure carries that floor.
+
+Three decisions are load-bearing and all three are recorded in the linked
+document with the numbers behind them:
+
+- **The default checkpoint is `typed-decisions`**, chosen for 0.75 recall at
+  0.94 precision. `english` is safer but says nothing about two thirds of the
+  work it exists to surface; `multilingual` looked best on the two items it was
+  chosen for and prints a false positive on 15 of 20 construction items.
+- **The stock difficulty score is dropped** as a length meter, and no difficulty
+  band exists in the code.
+- **A rubric grader stays out of `verify`**, for the reason above.
+
+Nine other capabilities were measured and dropped, including prompt-injection
+screening, which looked clean on crafted examples and failed on real work-item
+prose. The reasoning, the numbers, and the mutation table are in
+[`LAYA-TRIAGE.md`](LAYA-TRIAGE.md), so the next reader does not re-derive
+them.
+
+### Friction log reconciliation — 2026-09-26
+
+The friction log above was written on 2026-09-22 against "v0.3.0". The project
+is now on 0.5.2, so the log is partly stale. Verified against `src/`:
+
+| # | Logged as | Actual state on 0.5.2 |
+|---|---|---|
+| 1 | `--add-labels` does not validate label existence | **Fixed on this branch** — `assertIssueLabelsExist` (`plan.ts:4437`) rejects an unknown added label at plan time, wired into the single-issue (`plan.ts:492`) and bulk (`plan.ts:609`) paths |
+| 2 | `plan issue create` has no `--type`/`--issue-type` | **Shipped** — parsed at `cli.ts:1392` and forwarded as `issue_type` at `cli.ts:629` |
+| 3 | Stale-digest guard has no escape hatch | **Still open** — no `--supersede` anywhere in `src/` |
+| 4 | `--assignee` needs `User:Read` and leaks raw JSON on 403 | **Partly fixed on this branch** — `resolveAssigneeIds` (`plan.ts:3168`) reports `ASSIGNEE_LOOKUP_FORBIDDEN` with the missing scope and a way forward, instead of the raw API body. The numeric `--assignee-id` escape hatch sketched in the log above is **still open**: `validateAssigneeIds` accepts ids, but no CLI flag reaches it |
+| 5 | `work --author` is case-sensitive, username-only | **Fixed on this branch** — `cli.ts:1999` lower-cases the filter before it reaches `author_username` (`gitlab.ts:376`). The log's name/email resolution is not achievable: that parameter takes a username, so the value is normalised rather than resolved. `context.ts:341` additionally flags an empty result under an author/assignee filter, so a mistyped name no longer reads as "this person has no work" |
+| 6 | 50-IID bulk cap undocumented in help | **Partly shipped** — enforced at `plan.ts:2588`; help mentions it at `cli.ts:2252` and `cli.ts:2298`, not for every bulk command |
+| 7 | Apply leaves ambiguous `applied-partial` state | **Shipped** — the state is declared at `plan.ts:45` and the resume path is at `plan.ts:1316` |
+| 8 | `work --json` omits `issue_type` | **Shipped** — `compactWorkItems` (`context.ts:269`) maps `issueType` at `context.ts:274` straight from the wire |
+| 9 | No `labels audit` coverage command | **Shipped on this branch** — `oflow labels audit [--label <name>]` (`src/labels-audit.ts`) reports per-label open/closed/total counts grouped by type and milestone, and always carries the type-coverage warning the log required |
+| 10 | No surface to change work-item type after create | **Still open** — no `workItemConvert` GraphQL mutation anywhere in `src/` |
+
+#1, #4 (partly), #5, and #9 are addressed on this branch; #4's
+`--assignee-id` half is not. The confirmed-open backlog is #3, #10, and that
+half of #4. Treat the rest of the log as history rather than as a queue.
 
 ## Status
 
@@ -492,14 +578,29 @@ one in-process capability probe, and it runs only on an explicit click.
   scraping agent OAuth caches)
 - [x] `oflow auth status` (text and `--json`, metadata only, no credentials)
 - [x] Backend/auth selection diagnostics
-- [ ] Separate configured, authenticated, readable, mutable, and verifiable
-  states for each backend; make core reads honor the selected read transport
-  or report explicit reduced mode. Transport/capability reporting exists, but
-  `src/context.ts` still constructs the REST client directly.
-- [ ] Add `oflow identity --json` with GitLab principal and
-  credential/backend metadata; make `work --mine` ID/server based. The identity
-  command exists, but `work --mine` still filters by resolved username and the
-  JSON cookbook lacks an identity example.
+- [x] Separate configured, authenticated, readable, mutable, and verifiable
+  states for each backend. *(Implemented: `TransportState` in `src/transport.ts`,
+  probed by `probeTransport`, and surfaced per capability by
+  `buildPerCapabilityState`.)*
+- [ ] Make core reads honor a `glab` selection. A user authenticated only via
+  glab is recorded as `rest` and served by REST, silently.
+  `pickReadBackend` returns `"glab"` when an authenticated glab source exists
+  (`src/auth-resolver.ts:152-155`), `src/context.ts:52` collapses that to
+  `"rest"`, and no glab read path is ever built — `context.ts` contains one
+  mention of glab, the type on line 21, and it is unreachable: the field is
+  declared `"rest" | "glab" | "graphql"` and can only ever hold `"rest"` or
+  `"graphql"`. Every report claims otherwise. Six `new GitLabClient(remote.host)`
+  sites sit downstream of that decision: `src/context.ts:51, 94, 124, 146, 169,
+  479`. Separately, `reduced` is assigned in exactly one place,
+  inside the `--probe` branch (`src/capabilities.ts:118`) and initialised false
+  at `:86`, so `oflow capabilities --json` reports `reduced: false`
+  unconditionally — the one thing this item existed to prevent.
+- [x] Add `oflow identity --json` with GitLab principal and
+  credential/backend metadata; make `work --mine` ID/server based.
+  *(Verified 2026-09-26: `identity --json` ships, `work --mine` filters on
+  `assigneeId` from the resolved actor rather than a username
+  (`src/cli.ts:339`), and `docs/JSON-COOKBOOK.md` documents the identity
+  payload. An earlier note here said otherwise and was stale.)*
 - [x] Make capabilities and doctor report live backend/permission availability
   without probing writes. *(Implemented with shared capability probes; write
   paths remain `not-probed` in capability and doctor tests.)*
@@ -556,7 +657,7 @@ one in-process capability probe, and it runs only on an explicit click.
 ### Phase 4h — Delivery capabilities (bounded next-release slice)
 
 Merge-request review/discussion state and delivery automation remain postponed,
-but v0.3.0 includes the bounded, plan-backed MR create/update slice below.
+but v0.3.0 included the bounded, plan-backed MR create/update slice below.
 Merge-request and pipeline reads are already included in the compact
 sync/context evidence. Delivery actions enter as backend-neutral actions under
 the same plan -> approve -> apply -> verify gates:

@@ -104,6 +104,19 @@ test("issue update plans require approval and verify the applied result", async 
             : [{ id: 5, username: "test-user", name: "Test User" }]),
         };
       }
+      if (url.pathname.endsWith("/labels")) {
+        // The plan builder now verifies add_labels against the project's
+        // labels, so the fixture must answer the label list endpoint.
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify(
+            ["User Story", "Ready", "Keep", "Spike", "Blocked", "Needs review"]
+              .map((name) => ({ id: 1, name, color: "#ffffff" })),
+          ),
+        };
+      }
       return {
         ok: true,
         status: 200,
@@ -336,6 +349,13 @@ test("bulk issue label plans update every target and verify the shared state", a
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       const method = init?.method ?? "GET";
+      if (url.pathname.endsWith("/labels")) {
+        // The plan builder verifies add_labels before writing a plan.
+        return response(
+          ["User Story", "Ready", "Keep", "Backlog", "In Progress"]
+            .map((name) => ({ id: 1, name, color: "#ffffff" })),
+        );
+      }
       const iid = Number(url.pathname.split("/").pop());
       const issue = issues.get(iid);
       if (issue === undefined) return response({ message: "not found" });
@@ -418,6 +438,17 @@ test("bulk apply records partial progress and resumes remaining targets", async 
     );
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
+      if (url.pathname.endsWith("/labels")) {
+        // The plan builder verifies add_labels before writing a plan.
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify(
+            ["User Story", "Ready", "Keep", "Spike"].map((name) => ({ id: 1, name, color: "#ffffff" })),
+          ),
+        };
+      }
       const iid = Number(url.pathname.split("/").pop());
       const issue = issues.get(iid);
       assert.ok(issue, "unexpected issue request " + url.pathname);
@@ -497,6 +528,14 @@ test("bulk planning plans assign owners and milestone timeboxes safely", async (
       const method = init?.method ?? "GET";
       if (url.pathname === "/api/v4/users") {
         return response([{ id: 6, username: "alice", name: "Alice" }]);
+      }
+      if (url.pathname.endsWith("/labels")) {
+        // The plan builder now verifies add_labels against the project's
+        // labels, so the fixture must answer the label list endpoint.
+        return response(
+          ["User Story", "Ready", "Keep", "Spike", "Blocked", "Needs review"]
+            .map((name) => ({ id: 1, name, color: "#ffffff" })),
+        );
       }
       const iid = Number(url.pathname.split("/").pop());
       const issue = issues.get(iid);
@@ -708,6 +747,14 @@ test("issue create plans stay guarded and verify the created work item", async (
       const method = init?.method ?? "GET";
       if (url.pathname === "/api/v4/users") {
         return response([{ id: 5, username: "test-user", name: "Test User" }]);
+      }
+      if (url.pathname.endsWith("/labels")) {
+        // The plan builder now verifies add_labels against the project's
+        // labels, so the fixture must answer the label list endpoint.
+        return response(
+          ["User Story", "Ready", "Keep", "Spike", "Blocked", "Needs review"]
+            .map((name) => ({ id: 1, name, color: "#ffffff" })),
+        );
       }
       if (url.pathname === "/api/v4/projects/team%2Fproject" && method === "GET") {
         return response({ id: 7, path_with_namespace: "team/project", web_url: "https://gitlab.example.test/team/project" });

@@ -487,6 +487,13 @@ export async function createIssueUpdatePlan(
       "EMPTY_PLAN",
     );
   }
+  if (operationChanges.add_labels !== undefined) {
+    await assertIssueLabelsExist(
+      client,
+      remote.projectPath,
+      validateIssueLabelList(operationChanges.add_labels, "Added issue labels"),
+    );
+  }
 
   const now = new Date().toISOString();
   const plan: PlanArtifact = {
@@ -597,6 +604,13 @@ export async function createBulkIssueLabelsPlan(
   const currentIssues = await Promise.all(
     normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)),
   );
+  if (operationChanges.add_labels !== undefined) {
+    await assertIssueLabelsExist(
+      client,
+      remote.projectPath,
+      validateIssueLabelList(operationChanges.add_labels, "Added issue labels"),
+    );
+  }
   return writePlan(root, {
     kind: "issues.labels.update",
     host: remote.host,
@@ -4379,6 +4393,51 @@ function validateIssueLabelList(value: string, field: string): string[] {
     );
   }
   return labels;
+}
+
+/**
+ * Refuse a plan that adds a label the project does not define.
+ *
+ * A label the project does not define cannot be added, and oflow previously
+ * discovered that only at verify time -- after the plan had been approved and
+ * applied. Rejecting it here keeps the failure loud and cheap, with
+ * `oflow plan label create` as the documented way to add the label first.
+ *
+ * Removal is deliberately not checked: removing an absent label is already
+ * the requested end state.
+ */
+async function assertIssueLabelsExist(
+  client: GitLabClient,
+  projectPath: string,
+  addedLabels: string[],
+): Promise<void> {
+  if (addedLabels.length === 0) return;
+  const page = await client.listLabelsPage(projectPath);
+  // Truncated to the first page, this check would call every label past it
+  // missing, so refuse to judge rather than accuse a label that does exist.
+  if (page.pagination.hasNextPage) {
+    throw new OflowError(
+      "This project has more labels than one page, so their existence cannot be verified here. " +
+        "Check the name in GitLab, or add it with `oflow plan label create`.",
+      "LABEL_LIST_INCOMPLETE",
+    );
+  }
+  // A stored label is one name, so trim it rather than running it through
+  // normalizeLabels: that helper splits on commas, and a legal label may
+  // itself contain one ("bug, urgent"), which it would tear in half.
+  const available = new Set(
+    page.items.map((label) => label.name.trim()).filter(Boolean),
+  );
+  const missing = addedLabels.filter((label) => !available.has(label));
+  if (missing.length > 0) {
+    throw new OflowError(
+      "Label" + (missing.length === 1 ? " " : "s ") + missing.map((label) => JSON.stringify(label)).join(", ") +
+        " " + (missing.length === 1 ? "does" : "do") + " not exist in " + projectPath + ". " +
+        "Create " + (missing.length === 1 ? "it" : "them") +
+        " first with `oflow plan label create`.",
+      "UNKNOWN_ISSUE_LABEL",
+    );
+  }
 }
 
 function checkLabelsPresent(
