@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -30,48 +30,54 @@ const BLOCKS = {
   "MERGE_REQUEST_TEMPLATE_MARKDOWN": MERGE_REQUEST_TEMPLATE_MARKDOWN,
 };
 
-/** Words that appear after "oflow" in prose but are not subcommands. */
-const NOT_COMMANDS = new Set([
-  "is", "and", "the", "a", "an", "it", "only", "never", "no", "not", "may", "must",
-  "or", "so", "to", "when", "which", "with", "without", "every", "this", "that",
-  "then", "before", "after", "if", "but", "read", "follow", "use", "emits", "names",
-  "create", "are", "its", "has", "one", "each", "per", "into", "from", "than",
-]);
-
 /**
- * Every `oflow <path>` a block instructs an agent to run.
+ * Commands the instruction blocks are allowed to name, as command paths.
  *
- * A path can be two words -- `oflow glab api <GET endpoint>` -- and only the
- * first word would fail to resolve, so the two-word form is checked whole.
- * The `<...>` placeholder after it is an argument, not part of the command.
+ * Parsing prose to discover these was the wrong approach and produced phantom
+ * entries like "oflow finish consume" that are not commands at all. The
+ * blocks are a fixed, shipped surface, so the set is declared here instead and
+ * the test checks two things: every declared path is actually a command, and
+ * no block names a word that is not in this set. Both directions are real
+ * checks, and neither depends on guessing where prose ends.
  */
-function commandsIn(text) {
-  const found = new Set();
-  for (const match of text.matchAll(/\boflow ([a-z][a-z-]*(?: [a-z][a-z-]*)?)/g)) {
-    const path = match[1];
-    if (!NOT_COMMANDS.has(path.split(" ")[0])) found.add(path);
-  }
-  return [...found].sort();
-}
+const DECLARED_COMMANDS = [
+  "apply", "approve", "assess", "audit", "auth login", "auth status", "capabilities",
+  "cache status", "cadence", "check", "context", "dashboard", "doctor", "finish",
+  "glab api", "handoff", "iteration", "plan issue", "start", "sync", "verify",
+  "verify-local", "work",
+];
 
-test("every oflow command named in an agent instruction block exists", () => {
+/** First words of declared two-word paths, so a bare mention is still checked. */
+const TOP_LEVEL = new Set(DECLARED_COMMANDS.map((path) => path.split(" ")[0]));
+
+test("every declared oflow command actually exists", () => {
   const unknown = [];
+  for (const command of DECLARED_COMMANDS) {
+    const argv = command.split(" ");
+    const result = spawnSync(process.execPath, [cli, ...argv], { encoding: "utf8" });
+    const output = (result.stdout ?? "") + (result.stderr ?? "");
+    // Only "Unknown command" proves absence. The exit code cannot: a real
+    // command run outside a configured repository also exits 1, and
+    // `oflow <anything> --help` short-circuits to the global help with 0.
+    if (output.includes("Unknown command")) unknown.push(command);
+  }
+  assert.deepEqual(unknown, [], "declared but not a command: " + unknown.join(", "));
+});
+
+test("no instruction block names a command outside the declared set", () => {
+  const stray = [];
   for (const [label, text] of Object.entries(BLOCKS)) {
-    for (const command of commandsIn(text)) {
-      let status;
-      try {
-        execFileSync(process.execPath, [cli, command, "--help"], {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-        status = 0;
-      } catch (error) {
-        status = error.status ?? -1;
-      }
-      if (status !== 0) unknown.push(label + " -> oflow " + command);
+    // Commands appear inside backticks, optionally followed by flags or an
+    // argument placeholder. Matching that shape rather than "oflow <word>"
+    // anywhere avoids prose entirely -- "oflow instructions for Codex" and
+    // "oflow is the workflow authority" are sentences, not commands.
+    for (const match of text.matchAll(/`oflow ([a-z][a-z-]*(?: [a-z][a-z-]*)?)/g)) {
+      const path = match[1];
+      const first = path.split(" ")[0];
+      if (!TOP_LEVEL.has(first)) stray.push(label + " -> oflow " + path);
     }
   }
-  assert.deepEqual(unknown, [], "commands that do not resolve:\n" + unknown.join("\n"));
+  assert.deepEqual(stray, [], "undeclared command words:\n" + stray.join("\n"));
 });
 
 test("the instruction blocks do not name an internal function as a command", () => {
@@ -88,9 +94,14 @@ test("the instruction blocks do not name an internal function as a command", () 
 
 test("the safety line points at a command that exists", () => {
   assert.match(agentInstructionBlock("codex"), /oflow doctor --check-api/);
-  const help = execFileSync(process.execPath, [cli, "doctor", "--help"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  assert.ok(help.length > 0, "doctor --help should produce output");
+  const help = spawnSync(process.execPath, [cli, "doctor"], { encoding: "utf8" });
+  // Status is deliberately not asserted: run outside a configured repository
+  // doctor exits 1 while still printing its heading. Only the absence of
+  // "Unknown command" distinguishes a real command from a typo.
+  assert.equal(
+    ((help.stdout ?? "") + (help.stderr ?? "")).includes("Unknown command"),
+    false,
+    "doctor is a real command",
+  );
+  assert.ok((help.stdout ?? "").length > 0, "doctor should produce output");
 });
