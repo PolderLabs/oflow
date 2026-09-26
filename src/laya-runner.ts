@@ -283,7 +283,7 @@ export async function runCustomQuestionsBatch(
   if (items.length === 0) return null;
   if (Object.keys(questions).length === 0) return null;
 
-  const checkpoint = options.checkpoint ?? "english";
+  const checkpoint = options.checkpoint ?? DEFAULT_CHECKPOINT;
   const python =
     options.python ??
     process.env.OFLOW_LAYA_PYTHON ??
@@ -362,4 +362,60 @@ export function topChoice(answers: LayaAnswers | null, key: string): string | nu
   const answer = answers?.[key];
   if (answer === undefined || answer.type === "noul") return null;
   return answer.top;
+}
+
+/**
+ * Ask the engine whether the English checkpoint can read each text.
+ *
+ * This is a direct function call rather than a question: the engine exposes
+ * `is_english` and `detect_script`, and asking it as a `noul` question would
+ * be a second, uncalibrated way to get the same answer. Returns `null` when the
+ * engine is unavailable, so callers can tell "cannot read" from "no engine".
+ */
+export async function probeReadability(
+  texts: readonly string[],
+  options: RunnerOptions = {},
+): Promise<{ readable: boolean; script: string | null }[] | null> {
+  const items = texts.map((text) => text.trim());
+  if (items.length === 0) return null;
+
+  const checkpoint = options.checkpoint ?? "english";
+  const python =
+    options.python ??
+    process.env.OFLOW_LAYA_PYTHON ??
+    (process.platform === "win32" ? "python" : "python3");
+
+  // is_english asks whether the ENGLISH checkpoint can read the text, so the
+  // probe does not depend on which checkpoint the caller is scoring with, and
+  // loads no weights at all.
+  const script = `
+import json, sys
+import laya
+payload = json.loads(sys.stdin.read())
+out = [{"e": laya.is_english(t), "s": laya.detect_script(t)} for t in payload["texts"]]
+sys.stdout.write(json.dumps(out))
+`;
+  try {
+    const stdout = await runWithInput(
+      python,
+      ["-c", script],
+      JSON.stringify({ texts: items }),
+      options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
+    const parsed = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== items.length) return null;
+    const out: { readable: boolean; script: string | null }[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== "object" || entry === null) return null;
+      const record = entry as { e?: unknown; s?: unknown };
+      if (typeof record.e !== "boolean") return null;
+      out.push({
+        readable: record.e,
+        script: typeof record.s === "string" ? record.s : null,
+      });
+    }
+    return out;
+  } catch {
+    return null;
+  }
 }

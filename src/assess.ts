@@ -6,6 +6,8 @@ import { evaluateCriteria, parseVerificationEvidence } from "./criteria.js";
 import { OflowError } from "./errors.js";
 import { getCurrentBranch, runGit } from "./git.js";
 import { runCustomQuestions } from "./laya-runner.js";
+import { probeReadability } from "./laya-runner.js";
+import { readTextReadability } from "./laya-readability.js";
 import { SCRUM_QUESTIONS, readVerificationShare, describeVerificationShare } from "./laya-scrum.js";
 
 /**
@@ -19,22 +21,34 @@ async function triageAssessment(
   title: string,
   description: string | null | undefined,
 ): Promise<AssessmentResult["triage"]> {
-  const text = [title, description].filter((part) => typeof part === "string" && part.trim() !== "").join("\n");
+  // Withheld on measurement, and checked before any engine call so the common
+  // case costs nothing. Measured on 24 stories built the way this function
+  // assembles them -- title plus a description with acceptance criteria -- the
+  // question put construction work at 1.63-2.02 and verification work at
+  // 1.70-2.23: 75% false alarms, precision 0.47. Every construction story sat
+  // above the 1.5 edge, and the highest-scoring one was "Add iteration
+  // listing", which is plainly new work. The classes overlap too far to
+  // separate by moving an edge, so the band is not the problem and no
+  // threshold would fix this. The question needs recalibrating on real story
+  // text before this path says anything.
+  if (process.env.OFLOW_LAYA_TRIAGE_UNCALIBRATED !== "1") return undefined;
+
+  const text = [title, description]
+    .filter((part) => typeof part === "string" && part.trim() !== "")
+    .join("\n");
+
+  // A precondition, not a fix. Measured across 23 cases the readability check
+  // has no false "readable", so text it cannot read never reaches the
+  // question. It makes the signal weaker on non-English input, never
+  // wrong-signed, so this is worth having and not worth believing.
+  const readability = await readTextReadability(text, probeReadability);
+  if (readability !== null && !readability.readable) return undefined;
+
   const answers = await runCustomQuestions(text, SCRUM_QUESTIONS);
   const value = readVerificationShare(answers);
   if (value === null) return undefined;
   const note = describeVerificationShare(value);
   if (note === null) return undefined;
-  // Refused on story-shaped input. Measured on 24 stories built the way this
-  // function assembles them -- title plus a description with acceptance
-  // criteria -- the question put construction work at 1.63-2.02 and
-  // verification work at 1.70-2.23: 75% false alarms, precision 0.47. Every
-  // construction story sat above the 1.5 edge, and the highest-scoring one was
-  // "Add iteration listing", which is plainly new work. The classes overlap
-  // too far to separate by moving an edge, so the band is not the problem and
-  // no threshold would fix this. The question needs recalibrating on real
-  // story text before this path says anything.
-  if (process.env.OFLOW_LAYA_TRIAGE_UNCALIBRATED !== "1") return undefined;
   return {
     verificationShare: { score: value.score, band: value.band, uncertain: value.uncertain },
     note: note + " (advisory; verification-share estimate from an uncalibrated checkpoint)",
