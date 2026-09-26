@@ -439,7 +439,7 @@ oflow iteration --group --state current
 oflow cadence --json                 # parent-group cadence schedule
 oflow context --story 42             # full story context
 oflow assess --story 42 --json       # deterministic progress evidence
-oflow assess --story 42 --triage --json   # optional Laya hint: how much is verification work
+oflow assess --story 42 --triage --json   # withheld; returns nothing (see below)
 oflow mr --iid 8 --json              # compact MR status
 oflow mr --iid 8 --full              # include MR description
 oflow verify --story 42              # acceptance + pipeline verification

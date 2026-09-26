@@ -483,10 +483,12 @@ the two misses.
 
 ### The trade, measured against how oflow actually uses the signal
 
-`assess --triage` prints one advisory line, or nothing. So the costs are
-asymmetric: a missed verification item is invisible to the reader, while a
-false alarm is a line they can discount. A checkpoint that stays silent on the
-target class has not helped, however clean it looks on a control.
+`assess --triage` was one advisory line, or nothing, and is now withheld
+entirely on the evidence below. The cost asymmetry still matters for the batch
+path, which remains live: the costs are asymmetric. A missed verification item
+is invisible to the reader, while a false alarm is a line they can discount. A
+checkpoint that stays silent on the target class has not helped, however clean
+it looks on a control.
 
 Applied to 40 labelled items, 20 construction and 20 verification:
 
@@ -626,7 +628,8 @@ observation rather than a conclusion.
 Bit-identical matters more than fast here. Given the false-positive floor this
 summary already has to report, a batching optimisation that quietly moved a
 score would be worse than no optimisation at all. `runCustomQuestionsBatch` and `summariseBoardText` use it; the
-single-item path is unchanged and still serves `assess --triage`.
+single-item path is unchanged and still serves `assess --triage` -- which is
+withheld below, so in practice the batch path is the only one in use.
 
 Two details that are load-bearing rather than cosmetic: an item the engine
 could not answer is left out of the count rather than scored as zero, because

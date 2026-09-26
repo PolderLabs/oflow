@@ -337,8 +337,13 @@ permission-aware, and independently verified.
   oflow or GitLab types, question set on stdin. 15 tests
 - [x] `src/laya-scrum.ts` — the one question that survived calibration, plus a
   board summary that is comparative by design. 13 tests
-- [x] `assess --triage` — opt-in advisory hint that can never become a blocker,
-  a warning, or a status change. 4 tests
+- [x] `assess --triage` — **withdrawn on measurement.** The flag and the code
+  remain, and it can never become a blocker, a warning, or a status change, but
+  it returns nothing unless `OFLOW_LAYA_TRIAGE_UNCALIBRATED=1`. Measured on 24
+  stories built the way the command assembles them: 75% false alarms on
+  construction, precision 0.47, and a between-class gap of 0.21 against a
+  within-class spread of 0.39, so no threshold placement separates them.
+  Recalibrate the question on real story text with a held-out set. 6 tests
 - [x] Portability proven by extraction into an empty package, and enforced in CI
   by `npm run check:portable` (also an AGENTS.md handoff gate)
 - [x] Calibration, nine negative results, checkpoint comparison, MCP cost
@@ -361,10 +366,15 @@ the checklist so it cannot be closed as if it were work to do.
 survived. The signal is a custom question -- how much of a work item is
 checking existing behaviour rather than writing new -- which clears the
 matched-length control (r=+0.04 there, though +0.61 on unmatched prose) where the engine's stock difficulty score
-fails it at 0.61. It answers on a single item via `assess --triage` and
-aggregates to a board, where the flagged count is a *direction* rather than a
-measurement: a pure-construction board still flags 5 of 16 items on the default
-checkpoint, and every figure carries that floor.
+fails it at 0.61. It aggregates to a board, where the flagged count is a
+*direction* rather than a measurement: a pure-construction board still flags 5
+of 16 items on the default checkpoint, and every figure carries that floor and
+the word counts that make it checkable.
+
+It does **not** answer usefully on a single story. On story-shaped input the
+two classes overlap almost completely, so the per-item path is off pending
+recalibration. The board path keeps the weaker claim the measurements do
+support, and `summariseBoardText` reports item lengths for exactly that reason.
 
 Three decisions are load-bearing and all three are recorded in the linked
 document with the numbers behind them:
