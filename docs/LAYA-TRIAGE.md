@@ -413,6 +413,27 @@ is what would silently feed an English checkpoint text it cannot judge.
 So this is usable as a gate, with the caveat that a work item consisting of
 nothing but acronyms may be skipped unnecessarily.
 
+### The gate was wired but never ran
+
+Worth recording separately, because it is the same class of defect as the rest
+of this document. `assess` passed `probeReadability` to `readTextReadability` as
+a bare function reference, so it was called with one argument. `options` then
+defaulted to `{}`, the interpreter resolved from `PATH` instead of
+`OFLOW_LAYA_PYTHON`, the probe failed, the `catch` returned `null` — and the
+readability gate **never fired**. The one capability that was measured, kept and
+wired was dead in production, with a passing test above it.
+
+Found by extracting the modules into an empty package and running the chain
+directly, which is the check that had been reported as proving portability: the
+triage path worked and the readability path silently returned `null`, and a
+green portability proof had not distinguished those two outcomes.
+
+Fixed by threading the options through a closure, and defended so it cannot
+recur silently: a probe returning the wrong shape now throws a `TypeError`
+naming the contract, rather than being read as "no reading". A precondition
+whose failure mode is indistinguishable from its normal result will eventually
+stop being reported at all.
+
 ### Two defects found while wiring it in
 
 Wiring the check into `assess` turned up both, and both are worth recording

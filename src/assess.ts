@@ -41,7 +41,16 @@ async function triageAssessment(
   // has no false "readable", so text it cannot read never reaches the
   // question. It makes the signal weaker on non-English input, never
   // wrong-signed, so this is worth having and not worth believing.
-  const readability = await readTextReadability(text, probeReadability);
+  // Pass the arguments through. Handing probeReadability to the module as a
+  // bare reference meant it was called with one argument, so options defaulted
+  // to {} and the interpreter resolved from PATH rather than
+  // OFLOW_LAYA_PYTHON. The probe then failed, the catch returned null, and
+  // this gate never fired at all -- a precondition that was present, tested and
+  // never actually ran.
+  const readability = await readTextReadability(
+    text,
+    (texts) => probeReadability(texts),
+  );
   if (readability !== null && !readability.readable) return undefined;
 
   const answers = await runCustomQuestions(text, SCRUM_QUESTIONS);

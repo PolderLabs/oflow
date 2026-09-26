@@ -83,9 +83,21 @@ export async function readTextReadability(
   }
   if (answers === null) return null;
   const value = answers[0];
+  // A probe that returns something other than our shape is a wiring mistake,
+  // not "no reading". Treating it as unreadable would fire the gate on every
+  // story, and treating it as silence is what hid the original bug: a bare
+  // function reference resolves its interpreter from PATH instead of
+  // OFLOW_LAYA_PYTHON, fails, and the gate quietly never ran. Distinguishing
+  // the two makes that impossible to miss.
   // A null answer means the engine could not decide, which is not the same as
   // unreadable, and must not be reported as unreadable.
   if (value === null || value === undefined) return null;
+  // A probe returning the wrong shape is a wiring error, not a finding.
+  if (typeof value !== "object") {
+    throw new TypeError(
+      "readability probe must return { readable, script? } entries; got " + typeof value,
+    );
+  }
   if (typeof value.readable !== "boolean") return null;
   return {
     readable: value.readable,

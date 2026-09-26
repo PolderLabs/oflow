@@ -85,3 +85,34 @@ test("the measured error profile is one-sided", () => {
   // punctuation and no sentence structure.
   assert.equal(measured.falseUnreadable, 1, "update if the boundary moves");
 });
+
+// Regression: assess passed probeReadability as a bare function reference, so
+// it was called with one argument, options defaulted to {}, and the interpreter
+// resolved from PATH instead of OFLOW_LAYA_PYTHON. The probe failed, the catch
+// returned null, and the readability gate never fired -- a precondition that
+// was present, tested, and never actually ran.
+//
+// A probe whose return shape is wrong is a wiring mistake, and the module now
+// says so instead of reading it as silence.
+test("a probe returning the wrong shape is a wiring error, not silence", async () => {
+  await assert.rejects(
+    () => readTextReadability("x", async () => ["not an object"]),
+    (error) => error instanceof TypeError && /readability probe must return/.test(error.message),
+  );
+});
+
+// The working shape: options threaded through a closure, which is how assess
+// now calls it.
+test("options reach the probe through a closure", async () => {
+  const seen = [];
+  const result = await readTextReadability(
+    "Verify the rollback path",
+    async (texts, ...rest) => {
+      seen.push({ texts, rest });
+      return [{ readable: true, script: "latin" }];
+    },
+  );
+  assert.equal(result.readable, true);
+  assert.equal(seen.length, 1);
+  assert.deepEqual(seen[0].texts, ["Verify the rollback path"]);
+});
