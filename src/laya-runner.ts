@@ -319,6 +319,10 @@ sys.stdout.write(json.dumps([r.get("answers", {}) for r in results]))
       return null;
     }
     if (!Array.isArray(parsed)) return null;
+    // The contract callers rely on: exactly one entry per input, in input
+    // order. An engine that dropped or reordered an item would attach lengths
+    // to the wrong scores, which is worse than reporting none at all.
+    if (parsed.length !== texts.length) return null;
     const out: LayaAnswers[] = [];
     for (const entry of parsed) {
       out.push(parseAnswers(JSON.stringify(entry)) ?? {});

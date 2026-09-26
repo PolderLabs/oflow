@@ -140,11 +140,13 @@ So the summary reports each item's word count and states the board's range,
 which is what makes "compare like with like" actionable rather than advice
 nobody can follow. The counts are reported, never used to adjust the score.
 
-On a real board the adjustment triples false positives and introduces a miss,
-so the length signal is carrying real information about which items are
-verification work rather than only counting words. The advice stays
-like-for-like comparison, and the flag rate is reported with its measured
-false-positive floor rather than corrected after the fact.
+On a real board the adjustment made the summary worse — it tripled false
+positives and introduced a miss — so it was rejected **on outcome**. That is
+all the measurement supports: the fit was estimated on the same small set it
+was applied to, so driving the correlation to zero proves nothing about
+mechanism, and no claim is made here about *why* the result went that way. The
+advice stays like-for-like comparison, and the flag rate is reported with its
+measured false-positive floor rather than corrected after the fact.
 
 One caveat found while reading the table: the engine's score and its
 highest-probability *bucket* can disagree. "Confirm the helper output matches

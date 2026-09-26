@@ -255,3 +255,48 @@ test("a widely mixed board renders its full length range", () => {
   // A wide spread is exactly when the reader needs the warning most.
   assert.match(text, /compare items of similar length/);
 });
+
+// The index -> text mapping is only exercised when the engine cannot answer
+// one item. This drives the real summariseBoardText with a stubbed engine
+// that returns one unreadable entry among two that score, so the branch runs
+// in the shipping code rather than a copy of its logic.
+test("an unreadable item leaves the range describing only the scored items", { skip: !process.env.OFLOW_LAYA_TRIAGE_E2E }, async () => {
+  const { summariseBoardText } = await import("../dist/laya-scrum.js");
+  const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "oflow-guard-batch-"));
+  try {
+    // A stand-in engine: one entry has no verificationShare at all.
+    const python = join(dir, "py");
+    writeFileSync(python, [
+      "#!/usr/bin/env python3",
+      "import json, sys",
+      "json.loads(sys.stdin.read())",
+      "print(json.dumps([",
+      "  {'answers': {'verificationShare': {'type': 'score', 'score': 2.0}}},",
+      "  {'answers': {}},",
+      "  {'answers': {'verificationShare': {'type': 'score', 'score': 0.8}}},",
+      "]))",
+    ].join("\n"));
+    chmodSync(python, 0o755);
+    const summary = await summariseBoardText(
+      // The unreadable text is deliberately the LONGEST item on the board, so
+      // if it leaked into the range the assertion below would fail.
+      [
+        "Verify the rollback path",
+        "This particular item is deliberately long and the engine could not read it at all",
+        "Bump deps",
+      ],
+      { python, timeoutMs: 30000 },
+    );
+    assert.ok(summary, "summary expected");
+    assert.equal(summary.items, 2, "only the scored items are counted");
+    // The unreadable item is 16 words. If its length leaked into the range,
+    // this would read [4, 16, 2] and the range would be 2-16, not 2-4.
+    assert.deepEqual(summary.wordCounts, [4, 2]);
+    assert.match(describeBoard(summary), /ranges 2-4 words/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
