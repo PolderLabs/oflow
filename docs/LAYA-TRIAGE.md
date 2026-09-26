@@ -91,20 +91,33 @@ So a `trivial`/`easy`/`moderate`/`hard` band was built, measured, and **removed*
 It dressed a length meter up as a difficulty estimate, and a caller would
 reasonably have trusted it.
 
-A **custom** question survives the same control:
+A **custom** question does better, but not the way this section previously
+claimed. The +0.022 below was measured *only* on matched-length items, and
+presenting it as the correlation was misleading. Measured properly across three
+item sets, with the shipped question wording:
 
-> How much of the work item is checking existing behaviour and evidence rather
-> than writing new behaviour?
+| item set | n | correlation with word count |
+|---|---:|---:|
+| original ten-item probe | 10 | **+0.612** |
+| alternate nine items | 9 | **+0.548** |
+| matched-length control pairs | 8 | **+0.044** |
 
-| Control | Result |
+**So the honest statement is: length sensitivity is real for free text and
+absent under length control.** On unmatched issue prose this question
+correlates with length about as strongly as the stock difficulty score does
+(+0.61 vs +0.43 on the same ten items). What separates it from the stock score
+is not that it ignores length — it is that under matched-length control it
+still reads the content:
+
+| matched-length control | Result |
 |---|---|
-| mean separation (verification − construction), 6 matched pairs | **+1.001** |
+| mean separation (verification − construction), 6 pairs | **+1.001** |
 | pairs with positive separation | **6 of 6** |
 | min / max separation | +0.105 / +1.526 |
-| **correlation with word count** | **r = +0.022** |
 
-**r = 0.02 against length, versus 0.61 for the stock difficulty score.** This
-question measures the thing it claims to measure.
+The practical consequence: on real work-item text of mixed length, treat a
+high score as *suggestive* rather than established, and compare like with like
+in length when the number matters. On equal-length inputs it behaves.
 
 One caveat found while reading the table: the engine's score and its
 highest-probability *bucket* can disagree. "Confirm the helper output matches
