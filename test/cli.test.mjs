@@ -507,6 +507,54 @@ test("cache diagnostics stay local and report a missing read model without a tok
   }
 });
 
+test("work --author sends a lower-cased username to GitLab", async () => {
+  const root = mkdtempSync(join(tmpdir(), "oflow-work-author-cli-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "work-author-cli-test-token";
+  const sent = [];
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", ["-C", root, "remote", "add", "origin", "git@gitlab.example.test:team/project.git"]);
+    mkdirSync(join(root, ".oflow"), { recursive: true });
+    writeFileSync(join(root, ".oflow", "config.json"), JSON.stringify({
+      managedBy: "oflow",
+      version: 1,
+      project: { host: "gitlab.example.test", path: "team/project" },
+    }));
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/issues")) {
+        sent.push(url.searchParams.get("author_username"));
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          text: async () => JSON.stringify([{
+            iid: 31,
+            title: "Reserve a pod",
+            state: "opened",
+            labels: [],
+            assignees: [{ username: "alice" }],
+            updated_at: "2026-09-17T10:00:00Z",
+            web_url: "https://gitlab.example.test/team/project/-/issues/31",
+          }]),
+        };
+      }
+      throw new Error("unexpected request " + url.pathname);
+    };
+    // A username is the only form author_username accepts, so the value is
+    // normalised to lower case rather than resolved from a display name.
+    assert.equal(await main(["work", "--root", root, "--author", "Alice", "--refresh", "--json"]), 0);
+    assert.deepEqual(sent, ["alice"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("work --mine refreshes and validates cached data against current identity", async () => {
   const root = mkdtempSync(join(tmpdir(), "oflow-work-mine-cli-"));
   const originalFetch = globalThis.fetch;
