@@ -582,10 +582,12 @@ one in-process capability probe, and it runs only on an explicit click.
   states for each backend; make core reads honor the selected read transport
   or report explicit reduced mode. Transport/capability reporting exists, but
   `src/context.ts` still constructs the REST client directly.
-- [ ] Add `oflow identity --json` with GitLab principal and
-  credential/backend metadata; make `work --mine` ID/server based. The identity
-  command exists, but `work --mine` still filters by resolved username and the
-  JSON cookbook lacks an identity example.
+- [x] Add `oflow identity --json` with GitLab principal and
+  credential/backend metadata; make `work --mine` ID/server based.
+  *(Verified 2026-09-26: `identity --json` ships, `work --mine` filters on
+  `assigneeId` from the resolved actor rather than a username
+  (`src/cli.ts:339`), and `docs/JSON-COOKBOOK.md` documents the identity
+  payload. An earlier note here said otherwise and was stale.)*
 - [x] Make capabilities and doctor report live backend/permission availability
   without probing writes. *(Implemented with shared capability probes; write
   paths remain `not-probed` in capability and doctor tests.)*
