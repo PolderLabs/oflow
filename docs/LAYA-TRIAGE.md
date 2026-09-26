@@ -7,6 +7,35 @@ read never reaches the question. This document records the measurements that
 decided that, so the next reader does not re-derive them and the "re-enable or
 not" decision is made on evidence rather than on a tool's description.
 
+## Canonical list: everything measured, and what happened to it
+
+This list is the source of truth. Every count quoted elsewhere in this
+document, in the ROADMAP and in the review guide is derived by counting it, not
+by restating a number. An earlier version of this document carried a summary
+table of 7 rows alongside prose claiming twelve, and the two disagreed.
+
+| # | capability | outcome | why, in one line |
+|---:|---|---|---|
+| 1 | `verificationShare` custom question | **withdrawn** after shipping | 75% false alarms on story-shaped input; classes overlap |
+| 2 | `summariseBoardText` board aggregation | **withdrawn** after shipping | 100% false alarms on story-shaped input |
+| 3 | stock difficulty band | rejected | r=0.82 with word count; a length meter |
+| 4 | `executorFit` | rejected | 5/10; calls human-judgement work agent-suitable |
+| 5 | `specificationGap` | rejected | wrong direction: scored the clearest item 0.09 |
+| 6 | `promptInjection` screen | rejected | benign max 0.819 vs injection min 0.335; no threshold |
+| 7 | `LayaEvaluator` rubric grading | rejected, hard | grades verbosity; 77 words about nothing scores 0.81 |
+| 8 | `shortlist_choice` label ranking | rejected | top-1 0/10, below chance against 0.20 |
+| 9 | `noul` phishing / injection screen | rejected, hard | worst false alarm outranks three of five attacks |
+| 10 | question rephrasing (3 framings) | rejected | all three worse than the wording in place |
+| 11 | second question OR-ed with the first | rejected | anti-correlated on construction |
+| 12 | length-residual adjustment | rejected | removed the correlation, tripled false positives |
+| 13 | `english` checkpoint as default | rejected | 0.35 recall; safe by never speaking |
+| 14 | `multilingual` checkpoint as default | rejected | 15 of 20 construction items falsely flagged |
+
+**Fourteen measured and not shipped: 2 withdrawn after shipping, 12 rejected
+outright.** One capability is kept and wired — the readability precondition,
+which is not a classifier. The underlying engine is judged on every item above
+with the input each figure was measured on, stated in the same row.
+
 ## What Laya is
 
 **Version provenance, stated up front because it bounds every number here.**
@@ -850,10 +879,13 @@ Rejected, on two grounds:
 With n=5 against n=10 no threshold conclusion here is stable, and that is the
 point at which to stop probing this primitive.
 
-This is the twelfth capability measured. The count in this document and in the
-review guide says twelve for the same reason the previous change said eleven.
+This is row 9 of the canonical list at the top of this document: the twelfth
+*rejected* capability, or the fourteenth measured and not shipped once the two
+withdrawn paths are counted. Earlier drafts of this section moved that number
+between ten, eleven and twelve by hand, which is why the list is now the thing
+every count is read off.
 
-The eleventh capability, shortlist_choice, was a different mechanism again —
+Row 8, shortlist_choice, was a different mechanism again —
 ranking option labels by embedding similarity rather than scoring. Two notes kept for whoever reads
 next: `laya.embed_fn_from_agent` is the supported way to get embeddings (calling
 `agent.model(...)` directly raises, because `DecisionModel` expects decision

@@ -364,7 +364,7 @@ actively harmful. This is recorded here as a constraint, deliberately outside
 the checklist so it cannot be closed as if it were work to do.
 
 **The current state in one paragraph.** No scoring capability survived. Two
-paths shipped and were then withdrawn on measurement; eleven more were rejected
+paths shipped and were then withdrawn on measurement; twelve more were rejected
 outright. What works is a separate, non-scoring capability -- a ~20ms
 readability precondition with no false "readable" across 23 cases -- which is
 wired in front of the triage path. The withdrawn signal was a custom question
@@ -400,7 +400,7 @@ document with the numbers behind them:
   band exists in the code.
 - **A rubric grader stays out of `verify`**, for the reason above.
 
-Eleven other capabilities were measured and dropped, including prompt-injection
+Twelve other capabilities were measured and dropped, including prompt-injection (fourteen in total, counting the two withdrawn paths; the numbered list in [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md) is the source these counts come from)
 screening, which looked clean on crafted examples and failed on real work-item
 prose. The reasoning, the numbers, and the mutation table are in
 [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md), so the next reader does not re-derive

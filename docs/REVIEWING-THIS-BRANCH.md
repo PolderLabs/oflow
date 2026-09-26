@@ -39,11 +39,14 @@ without the experiment.
 A local decision engine, entirely optional. Both scoring paths are **withdrawn on measurement**: `assess --triage` at 75%
 false alarms on story-shaped input, and `summariseBoardText` at 100%.
 
-Eleven further capabilities were rejected outright, among them a label
+Twelve further capabilities were rejected outright, among them a label
 shortlister that scored *below* chance, and a phishing screen whose worst
 false alarm -- "Approval is required before apply" -- outranks three of the
-five real attacks it was meant to catch. The portable runner, question set and
-full measurement record remain. The measurements — including the ones
+five real attacks it was meant to catch. Counting the two withdrawn paths as
+well, that is fourteen measured and not shipped. The portable runner, question
+set and full measurement record remain, and
+[LAYA-TRIAGE.md](LAYA-TRIAGE.md) carries the canonical numbered list every
+other count here is derived from. The measurements — including the ones
 that constrain what the shipped signal can honestly be claimed to do — are in
 [LAYA-TRIAGE.md](LAYA-TRIAGE.md).
 
