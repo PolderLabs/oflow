@@ -334,6 +334,11 @@ permission-aware, and independently verified.
 - [x] `src/laya-triage.ts`: an advisory, dependency-free wrapper around a local
   decision engine, with 12 tests and five mutation-verified guarantees
 - [x] Calibration measured and recorded in [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md)
+- [x] External integrations researched; upstream ships an MCP server that is
+  the cleaner agent-facing path (see the open question below)
+- [ ] Do **not** wire a rubric grader near `verify`: `LayaEvaluator` grades
+  verbosity rather than content, so it would accept confident prose and reject
+  real test evidence
 - [x] `assess --triage`: an opt-in advisory verification-share hint that never
   becomes a blocker, a warning, or a status change
 - [x] `src/laya-runner.ts`: a portable engine wrapper (text in, answers out, no

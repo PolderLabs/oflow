@@ -88,6 +88,7 @@ what sprint planning tends to get wrong.
 | `specificationGap` | dropped | wrong in *direction*, not just noisy — see below |
 | stock difficulty band | dropped | r=0.82 vs length; equal-length pairs separated by +0.02, −0.08, +0.75 |
 | `promptInjection` screen | dropped | benign max 0.819 vs injection min 0.335 -- no threshold exists; the most dangerous injection ranks 11th of 20 |
+| `LayaEvaluator` rubric grading | dropped, hard | grades verbosity not content: r=+0.758 with word count, and a 77-word paragraph with no evidence scores 0.81 while real test evidence scores 0.30 |
 
 Every dropped signal failed in a way that would have been actively harmful:
 `executorFit` would have handed mechanical work to an agent that needed a human,
@@ -235,6 +236,61 @@ question scores highest (1.99). Matched-length control separation goes
 
 Neither repair ships. An OR of two signals that are each anti-correlated with
 the truth would be worse than the one honest signal that is currently in place.
+
+## LayaEvaluator: a second opinion on `verify` — and why it is dangerous here
+
+`LayaEvaluator` is a different primitive: it grades an *output* against a
+rubric, without generating text. oflow has exactly that shape, so the obvious
+use is grading a plan's evidence against a story's acceptance criteria, as a
+second opinion on the judgement `oflow verify` makes with a deterministic rule.
+
+It was the most promising remaining lead. It is also the most dangerous thing
+found tonight.
+
+### The first probe looked acceptable
+
+Seven criterion/evidence pairs, graded against a three-way rubric. It agreed
+with the obvious label 5 of 7, and was deterministic. Both `insufficient`
+cases and the `contradicted` case were right.
+
+The pattern in the two misses was the problem: **every miss was real test
+evidence graded insufficient.** That is the case that matters most, so the
+next probe held the label constant and varied only the shape of the evidence.
+
+### It grades shape, not content
+
+All five of these genuinely demonstrate the criterion:
+
+| evidence | words | p(sufficient) | verdict |
+|---|---:|---:|---|
+| "A test asserts unknown labels are rejected." | 7 | 0.30 | **insufficient** |
+| "test/x.test.mjs asserts createIssueUpdatePlan rejects UNKNOWN_ISSUE_LABEL" | 5 | 0.50 | sufficient |
+| medium sentence | 13 | 0.44 | sufficient |
+| long, with a named test | 42 | 0.46 | sufficient |
+| long, with a preamble describing the work | 90 | 0.62 | sufficient |
+
+Correlation with word count: **r = +0.758.** And the decisive comparison:
+
+| evidence | words | p(sufficient) |
+|---|---:|---:|
+| a 77-word paragraph reviewing the codebase, naming **no evidence at all** | 77 | **0.81** |
+
+The single highest score in the set belongs to text that demonstrates nothing.
+The shortest, clearest piece of real evidence scores lowest, below the
+`insufficient` threshold.
+
+### Why this is the worst possible direction to be wrong in
+
+`oflow verify` exists to answer one question: does the evidence show this
+criterion is met? A grader that rewards verbosity over content would accept
+confident-sounding prose and reject real test evidence — and it would fail in
+the direction that makes a verification tool actively harmful, because the
+false positive looks like a pass.
+
+Every other negative result in this document is "useless but harmless". This
+one is worse than no signal, and it is the reason no evaluator surface is
+shipped. A grading primitive that can be gamed by writing 77 words about
+nothing must never sit anywhere near a verify gate.
 
 ## How others are using it
 
