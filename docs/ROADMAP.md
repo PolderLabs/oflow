@@ -81,7 +81,7 @@ work described below all landed. The detailed execution plan lived in a local
 having it. For what is still open, see the friction reconciliation below and
 [LAYA-TRIAGE.md](LAYA-TRIAGE.md).
 
-### Must ship
+### Shipped
 
 - [x] Make transport state truthful: distinguish configured, authenticated,
   readable, mutable, and verifiable for REST, `glab`, and runtime-owned MCP.
@@ -119,7 +119,8 @@ having it. For what is still open, see the friction reconciliation below and
 ### Mandatory session-friction closure
 
 The following items came from an actual near-miss and repeated agent
-operability friction. They were part of v0.3.0, not optional backlog. The
+operability friction. They were scoped into v0.3.0, not treated as optional
+backlog. Most shipped; the rest are tracked with the open items below. The
 implementation order is impact-first: lifecycle safety, capability truth,
 delivery writes, verification flexibility, discoverability, then ergonomics.
 
@@ -301,7 +302,7 @@ Priority signal from the session: the **type axis** (#2, #8, #10) and
 REST fallbacks. The **interruption model** (#3, #7) is the lifecycle
 gap F1's partial-progress work must close.
 
-### Stretch, only after the must-ship gates pass
+### Stretch, considered after the must-ship gates
 
 - [ ] Package a thin Codex plugin/skill layer that calls `oflow` JSON.
 - [ ] Package a thin native OMP extension/skills layer over the existing bridge
