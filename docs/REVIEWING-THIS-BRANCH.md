@@ -21,6 +21,12 @@ Verified in isolation from `main`: **298 tests, 298 passing, 0 skipped**, and
 `typecheck`, `check:public` and `pack --dry-run` all green. It contains no
 Laya source.
 
+**It is ready to merge.** Checked by trial merge rather than assumed: merging
+`product-fixes` into `main` completes with no conflicts, no unmerged paths, and
+the merged tree passing 298 tests plus `typecheck` and `check:public`. The
+trial branch was deleted and `main` left untouched, since publishing is your
+call and not one this branch should make.
+
 That is fewer tests than the experiment branch (342) because the Laya test
 files are simply not on it -- the difference is the experiment's own suite, not
 skipped coverage. Neither branch skips anything unconditionally.
