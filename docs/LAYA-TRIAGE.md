@@ -313,11 +313,46 @@ The two items the kept question gets wrong, across all three checkpoints:
 them in construction. That is the single most interesting result in the whole
 investigation.
 
-It is also the weaker signal: matched-length control separation falls from
-+1.001 to +0.315. So it trades a much stronger core signal for correctly reading
-two domain items. Whether that is a good trade depends on which failure hurts
-more, and that is a judgement about how oflow uses the hint -- not something the
-numbers settle. It stays unadopted until someone decides that deliberately.
+It is also the weaker signal on the matched-length control: separation falls
+from +1.001 to +0.315. So the trade looked like a judgement call, and the first
+small run supported that reading -- multilingual had 0.315 separation but fixed
+the two misses.
+
+### The trade, measured against how oflow actually uses the signal
+
+`assess --triage` prints one advisory line, or nothing. So the costs are
+asymmetric: a missed verification item is invisible to the reader, while a
+false alarm is a line they can discount. A checkpoint that stays silent on the
+target class has not helped, however clean it looks on a control.
+
+Applied to 40 labelled items, 20 construction and 20 verification:
+
+| checkpoint | missed verification | false alarms | precision | recall |
+|---|---:|---:|---:|---:|
+| english | 13 | 0 | 1.00 | 0.35 |
+| **typed-decisions** | **5** | **1** | **0.94** | **0.75** |
+| multilingual | 12 | 15 | 0.35 | 0.40 |
+
+**`typed-decisions` is the default.** It catches more than twice as much
+verification work as english for one false alarm.
+
+The two rejected checkpoints fail for opposite reasons, and both are worth
+stating because each looks defensible in isolation:
+
+- **`english` is the safest signal and a useless one.** It never cries wolf,
+  which is why the earlier controls loved it -- and at 0.35 recall it says
+  nothing about two thirds of the verification work it exists to surface. A
+  hint that is right by never speaking has no value.
+- **`multilingual` looked best on two individual items and is the worst of the
+  three on a real set.** Fixing "gating" and "ordering" turned out to cost
+  fifteen false alarms out of twenty construction items. Judging a checkpoint
+  on the items it was chosen for is the same error as judging the difficulty
+  score on a set that happened to separate.
+
+**The default changed as a result.** It is now `typed-decisions`, and the
+measured table lives in the runner's own type documentation so the choice
+cannot drift back to the safest-but-useless checkpoint without the numbers
+moving with it.
 
 ### The evaluator's verbosity trap is universal
 

@@ -82,11 +82,25 @@ export type LayaAnswer =
 export type LayaAnswers = Record<string, LayaAnswer>;
 
 /**
- * Which checkpoint to answer with. Three ship and they behave differently:
- * `multilingual` reads domain vocabulary the default misses -- "gating",
- * "ordering" -- but separates matched-length pairs far less cleanly, while
- * `typed-decisions` sits between the two. None is uniformly better, so the
- * default is the one calibrated most thoroughly here.
+ * Which checkpoint to answer with.
+ *
+ * All three were measured on 40 labelled items -- 20 construction, 20
+ * verification -- using the cost model oflow actually imposes, since
+ * `assess --triage` prints one advisory line or nothing. A missed
+ * verification item is invisible; a false alarm is a line a reader discounts.
+ *
+ * | checkpoint | missed | false alarms | precision | recall |
+ * |---|---:|---:|---:|---:|
+ * | english | 13 | 0 | 1.00 | 0.35 |
+ * | **typed-decisions** | **5** | **1** | **0.94** | **0.75** |
+ * | multilingual | 12 | 15 | 0.35 | 0.40 |
+ *
+ * `typed-decisions` is the default: it catches more than twice as much
+ * verification work for one false alarm. `english` is the safest signal --
+ * it never cries wolf -- but at 0.35 recall it says nothing about two thirds
+ * of the verification work it exists to surface, which is useless. And
+ * `multilingual`, which looked compelling on two individual items, is the
+ * worst of the three on a real set.
  */
 export type LayaCheckpoint = "english" | "multilingual" | "typed-decisions";
 
@@ -115,6 +129,9 @@ export interface RunnerOptions {
  * as "Laya is not installed".
  */
 const DEFAULT_TIMEOUT_MS = 20000;
+
+/** The checkpoint with the best measured recall at usable precision. */
+export const DEFAULT_CHECKPOINT: LayaCheckpoint = "typed-decisions";
 
 function toProbabilities(value: unknown): Record<string, number> {
   // One Object.entries pass with a typeof check per field: strong enough for
@@ -237,7 +254,7 @@ sys.stdout.write(json.dumps(result.get("answers", {})))
       JSON.stringify({
         text: trimmed,
         questions,
-        checkpoint: options.checkpoint ?? "english",
+        checkpoint: options.checkpoint ?? DEFAULT_CHECKPOINT,
       }),
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     );

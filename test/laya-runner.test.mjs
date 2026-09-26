@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { parseAnswers, runDefaultQuestions, runCustomQuestions, topChoice }
-  from "../dist/laya-runner.js";
+import {
+  parseAnswers, runDefaultQuestions, runCustomQuestions, topChoice, DEFAULT_CHECKPOINT,
+} from "../dist/laya-runner.js";
 
 // The runner must be portable: text in, answers out, no oflow types, and no
 // npm dependency on the Python engine. Every stub below stands in for the
@@ -184,15 +185,19 @@ test("the checkpoint choice reaches the engine through the payload", async () =>
   }
 });
 
-test("the default checkpoint is english", async () => {
+test("the default checkpoint is typed-decisions, the one with measured recall", async () => {
+  // Measured on 40 labelled items: typed-decisions recalls 0.75 of verification
+  // work at 0.94 precision, against english's 0.35 at 1.00 and multilingual's
+  // 0.40 at 0.35. The default must not drift back to the safest-but-useless one.
+  assert.equal(DEFAULT_CHECKPOINT, "typed-decisions");
   const dir = mkdtempSync(join(tmpdir(), "oflow-runner-"));
   try {
     const python = stub(dir, "assert-default", [
       "#!/usr/bin/env python3",
       "import json, sys",
       "p = json.loads(sys.stdin.read())",
-      "if p.get('checkpoint') != 'english':",
-      "    sys.exit('default should be english, got ' + str(p.get('checkpoint')))",
+      "if p.get('checkpoint') != 'typed-decisions':",
+      "    sys.exit('default should be typed-decisions, got ' + str(p.get('checkpoint')))",
       "print(json.dumps({'answers': {'q': {'type': 'noul', 'noul': 0.1}}}))",
     ].join("\n"));
     const answers = await runCustomQuestions("x", { q: { type: "noul", instructions: "y" } }, { python });
