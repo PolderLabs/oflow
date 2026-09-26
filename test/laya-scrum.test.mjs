@@ -203,3 +203,34 @@ test("the board summary reports raw scores rather than length-adjusted ones", ()
   assert.equal(summary.flagged, 1, "only the genuinely verification item counts");
   assert.ok(summary.mean > 1.0 && summary.mean < 2.0, "mean is of the raw scores");
 });
+
+// The doc tells readers to compare like with like in length. That advice is
+// only actionable if the summary reports the lengths, so they travel with it.
+// They are reported, never used to adjust the score: see the rejected
+// length-residual measurement in docs/LAYA-TRIAGE.md.
+test("the board summary reports item lengths so like-for-like is possible", () => {
+  const summary = summariseBoard(
+    [2.04, 0.85, 1.90],
+    ["Verify the rollback path", "Fix login redirect", "Audit every label"],
+  );
+  assert.deepEqual(summary.wordCounts, [4, 3, 3]);
+  const text = describeBoard(summary);
+  assert.match(text, /compare items of similar length/);
+  assert.match(text, /ranges 3-4 words/);
+});
+
+test("a summary without texts reports no lengths rather than guessing", () => {
+  const summary = summariseBoard([2.04, 0.85]);
+  assert.equal(summary.wordCounts, null);
+  const text = describeBoard(summary);
+  assert.doesNotMatch(text, /ranges/);
+  // The floor still travels, so the count is never quoted bare.
+  assert.match(text, /about 5 in 16/);
+});
+
+test("mismatched texts and scores are not paired up", () => {
+  // The engine can skip an unreadable item; attaching the wrong lengths to the
+  // surviving scores would be worse than reporting none.
+  const summary = summariseBoard([2.04, 0.85], ["only one text here"]);
+  assert.equal(summary.wordCounts, null);
+});

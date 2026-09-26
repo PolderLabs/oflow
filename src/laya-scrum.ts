@@ -161,6 +161,16 @@ export interface BoardSummary {
   /** Mean score, or null when there was nothing to score. */
   mean: number | null;
   /**
+   * Word count of each item, in the order scored, or null when the caller
+   * supplied scores without texts.
+   *
+   * The signal correlates with input length on free text, so "compare like
+   * with like" is the only sound way to read two items against each other.
+   * That advice is useless without the lengths, so they travel with the
+   * summary rather than being left to the reader to guess.
+   */
+  wordCounts: number[] | null;
+  /**
    * Items that the measurement flags on a board that is in fact entirely
    * construction. Measured at 5 of 16 for the default checkpoint, so a flagged
    * count is a direction, not a measurement.
@@ -190,7 +200,12 @@ export async function summariseBoardText(
     if (value !== null) scores.push(value.score);
   }
   if (scores.length === 0) return null;
-  return summariseBoard(scores);
+  // Keep the texts alongside the scores so the summary can report length. The
+  // engine may have skipped an unreadable item, so lengths are only attached
+  // when every item scored.
+  return answers.length === texts.length
+    ? summariseBoard(scores, texts)
+    : summariseBoard(scores);
 }
 
 /**
@@ -201,10 +216,24 @@ export async function summariseBoardText(
  * floor even when no item is genuinely verification work. The floor is
  * reported alongside the number so a reader cannot quote the count alone.
  */
-export function summariseBoard(scores: number[]): BoardSummary {
+export function summariseBoard(
+  scores: number[],
+  texts?: readonly string[],
+): BoardSummary {
   const items = scores.length;
+  // Lengths are reported, never used to adjust: subtracting a length-only fit
+  // removes the correlation and triples false positives on a realistic board.
+  const wordCounts = texts === undefined || texts.length !== items
+    ? null
+    : texts.map((text) => text.trim().split(/\s+/).filter(Boolean).length);
   if (items === 0) {
-    return { items: 0, flagged: 0, mean: null, knownFalsePositiveFloor: "no items" };
+    return {
+      items: 0,
+      flagged: 0,
+      mean: null,
+      wordCounts,
+      knownFalsePositiveFloor: "no items",
+    };
   }
   const flagged = scores.filter((score) => score >= CONSTRUCTION_MAX).length;
   const mean = scores.reduce((total, score) => total + score, 0) / items;
@@ -212,6 +241,7 @@ export function summariseBoard(scores: number[]): BoardSummary {
     items,
     flagged,
     mean,
+    wordCounts,
     knownFalsePositiveFloor: "about 5 in 16 on a board with no verification work",
   };
 }
@@ -224,7 +254,12 @@ export function summariseBoard(scores: number[]): BoardSummary {
 export function describeBoard(summary: BoardSummary): string | null {
   if (summary.items === 0) return null;
   const share = Math.round((summary.flagged / summary.items) * 100);
+  const lengths = summary.wordCounts === null
+    ? ""
+    : ` Scores track wording length, so compare items of similar length: this ` +
+      `board ranges ${Math.min(...summary.wordCounts)}-` +
+      `${Math.max(...summary.wordCounts)} words.`;
   return `${summary.flagged} of ${summary.items} items read as verification-heavy ` +
     `(${share}%); treat that as a direction, not a count -- ` +
-    `${summary.knownFalsePositiveFloor} scores the same way.`;
+    `${summary.knownFalsePositiveFloor} scores the same way.${lengths}`;
 }

@@ -125,8 +125,20 @@ intended (`r` → −0.000 on both sets) and makes the summary worse:
 
 | set | | raw | length-adjusted |
 |---|---|---:|---:|
-| balanced ten | false positives / missed | 4 / 0 | **3 / 0** |
-| realistic sprint board | false positives / missed | **1 / 0** | **3 / 1** |
+| balanced ten (n=10) | false positives / missed | 4 / 0 | **3 / 0** |
+| realistic sprint board (n=8) | false positives / missed | **1 / 0** | **3 / 1** |
+
+**The board case is the weak one, and this is the sharpest evidence of it.**
+On the realistic board the raw correlation with word count is **r = +0.936** —
+the strongest length sensitivity measured anywhere here, well above the +0.612
+and +0.548 from the free-text sets. Short construction items ("Rename a helper")
+and long verification items ("Audit every label for unused or duplicated
+coverage") are what a real board looks like, and the question is close to
+reading length on that material.
+
+So the summary reports each item's word count and states the board's range,
+which is what makes "compare like with like" actionable rather than advice
+nobody can follow. The counts are reported, never used to adjust the score.
 
 On a real board the adjustment triples false positives and introduces a miss,
 so the length signal is carrying real information about which items are
