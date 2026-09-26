@@ -467,8 +467,11 @@ threshold, giving 75% false alarms and 0.47 precision. The two classes overlap
 too far to separate by moving the threshold, so the question needs
 recalibrating on real story text first.
 
-Set `OFLOW_LAYA_TRIAGE_UNCALIBRATED=1` to force the old behaviour and
-reproduce the measurement. `--triage` remains available and harmless, and the
+The board-level equivalent, `summariseBoardText`, is withdrawn on the same
+evidence: its 31% false-alarm figure came from short board titles, and on
+story-shaped input the same question flagged 13 of 13 items. Set
+`OFLOW_LAYA_TRIAGE_UNCALIBRATED=1` or `OFLOW_LAYA_SCRUM_UNCALIBRATED=1` to
+force the old behaviour and reproduce either measurement. `--triage` remains available and harmless, and the
 assess output is unchanged either way. Full reasoning and every rejected
 alternative are in [docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md).
 

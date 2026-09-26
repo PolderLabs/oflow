@@ -30,10 +30,10 @@ without the experiment.
 
 ## `overnight/laya-2026-09-26` — the experiment
 
-A local decision engine, entirely optional. One aggregation works
-(`summariseBoardText`); the per-item path (`assess --triage`) is **withdrawn
-on measurement** — 75% false alarms on real story text — and nine capabilities
-were measured and rejected outright. The measurements — including the ones
+A local decision engine, entirely optional. Both scoring paths are **withdrawn on measurement**: `assess --triage` at 75%
+false alarms on story-shaped input, and `summariseBoardText` at 100%. Nine
+capabilities were rejected outright; the portable runner, question set and
+measurement record all remain. The measurements — including the ones
 that constrain what the shipped signal can honestly be claimed to do — are in
 [LAYA-TRIAGE.md](LAYA-TRIAGE.md).
 

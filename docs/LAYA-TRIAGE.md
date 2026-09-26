@@ -287,9 +287,10 @@ still be reproduced. The module, the question set and every finding here stay;
 what is withdrawn is the claim that the per-item number is a usable weak hint.
 It is not — on this input it is wrong three times in four.
 
-The board summary keeps its own weaker claim, which the measurements do support:
-a direction, a measured false-positive floor, and the word counts that let a
-reader judge comparability.
+The board summary was kept on a weaker claim -- a direction, a measured floor,
+and word counts for comparability -- and was then withdrawn too, once it was
+measured on story-shaped input rather than short titles. See "The board path,
+measured on real input" below.
 
 Recalibrating means re-fitting the question on real story text, not moving a
 threshold. Until that is done with a held-out set, the per-item path stays off.
@@ -627,15 +628,47 @@ observation rather than a conclusion.
 
 Bit-identical matters more than fast here. Given the false-positive floor this
 summary already has to report, a batching optimisation that quietly moved a
-score would be worse than no optimisation at all. `runCustomQuestionsBatch` and `summariseBoardText` use it; the
-single-item path is unchanged and still serves `assess --triage` -- which is
-withheld below, so in practice the batch path is the only one in use.
+score would be worse than no optimisation at all. `runCustomQuestionsBatch` and
+`summariseBoardText` use it. Both scoring paths are withdrawn on the evidence
+below; the batch mechanism itself remains correct and measured.
 
 Two details that are load-bearing rather than cosmetic: an item the engine
 could not answer is left out of the count rather than scored as zero, because
 zero reads as "definitely construction" when it means "we do not know"; and an
 absent engine yields `null`, never an empty summary, so a caller cannot
 confuse "no reading" with "nothing is verification work".
+
+### The board path, measured on real input
+
+With `assess --triage` withdrawn, the board summary was the only live feature,
+and its 31% false-alarm figure came from **short board titles**. Real boards
+hold stories with descriptions, so the same board — 8 construction items and 5
+verification — was measured both ways:
+
+| input | construction scores | verification scores | false alarms |
+|---|---|---|---:|
+| short titles | 1.14 – 1.68, mean 1.39 | 1.63 – 2.01, mean 1.91 | 3 of 8 — **38%** |
+| story-shaped | 1.66 – 1.98, mean 1.82 | 1.73 – 2.23, mean 1.99 | 8 of 8 — **100%** |
+
+On story-shaped input it flagged **13 of 13 items**. Every construction item
+scored above the edge, and the class gap collapsed from **0.52** to **0.17**
+with the two ranges almost entirely overlapping. The 31% figure survived only
+because short titles compress the score range around the boundary.
+
+**So the board path is withdrawn too**, on the same evidence and for the same
+reason. `summariseBoardText` returns null unless
+`OFLOW_LAYA_SCRUM_UNCALIBRATED=1` is set, which exists so the measurement can
+be reproduced.
+
+What survives is the part that was never in doubt: the portable runner, the
+question set, the batch mechanism (7.93x, bit-identical), the counting and
+reporting, the measured false-positive floor, and the word counts that make a
+comparison checkable. `summariseBoard` itself stays exported and tested —
+the counting is sound; only the scoring is unfit.
+
+That leaves oflow with no Laya-derived feature enabled, which is the honest
+end of this line of work. Recalibrating the question on real story text with a
+held-out set is the next step, and it may be the only one that yields anything.
 
 ### The limit, stated plainly
 

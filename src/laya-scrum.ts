@@ -190,6 +190,18 @@ export async function summariseBoardText(
   texts: readonly string[],
   options: SummaryOptions = {},
 ): Promise<BoardSummary | null> {
+  // Withdrawn on measurement, for the same reason as assess --triage and with
+  // the same caveat about input. The 31% false-alarm figure was measured on
+  // SHORT board titles. On story-shaped input -- a title plus a description
+  // carrying acceptance criteria, which is what a real board holds -- the same
+  // question flagged 13 of 13 items including 8 of 8 construction ones: 100%
+  // false alarms. The class gap collapses from 0.52 on short titles to 0.17
+  // there, with the two ranges almost entirely overlapping.
+  //
+  // summariseBoard stays exported and fully tested, because the counting and
+  // reporting are sound; only the scoring is unfit. Re-enable with
+  // OFLOW_LAYA_SCRUM_UNCALIBRATED=1 to reproduce the measurement.
+  if (process.env.OFLOW_LAYA_SCRUM_UNCALIBRATED !== "1") return null;
   const answers = await runCustomQuestionsBatch(texts, SCRUM_QUESTIONS, options);
   if (answers === null) return null;
   const scores: number[] = [];

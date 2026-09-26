@@ -336,7 +336,8 @@ permission-aware, and independently verified.
 - [x] `src/laya-runner.ts` — portable engine wrapper: text in, answers out, no
   oflow or GitLab types, question set on stdin. 15 tests
 - [x] `src/laya-scrum.ts` — the one question that survived calibration, plus a
-  board summary that is comparative by design. 13 tests
+  board summary that is comparative by design — **withdrawn on measurement**
+  (100% false alarms on story-shaped input, against 31% on short titles). 24 tests
 - [x] `assess --triage` — **withdrawn on measurement.** The flag and the code
   remain, and it can never become a blocker, a warning, or a status change, but
   it returns nothing unless `OFLOW_LAYA_TRIAGE_UNCALIBRATED=1`. Measured on 24
@@ -380,7 +381,9 @@ checkable.
 It does **not** answer usefully on a single story. On story-shaped input the
 two classes overlap almost completely, so the per-item path is off pending
 recalibration. The board path keeps the weaker claim the measurements do
-support, and `summariseBoardText` reports item lengths for exactly that reason.
+supported — but the board path is withdrawn too, on the same evidence. The
+floor, the reporting and the word counts are sound; only the scoring is unfit
+on real input.
 
 Three decisions are load-bearing and all three are recorded in the linked
 document with the numbers behind them:

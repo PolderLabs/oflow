@@ -177,7 +177,13 @@ test("the batch path scores a board the same way as one call per item", { skip: 
     "Add cursor pagination to the work item listing",
     "Fix the retry loop with exponential backoff",
   ];
-  const summary = await summariseBoardText(board, options);
+  process.env.OFLOW_LAYA_SCRUM_UNCALIBRATED = "1";
+  let summary;
+  try {
+    summary = await summariseBoardText(board, options);
+  } finally {
+    delete process.env.OFLOW_LAYA_SCRUM_UNCALIBRATED;
+  }
   assert.ok(summary, "board summary expected");
   assert.equal(summary.items, board.length);
   for (const text of board) {
@@ -329,4 +335,28 @@ test("the band edges are uncalibrated on realistic story-shaped input", () => {
   // The two that come out right, so the ratio is visible: two of four.
   assert.equal(describeVerificationShare(at(2.09)), "partly verification and evidence work");
   assert.equal(describeVerificationShare(at(1.67)), null);
+});
+
+// The board path is withdrawn on the same evidence as assess --triage: the
+// 31% false-alarm figure was measured on SHORT titles, and on story-shaped
+// input the same question flagged 13 of 13 items including 8 of 8
+// construction ones. summariseBoard stays exported and tested because the
+// counting is sound; only the scoring is unfit.
+test("the board path is withheld on story-shaped input unless overridden", { skip: !process.env.OFLOW_LAYA_SCRUM_E2E }, async () => {
+  const { summariseBoardText } = await import("../dist/laya-scrum.js");
+  const board = ["Add a cursor to the work list", "Verify the rollback path"];
+  assert.equal(await summariseBoardText(board, { python: "/no/such/python" }), null);
+  assert.equal(await summariseBoardText([]), null);
+});
+
+// The measurement behind the withdrawal, as a characterization test. The
+// between-class gap collapses from 0.52 on short titles to 0.17 on
+// story-shaped input, which is why a threshold cannot separate the classes.
+test("the board false-alarm rate depends entirely on the input", () => {
+  const shortGap = 1.91 - 1.39;   // verification mean - construction mean
+  const storyGap = 1.99 - 1.82;
+  assert.ok(shortGap > 0.5, "short titles separate: " + shortGap.toFixed(2));
+  assert.ok(storyGap < 0.2, "story-shaped collapses: " + storyGap.toFixed(2));
+  // On story-shaped input every construction item scored above the edge.
+  assert.ok(1.66 >= 1.5, "lowest construction score on story input clears the edge");
 });
