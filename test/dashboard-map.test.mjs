@@ -301,6 +301,20 @@ test("a board with no labeled lists falls back to disclosed conventional stages"
   assert.match(page.get("map-source").textContent, /board has no labeled lists.*Inferred convention/);
 });
 
+// A board with no items at all still has to produce the inferred convention
+// lanes. The stage-policy selector picks policyLanes[0] unconditionally, so
+// an empty lane list is the one shape that would throw mid-render and leave
+// the workspace half-drawn.
+test("a board with no items still renders inferred stages", () => {
+  const page = harness();
+  const snapshot = data([], [{ id: 1, name: "Empty board", lists: [{ label: null, position: 0 }] }]);
+  const model = page.buildWorkMap(snapshot, {});
+  const policyLanes = model.lanes.filter((lane) => !["unmapped", "closed"].includes(lane.id));
+  assert.ok(policyLanes.length > 0, "inferred convention must supply a lane to select");
+  assert.doesNotThrow(() => page.renderWorkMap(page.get("host"), snapshot));
+  assert.equal(page.get("flow-policy-stage").value, policyLanes[0].id);
+});
+
 test("shared external parent URLs produce one reference card and multiple connectors", () => {
   const page = harness();
   const parent = { title: "Roadmap epic", webUrl: "https://gitlab.example.test/groups/team/-/epics/9" };
