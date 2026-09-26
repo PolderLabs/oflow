@@ -30,8 +30,10 @@ table of 7 rows alongside prose claiming twelve, and the two disagreed.
 | 12 | length-residual adjustment | rejected | removed the correlation, tripled false positives |
 | 13 | `english` checkpoint as default | rejected | 0.35 recall; safe by never speaking |
 | 14 | `multilingual` checkpoint as default | rejected | 15 of 20 construction items falsely flagged |
+| 15 | `LayaRouter` / per-item checkpoint selection | rejected | on a German board neither checkpoint separates: typed-decisions 7 of 8 construction items falsely flagged, multilingual 8 of 8 |
+| 16 | a laya version upgrade | rejected | 0.3.20 is byte-identical to 0.3.10: same RuntimeWarning, same score, same confidence |
 
-**Fourteen measured and not shipped: 2 withdrawn after shipping, 12 rejected
+**Sixteen measured and not shipped: 2 withdrawn after shipping, 14 rejected
 outright.** One capability is kept and wired — the readability precondition,
 which is not a classifier. The underlying engine is judged on every item above
 with the input each figure was measured on, stated in the same row.
