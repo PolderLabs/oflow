@@ -159,7 +159,14 @@ test("describeTriage names the domain and stays silent when it is unknown", () =
 
 // Opt-in only: the sole test that needs the real Python engine, so a normal
 // `npm test` on a machine without it stays green.
-test("the real laya engine produces a signal on this host", { skip: !process.env.OFLOW_LAYA_E2E }, async () => {
+//
+// This one exercises the CLI path, so it needs the `laya` executable on PATH
+// or $OFLOW_LAYA_BIN, not just a Python interpreter. Without either it
+// correctly returns null, which is why the guard is a skip and not a failure.
+const CLI_AVAILABLE = Boolean(
+  process.env.OFLOW_LAYA_BIN || process.env.OFLOW_LAYA_E2E,
+);
+test("the real laya engine produces a signal on this host", { skip: !CLI_AVAILABLE }, async () => {
   const signal = await triageText("Refactor the apply path into modules");
   assert.notEqual(signal, null);
   assert.ok(signal.score > 0);
