@@ -194,6 +194,48 @@ rollup would rest on precisely the short titles where the bands overlap, and a
 portfolio figure that silently misclassifies 2 of 10 items is worse than no
 figure.
 
+## Two attempts to fix the domain-vocabulary misses
+
+Since the weakness is specific -- "gating" and "ordering" do not read as
+"checking" -- two repairs were tried. Both failed, and are recorded so the
+obvious next idea is not re-derived.
+
+### Rephrasing the question
+
+| phrasing | gating | ordering | control separation |
+|---|---:|---:|---|
+| **current** | 1.16 | 1.47 | **+1.001, all positive** |
+| names the domain terms | 1.27 | 1.35 | +0.812, all positive |
+| reframed as review effort | **1.82** | 1.60 | **+0.191, pairs go negative** |
+| binary evidence (noul) | 0.70 | 0.55 | +0.257, all positive |
+
+The variant that fixes the failures does so by collapsing everything else.
+"Reframe as review effort" lifts gating to 1.82 and drops mean control
+separation from +1.001 to +0.191, with matched pairs going negative. The
+current phrasing is the best of the four, not because it was the first one
+tried.
+
+### A second question, OR-ed with the first
+
+A narrower question using oflow's own vocabulary -- acceptance criteria, gates,
+ordering, coverage, conformance:
+
+| item | current | acceptance-vocabulary | truth |
+|---|---:|---:|---|
+| Check pipeline gating | 1.16 | **1.98** | verification |
+| Review the apply ordering | 1.47 | **1.86** | verification |
+| Fix the digest guard on stale plans | 1.32 | 1.79 | construction |
+| Add ordering to the apply queue | 1.03 | 1.86 | construction |
+| Refactor the gating helper | 0.28 | **1.99** | construction |
+
+It lifts both failures, and is **anti-correlated** on construction: the
+construction item the current question scores lowest (0.28) is the one this
+question scores highest (1.99). Matched-length control separation goes
+**negative**, at −0.263.
+
+Neither repair ships. An OR of two signals that are each anti-correlated with
+the truth would be worse than the one honest signal that is currently in place.
+
 ## How others are using it
 
 Three public integrations, read to see whether the patterns here are unusual or
