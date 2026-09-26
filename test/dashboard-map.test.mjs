@@ -301,16 +301,25 @@ test("a board with no labeled lists falls back to disclosed conventional stages"
   assert.match(page.get("map-source").textContent, /board has no labeled lists.*Inferred convention/);
 });
 
-// A board with no items at all still has to produce the inferred convention
-// lanes. The stage-policy selector picks policyLanes[0] unconditionally, so
-// an empty lane list is the one shape that would throw mid-render and leave
-// the workspace half-drawn.
+// An empty board still has to render: the inferred convention supplies the
+// lanes, so the stage-policy selector always has something to select. This
+// pins that the fallback applies at zero items, not only with a work item
+// present -- the earlier case covered the latter.
 test("a board with no items still renders inferred stages", () => {
   const page = harness();
   const snapshot = data([], [{ id: 1, name: "Empty board", lists: [{ label: null, position: 0 }] }]);
   const model = page.buildWorkMap(snapshot, {});
   const policyLanes = model.lanes.filter((lane) => !["unmapped", "closed"].includes(lane.id));
   assert.ok(policyLanes.length > 0, "inferred convention must supply a lane to select");
+  // A board whose only list label is unconventional still contributes a
+  // configured lane, so the policy selector keeps a target. The item follows
+  // that lane rather than `unmapped`, because its label does match it.
+  const unmatched = data(
+    [item(1, { labels: ["Zzz-unmatched"] })],
+    [{ id: 1, name: "B", lists: [{ label: "Zzz-unmatched", position: 0 }] }],
+  );
+  assert.doesNotThrow(() => page.renderWorkMap(page.get("host"), unmatched));
+  assert.equal(laneFor(page.buildWorkMap(unmatched, {}), 1), "Zzz-unmatched");
   assert.doesNotThrow(() => page.renderWorkMap(page.get("host"), snapshot));
   assert.equal(page.get("flow-policy-stage").value, policyLanes[0].id);
 });
