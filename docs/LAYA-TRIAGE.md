@@ -2,10 +2,12 @@
 
 **Status: no Laya-derived feature is enabled. One precondition check is
 wired.** Both scoring paths are withdrawn on measurement, and the readability
-check now guards the triage path so that text the English checkpoint cannot
-read never reaches the question. This document records the measurements that
-decided that, so the next reader does not re-derive them and the "re-enable or
-not" decision is made on evidence rather than on a tool's description.
+check guards the triage path so that text the English checkpoint cannot read
+does not reach the question -- for the scripts it screens, but not for French,
+Portuguese or Dutch, which read as readable. This document records the
+measurements that decided that, so the next reader does not re-derive them
+and the "re-enable or not" decision is made on evidence rather than on a
+tool's description.
 
 ## Running the engine at all
 
@@ -66,7 +68,6 @@ to check a corpus without spending engine calls.
 These are the inputs this document calls unrecoverable, and they are untracked
 scratch: a `/tmp` wipe loses them. Re-deriving them means re-authoring the
 corpora, which is why the figures here are otherwise uncheckable by a reader.
-
 
 ## Canonical list: everything measured, and what happened to it
 
