@@ -114,10 +114,11 @@ export interface RunnerOptions {
   /** Milliseconds before the probe is abandoned. */
   timeoutMs?: number;
   /**
-   * The published checkpoint ships invalid temperatures and its own
-   * RuntimeWarning says the affected confidences are uncalibrated. Callers
-   * must not gate on a confidence figure; this flag records that the caller
-   * has been told.
+   * The checkpoint observed on laya 0.3.10 ships invalid temperatures, and its
+   * own RuntimeWarning says the affected confidences are uncalibrated. Callers
+   * must not gate on a confidence figure. This is version-dependent -- if a
+   * later release stops emitting the warning, the figures become worth
+   * reporting, so re-check on upgrade rather than assuming either way.
    */
   uncalibratedCheckpoint?: boolean;
 }

@@ -8,6 +8,34 @@ made on evidence rather than on a tool's description.
 
 ## What Laya is
 
+**Version provenance, stated up front because it bounds every number here.**
+
+| | version |
+|---|---|
+| measured in this document | **0.3.10** |
+| served by PyPI at the time of writing | **0.3.20** |
+
+Ten releases behind. Two consequences:
+
+- **Every calibration figure below is from 0.3.10**, including the r=+0.02
+  length control, the 7/10 hand-labelled probe, the uncertainty-margin table,
+  the sprint-board overlap, and the three-checkpoint comparison. The shipped
+  default is now `typed-decisions`, but the *corpus* of evidence was gathered
+  on `english` at 0.3.10. A reader must not assume the shipped default carries
+  those figures.
+- **The `confidence: 0` decision was re-tested on 0.3.20 and still holds.**
+  The RuntimeWarning that drives it names the same entry, `choice:11+=... ->0.5`,
+  in both versions, so the affected confidences are uncalibrated in the current
+  release too. Measured, not assumed. The `typed-decisions` score for
+  "Check pipeline gating" is 1.8945 on 0.3.20 against 1.63 on 0.3.10 -- the same
+  region, so the band edges in this document remain usable.
+
+  This is a point-in-time result, not a guarantee. Upstream describes 0.3.20 as
+  "the code is unchanged from the last runtime release", so a fix could land in
+  any future release. The warning is the signal to re-check on: if it stops
+  appearing, the `confidence: 0` this module reports becomes a real omission and
+  confidence gating becomes available.
+
 `laya` 0.3.10, installed in a local Python virtual environment, from
 `convaiinnovations/laya`. Its own summary: a "fast, non-autoregressive System 1
 decision engine with calibrated probabilities."
@@ -28,6 +56,7 @@ The custom path passes its JSON on **stdin**, never argv and never a temp file,
 so no local path can leak into a process list.
 
 ## The headline finding: a question that is not a length meter
+<!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 
 The engine's **stock difficulty score is close to useless.** Measured here:
 
@@ -83,7 +112,7 @@ what sprint planning tends to get wrong.
 
 | Question | Verdict | Evidence |
 |---|---|---|
-| `verificationShare` | **kept** | 6/6 matched pairs; r=0.02 vs length; deterministic |
+| `verificationShare` | **kept** | 6/6 matched pairs; r=0.02 vs length; deterministic. *Corpus measured on `english` @ 0.3.10; the default is now `typed-decisions` — see the checkpoint section* |
 | `executorFit` | dropped | 5/10; called every verify/audit/confirm task agent-suitable, including ones needing human judgement |
 | `specificationGap` | dropped | wrong in *direction*, not just noisy — see below |
 | stock difficulty band | dropped | r=0.82 vs length; equal-length pairs separated by +0.02, −0.08, +0.75 |
@@ -114,6 +143,14 @@ stub call must still return a signal.
 
 ## The checkpoint disowns its own confidences
 
+Recorded on laya **0.3.10**. This is the one finding most likely to be
+version-dependent: the warning below is emitted by the checkpoint, and a later
+release may have fixed it. If the warning stops appearing, the `confidence: 0`
+this module reports becomes a real omission, and confidence gating -- the one
+pattern upstream documents as the way to act on a prediction -- becomes
+available. That is a reason to re-check on upgrade, not a reason to assume
+either way.
+
 Every run emits:
 
 > `RuntimeWarning: laya: this checkpoint ships invalid temperatures or values
@@ -134,6 +171,7 @@ disowned, so the module reports `confidence: 0` and callers must not gate on it.
   the calibration table in its header.
 
 ## The signal is asymmetric, and short titles are its weakness
+<!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 
 The control above used full sentences. Sprint boards do not: they hold short
 imperative titles, which is exactly where this would be used. Re-run over ten
@@ -195,6 +233,7 @@ rollup would rest on precisely the short titles where the bands overlap, and a
 portfolio figure that silently misclassifies 2 of 10 items is worse than no
 figure.
 
+<!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 ## Two attempts to fix the domain-vocabulary misses
 
 Since the weakness is specific -- "gating" and "ordering" do not read as
@@ -348,6 +387,31 @@ stating because each looks defensible in isolation:
   fifteen false alarms out of twenty construction items. Judging a checkpoint
   on the items it was chosen for is the same error as judging the difficulty
   score on a set that happened to separate.
+
+### What a consumer actually sees
+
+The counts above score every item against the band edges, but
+`describeVerificationShare` returns `null` for construction *and* for anything
+within 0.2 of an edge. So a reader never sees a low score -- the only error
+that can reach someone is a construction item scoring high enough, and clear
+enough of the edge, to print. Recomputing on that rule:
+
+| checkpoint | construction scoring >= 1.5 | **printed to a consumer** |
+|---|---:|---:|
+| english | 1 / 20 | **0 / 20** |
+| multilingual | 18 / 20 | **15 / 20** |
+| typed-decisions | 6 / 20 | **1 / 20** |
+
+This is the number that decides it. **`multilingual` prints a false "mostly
+verification" on fifteen of twenty real construction items**, and the
+uncertainty margin does not catch them, because they sit far *above* the edge
+rather than near it. That is the failure a reader cannot discount, because
+nothing on the output says to doubt it.
+
+`typed-decisions` leaks one item in twenty, and `english` leaks none -- but
+pays for that with 0.35 recall, saying nothing about two thirds of the
+verification work it exists to surface. One false alarm per twenty is a
+defensible price for 0.75 recall; fifteen is not.
 
 **The default changed as a result.** It is now `typed-decisions`, and the
 measured table lives in the runner's own type documentation so the choice
