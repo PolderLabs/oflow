@@ -1255,7 +1255,8 @@ was added after roughly fifteen turns of editing a corpus into shape, and it
 would have caught the first problem immediately. The assertion now runs before
 any engine call, and it asserts the *count* as well as the lengths -- a length
 check over an empty list passes, and a swap corpus that parsed to zero pairs
-reported itself clean while measuring nothing. On the *unmatched* version of the same criteria the question
+reported itself clean while measuring nothing. On a *different*, unmatched
+criteria corpus -- not these pairs -- the question
 scores 0.79 against 0.78 for length alone -- a lead of +0.01, which is the confound, now removed.
 
 This is usable for scrum planning, and only as a sort: a board ordered by
