@@ -8,6 +8,7 @@ import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
 import { getCurrentBranch, getGitLabRemote } from "./git.js";
 import { GitLabApiError, GitLabClient } from "./gitlab.js";
+import { normalizeForbidden } from "./auth-resolver.js";
 import { executeIssueUpdate } from "./executor.js";
 import {
   convertBulletsToAcceptanceCriteria,
@@ -16,7 +17,7 @@ import {
   countChecklistItems,
   type CriterionStateChange,
 } from "./criteria.js";
-import { isIssueType } from "./types.js";
+import { isIssueType, type GitLabUser } from "./types.js";
 import type { DelegatedActionRequest, ExecutionReceipt } from "./actions.js";
 import type {
   GitLabIssue,
@@ -3181,7 +3182,34 @@ async function resolveAssigneeIds(
   const usernames = [...new Set(normalized.split(",").map((item) => item.trim()).filter(Boolean))];
   const users = [];
   for (const username of usernames) {
-    const matches = await client.listUsersByUsername(username);
+    let matches: GitLabUser[];
+    try {
+      matches = await client.listUsersByUsername(username);
+    } catch (error) {
+      // A granular-scope token cannot search users. The raw API error names
+      // the status but not the cause in oflow terms, so detect the forbidden
+      // case and explain what this command needs. The shared normalizer is
+      // used only as a status detector: its remediation text is written for
+      // merge-request writes and would misdirect an issue-assignee user.
+      const { probe, remediation } = normalizeForbidden(error);
+      if (probe === "forbidden") {
+        // A username can only be resolved through the users API, so widening
+        // the token is the only route today. A numeric-id escape hatch is
+        // sketched in docs/ROADMAP.md but not implemented; promising it here
+        // would send a user looking for a flag that does not exist yet.
+        const scopeHint = remediation === undefined
+          ? ""
+          : " Use a token with broader scopes (api, read_api) or `glab auth login`.";
+        throw new OflowError(
+          "Resolving --assignee " + JSON.stringify(username) + " looks the name up through " +
+            "the GitLab users API, which needs the read_user or api scope, and this token " +
+            "was refused." + scopeHint + " Re-authenticate with `oflow auth login <host>`, " +
+            "or leave the assignee unset and set it in GitLab directly.",
+          "ASSIGNEE_LOOKUP_FORBIDDEN",
+        );
+      }
+      throw error;
+    }
     if (matches.length !== 1) {
       throw new OflowError(
         matches.length === 0

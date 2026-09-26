@@ -285,7 +285,7 @@ block F3; several fold into F6.
 | 1 | `--add-labels` does not validate label existence before approval; missing labels silently no-op at apply | F6 | Dry-run lists labels being added with `[MISSING]` markers; approval blocked while any are missing unless `--force`; hint surfaces `oflow plan label create` |
 | 2 | `plan issue create` has no `--type`/`--issue-type` flag; work items default to `issue` | F6 | Forward `issue_type` through `GitLabIssueCreate`; add `--type task\|issue\|incident\|requirement` to the create command |
 | 3 | Stale-digest guard on bulk plans has no escape hatch; interrupted applies orphan approved plans | F1/F6 | `oflow plan <id> --supersede` atomically rebuilds against current IID state; partial-progress recovery reuses the existing bulk per-IID result tracking; auto-archive failed applies |
-| 4 | `--assignee <username>` requires User:Read scope and fails with raw GitLab JSON | F6 | On granular-scope 403, accept numeric `--assignee-id` without the user lookup; print the oflow-level remediation inline (reuse `normalizeForbidden`) |
+| 4 | `--assignee <username>` requires User:Read scope and fails with raw GitLab JSON | F6 | On granular-scope 403, accept numeric `--assignee-id` without the user lookup; print the oflow-level remediation inline (reuse `normalizeForbidden`). *Remediation landed; `--assignee-id` still open — see the reconciliation below.* |
 | 5 | `work --author` is case-sensitive and username-only; no human-name resolution | F5 | Accept username, display name, or email; resolve via a local member cache populated at `install`/first `work` invocation |
 | 6 | Bulk plans silently capped at 50 IIDs; cap undocumented in `--help` | F6 | Auto-split into chunked plans of ≤50 (oflow already knows batching) and/or document the cap in help text |
 | 7 | Apply interrupted mid-batch leaves ambiguous state; no resumable `applied-partial` | F1 | Add `applied-partial` state with `oflow apply --resume`; per-IID results already tracked for bulk ops — expose them for recovery |
@@ -345,12 +345,12 @@ is now on 0.5.2, so the log is partly stale. Verified against `src/`:
 | 1 | `--add-labels` does not validate label existence | **Fixed on this branch** — `assertIssueLabelsExist` (`plan.ts:4411`) rejects an unknown added label at plan time, before anything is approved or applied |
 | 2 | `plan issue create` has no `--type`/`--issue-type` | **Shipped** — parsed at `cli.ts:1392` and forwarded as `issue_type` at `cli.ts:629` |
 | 3 | Stale-digest guard has no escape hatch | **Still open** — no `--supersede` anywhere in `src/` |
-| 4 | `--assignee` needs `User:Read` and leaks raw JSON on 403 | **Still open** — `resolveAssigneeIds` (`plan.ts:3170`) calls `listUsersByUsername` unguarded; `normalizeForbidden` (`auth-resolver.ts:247`) is not applied to it |
+| 4 | `--assignee` needs `User:Read` and leaks raw JSON on 403 | **Partly fixed on this branch** — `resolveAssigneeIds` reports `ASSIGNEE_LOOKUP_FORBIDDEN` with the missing scope and a way forward, instead of the raw API body. The numeric `--assignee-id` escape hatch sketched in the log above is **still open**: `validateAssigneeIds` accepts ids, but no CLI flag reaches it, so a token without `read_user` still has no way to set an assignee by id |
 | 5 | `work --author` is case-sensitive, username-only | **Unverified** — needs a read before it is queued |
 | 6 | 50-IID bulk cap undocumented in help | **Partly shipped** — enforced at `plan.ts:2573`; help mentions it at `cli.ts:2252` and `cli.ts:2298`, not for every bulk command |
 | 7 | Apply leaves ambiguous `applied-partial` state | **Shipped** — the state is declared at `plan.ts:44`, the resume path at `plan.ts:1301` |
 
-#1 is fixed on this branch. #3 and #4 remain confirmed-open work; treat the
+#1 and #4 are fixed on this branch. #3 remains confirmed-open work; treat the
 rest of the log as history rather than as a backlog.
 
 ## Status
