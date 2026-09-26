@@ -52,6 +52,27 @@ not have to be the stock ones.
 | `runDefaultQuestions` | shells out to the `laya` CLI, `--predict --json` | stock router questions; no Python API needed |
 | `runCustomQuestions` | library API, question set passed via stdin | domain-specific questions; the reason this is useful at all |
 
+**Every figure in this document comes from the library path**
+(`laya.Agent.predict`), never the CLI. The distinction is not cosmetic:
+
+- The CLI serves only the stock router questions. It **cannot** take a custom
+  question set, so no kept or rejected result here could have been produced
+  through it.
+- The two paths do not agree numerically even on the same input. Asked about
+  "Check pipeline gating", the CLI's stock `difficulty` returns 1.16 while the
+  library's `typed-decisions` `verificationShare` returns 1.63 -- different
+  questions, different scores, and the 1.16 is the value this document lists
+  as english's `gating` miss.
+- Upstream's 0.3.20 notes include a fix that "the `laya` command prints the
+  right probability for a choice". That is the **CLI** path, so CLI-derived and
+  library-derived numbers can diverge across versions even where the code is
+  otherwise unchanged. Anyone reproducing this work should use
+  `laya.Agent.predict`, and should not expect the CLI to agree.
+
+Verified on this host that both versions produce identical scores through the
+library path: 0.3.10 and 0.3.20 both return 2.07, 1.89, 1.94, 1.73 for the same
+four construction items.
+
 The custom path passes its JSON on **stdin**, never argv and never a temp file,
 so no local path can leak into a process list.
 
@@ -244,7 +265,7 @@ obvious next idea is not re-derived.
 
 | phrasing | gating | ordering | control separation |
 |---|---:|---:|---|
-| **current** | 1.16 | 1.47 | **+1.001, all positive** |
+| **the wording in use** | 1.16 | 1.47 | **+1.001, all positive** |
 | names the domain terms | 1.27 | 1.35 | +0.812, all positive |
 | reframed as review effort | **1.82** | 1.60 | **+0.191, pairs go negative** |
 | binary evidence (noul) | 0.70 | 0.55 | +0.257, all positive |
@@ -252,7 +273,7 @@ obvious next idea is not re-derived.
 The variant that fixes the failures does so by collapsing everything else.
 "Reframe as review effort" lifts gating to 1.82 and drops mean control
 separation from +1.001 to +0.191, with matched pairs going negative. The
-current phrasing is the best of the four, not because it was the first one
+wording in use is the best of the four, not because it was the first one
 tried.
 
 ### A second question, OR-ed with the first
@@ -344,7 +365,7 @@ The two items the kept question gets wrong, across all three checkpoints:
 
 | checkpoint | gating | ordering | control separation |
 |---|---:|---:|---|
-| english (current) | 1.16 | 1.47 | **+1.001** |
+| english (the corpus checkpoint) | 1.16 | 1.47 | **+1.001** |
 | **multilingual** | **2.43** | **2.14** | +0.315 |
 | typed-decisions | 1.63 | 1.70 | +0.592 |
 
