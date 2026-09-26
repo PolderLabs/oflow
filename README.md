@@ -439,6 +439,7 @@ oflow iteration --group --state current
 oflow cadence --json                 # parent-group cadence schedule
 oflow context --story 42             # full story context
 oflow assess --story 42 --json       # deterministic progress evidence
+oflow assess --story 42 --triage --json   # optional Laya hint: how much is verification work
 oflow mr --iid 8 --json              # compact MR status
 oflow mr --iid 8 --full              # include MR description
 oflow verify --story 42              # acceptance + pipeline verification
@@ -452,6 +453,24 @@ oflow dashboard                     # local read-only planning cockpit
 Use server-side filters to keep responses small:
 `--label`, `--milestone`, `--iteration`, `--epic`, `--assignee`, `--author`,
 `--search`, `--updated-after`, `--updated-before`, and `--limit`.
+
+### Optional: verification-share hint
+
+`oflow assess --story <iid> --triage` adds one advisory line about how much of
+a story is checking existing behaviour and evidence rather than writing new
+behaviour. That is a review-effort signal, not a size estimate: a story that
+is mostly verification costs a reviewer far more attention than its length
+suggests.
+
+It is off by default and depends on nothing. Without a local
+[Laya](https://github.com/NandhaKishorM/laya) install it simply returns
+nothing, and it never changes a story's status, adds a blocker, or emits a
+warning. Treat it as a prompt to look, never as a decision.
+
+The measurement behind it, including the signals that were tried and rejected,
+is in [docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md). The short version: the
+engine's own difficulty score was dropped because it tracks input length, and
+one custom question survived. Ten capabilities were probed; one shipped.
 
 ### Plan and change safely
 

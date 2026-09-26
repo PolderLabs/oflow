@@ -102,8 +102,13 @@ test("the real engine produces an advisory triage band", { skip: !process.env.OF
     assert.ok(result.triage, "triage payload expected");
     assert.equal(typeof result.triage.verificationShare.score, "number");
     assert.ok(["construction", "mixed", "verification"].includes(result.triage.verificationShare.band));
-    // The caveat must travel with the number rather than being dropped.
+    // The caveat must travel with the number rather than being dropped, and
+    // it must not describe the score as difficulty: the engine's difficulty
+    // signal was dropped for tracking input length, and calling this one
+    // difficulty would reintroduce the same misreading.
     assert.match(result.triage.note, /advisory/);
+    assert.match(result.triage.note, /uncalibrated/);
+    assert.doesNotMatch(result.triage.note, /difficulty/i);
     assert.deepEqual(result.blockers, []);
   });
 });

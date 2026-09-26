@@ -27,7 +27,7 @@ async function triageAssessment(
   if (note === null) return undefined;
   return {
     verificationShare: { score: value.score, band: value.band, uncertain: value.uncertain },
-    note: note + " (advisory; Laya triage, uncalibrated checkpoint)",
+    note: note + " (advisory; verification-share estimate from an uncalibrated checkpoint)",
   };
 }
 
