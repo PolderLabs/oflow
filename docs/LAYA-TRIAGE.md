@@ -529,11 +529,43 @@ Three upstream features are worth knowing about:
 
 **An MCP server already exists.** `pip install "laya[mcp]"` gives
 `laya-mcp-server`, exposing `laya_predict`, `laya_route`, `laya_shortlist`,
-`laya_preset` and `laya_status` over stdio. It is installed in the local venv
-here. oflow already documents a GitLab MCP boundary, so an agent that can call
-MCP tools can reach Laya without oflow spawning anything at all. That is the
-cleaner integration if the goal is agents using this directly, and it removes
-the process-spawning oflow does today.
+`laya_preset` and `laya_status` over stdio. oflow already documents a GitLab MCP
+boundary, so an agent that can call MCP tools can reach Laya without oflow
+spawning anything at all.
+
+The optional extra is genuinely optional: on this host the server module was
+present but **`import laya.mcp.server` failed with `ModuleNotFoundError: No
+module named 'mcp'`** until `mcp` was installed separately. Anything documented
+as an extra has to be checked rather than assumed.
+
+### Measured: the two paths are not equivalent in cost
+
+Both were run against the same question, and `laya_predict` over MCP returns
+exactly what the in-process runner does -- `1.6322` for "Check pipeline
+gating", identical to the digit. So this is a cost and ownership question, not
+a correctness one.
+
+| | in-process runner | MCP stdio |
+|---|---|---|
+| answers the same question | yes | yes, identical to the digit |
+| first call | ~3.6 s (python start + model load) | ~3.0 s server boot, then ~3.1 s |
+| **subsequent calls** | **~3.5 s each** -- a new process every time | **~0.12 s** -- process and model reused |
+| what oflow owns | process lifecycle per call | one long-lived child, reconnect, and MCP framing |
+| needs `mcp` installed | no | yes |
+| custom questions | yes | yes (`laya_predict` takes `questions`) |
+
+**The in-process runner pays full engine start-up on every call**, because
+`assess --triage` is a one-shot command: there is never a second call to amortise
+against. The server's reported per-call latency drops from 1158 ms to 124 ms once
+the model is resident.
+
+So the trade is: MCP is ~30x cheaper per call and lets an agent use Laya
+directly, but it needs a long-lived process and an optional dependency. For a
+single `assess` invocation the two are within noise of each other; MCP only wins
+once something is calling repeatedly.
+
+Neither is wired in. That decision belongs to the maintainer, and the numbers
+above are what it should be made on.
 
 **Confidence gating is the documented pattern** — act above a threshold chosen
 from measured accuracy at that coverage, escalate below it. This branch does
