@@ -2261,7 +2261,7 @@ function helpText(): string {
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  sync --summary                       token-light counts and planning health",
     "  assess --story <iid> [--json] [--triage]  compact story progress; --triage adds an advisory Laya hint",
-    "  capabilities [--json]               show supported and planned operations",
+    "  capabilities [--json] [--probe]      show supported and planned operations",
     "  audit [--limit <n>] [--json]         read local plan lifecycle history",
     "  cache status [--json]                inspect local cache age/schema/invalidation",
     "  cache request-refresh                record a local refresh request (no network)",

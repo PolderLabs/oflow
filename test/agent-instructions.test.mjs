@@ -47,6 +47,17 @@ const DECLARED_COMMANDS = [
   "verify-local", "work",
 ];
 
+/**
+ * Flags the blocks are allowed to use, read from the CLI's own help rather
+ * than a hand-kept list. A hand-kept list is what drifted into missing four
+ * real flags on the first attempt; deriving it means a block can only name a
+ * flag the binary actually supports.
+ */
+const KNOWN_FLAGS = new Set(
+  (spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" }).stdout ?? "")
+    .match(/--[a-z][a-z-]*/g) ?? [],
+);
+
 /** First words of declared two-word paths, so a bare mention is still checked. */
 const TOP_LEVEL = new Set(DECLARED_COMMANDS.map((path) => path.split(" ")[0]));
 
@@ -67,14 +78,38 @@ test("every declared oflow command actually exists", () => {
 test("no instruction block names a command outside the declared set", () => {
   const stray = [];
   for (const [label, text] of Object.entries(BLOCKS)) {
-    // Commands appear inside backticks, optionally followed by flags or an
-    // argument placeholder. Matching that shape rather than "oflow <word>"
-    // anywhere avoids prose entirely -- "oflow instructions for Codex" and
-    // "oflow is the workflow authority" are sentences, not commands.
-    for (const match of text.matchAll(/`oflow ([a-z][a-z-]*(?: [a-z][a-z-]*)?)/g)) {
-      const path = match[1];
-      const first = path.split(" ")[0];
-      if (!TOP_LEVEL.has(first)) stray.push(label + " -> oflow " + path);
+    // Two forms, because the blocks use both: the agent instruction blocks
+    // write commands bare ("oflow work --mine --cached --json"), while the
+    // markdown templates put them in backticks. Anchoring on backticks alone
+    // would have missed every command in the block that matters most.
+    //
+    // Matching "oflow <known-command>" against the declared set is what keeps
+    // prose out: "oflow is the workflow authority" cannot match, because "is"
+    // is not a declared command. So a phantom word is caught and a sentence is
+    // not.
+    for (const match of text.matchAll(/\boflow ([a-z][a-z-]*)/g)) {
+      const word = match[1];
+      if (!TOP_LEVEL.has(word)) {
+        // "oflow is the workflow authority" and "oflow instructions for Codex"
+        // are sentences. A real mistake is an unknown word followed by a
+        // flag-shaped token, so only that shape is reported.
+        const rest = text.slice(match.index + match[0].length);
+        if (/^ --?[a-z-]/.test(rest)) stray.push(label + " -> oflow " + word);
+        continue;
+      }
+      // A known command: check its own flags. Arguments are the leading run
+      // of --flag tokens after the command; the first non-flag token ends it,
+      // because everything past that is prose rather than part of the command.
+      // Scanning further would judge sentences, which is how an earlier
+      // version of this test produced phantom "commands" like
+      // "oflow finish consume".
+      const rest = text.slice(match.index + match[0].length);
+      const argv = /^(?:\s+(--?[a-z][a-z-]*))*/.exec(rest);
+      for (const token of (argv?.[0].match(/--?[a-z][a-z-]*/g) ?? [])) {
+        if (!KNOWN_FLAGS.has(token)) {
+          stray.push(label + " -> oflow " + word + " with unknown flag " + token);
+        }
+      }
     }
   }
   assert.deepEqual(stray, [], "undeclared command words:\n" + stray.join("\n"));
