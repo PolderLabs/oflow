@@ -8,6 +8,7 @@ import { OflowError } from "./errors.js";
 import { readJson, writeJson } from "./fs.js";
 import { getCurrentBranch, getGitLabRemote } from "./git.js";
 import { GitLabApiError, GitLabClient } from "./gitlab.js";
+import { normalizeForbidden } from "./auth-resolver.js";
 import { executeIssueUpdate } from "./executor.js";
 import {
   convertBulletsToAcceptanceCriteria,
@@ -16,7 +17,7 @@ import {
   countChecklistItems,
   type CriterionStateChange,
 } from "./criteria.js";
-import { isIssueType } from "./types.js";
+import { isIssueType, type GitLabUser } from "./types.js";
 import type { DelegatedActionRequest, ExecutionReceipt } from "./actions.js";
 import type {
   GitLabIssue,
@@ -487,6 +488,13 @@ export async function createIssueUpdatePlan(
       "EMPTY_PLAN",
     );
   }
+  if (operationChanges.add_labels !== undefined) {
+    await assertIssueLabelsExist(
+      client,
+      remote.projectPath,
+      validateIssueLabelList(operationChanges.add_labels, "Added issue labels"),
+    );
+  }
 
   const now = new Date().toISOString();
   const plan: PlanArtifact = {
@@ -597,6 +605,13 @@ export async function createBulkIssueLabelsPlan(
   const currentIssues = await Promise.all(
     normalizedIids.map((issueIid) => client.getIssue(remote.projectPath, issueIid)),
   );
+  if (operationChanges.add_labels !== undefined) {
+    await assertIssueLabelsExist(
+      client,
+      remote.projectPath,
+      validateIssueLabelList(operationChanges.add_labels, "Added issue labels"),
+    );
+  }
   return writePlan(root, {
     kind: "issues.labels.update",
     host: remote.host,
@@ -3167,7 +3182,34 @@ async function resolveAssigneeIds(
   const usernames = [...new Set(normalized.split(",").map((item) => item.trim()).filter(Boolean))];
   const users = [];
   for (const username of usernames) {
-    const matches = await client.listUsersByUsername(username);
+    let matches: GitLabUser[];
+    try {
+      matches = await client.listUsersByUsername(username);
+    } catch (error) {
+      // A granular-scope token cannot search users. The raw API error names
+      // the status but not the cause in oflow terms, so detect the forbidden
+      // case and explain what this command needs. The shared normalizer is
+      // used only as a status detector: its remediation text is written for
+      // merge-request writes and would misdirect an issue-assignee user.
+      const { probe, remediation } = normalizeForbidden(error);
+      if (probe === "forbidden") {
+        // A username can only be resolved through the users API, so widening
+        // the token is the only route today. A numeric-id escape hatch is
+        // sketched in docs/ROADMAP.md but not implemented; promising it here
+        // would send a user looking for a flag that does not exist yet.
+        const scopeHint = remediation === undefined
+          ? ""
+          : " Use a token with broader scopes (api, read_api) or `glab auth login`.";
+        throw new OflowError(
+          "Resolving --assignee " + JSON.stringify(username) + " looks the name up through " +
+            "the GitLab users API, which needs the read_user or api scope, and this token " +
+            "was refused." + scopeHint + " Re-authenticate with `oflow auth login <host>`, " +
+            "or leave the assignee unset and set it in GitLab directly.",
+          "ASSIGNEE_LOOKUP_FORBIDDEN",
+        );
+      }
+      throw error;
+    }
     if (matches.length !== 1) {
       throw new OflowError(
         matches.length === 0
@@ -3311,6 +3353,13 @@ function formatResult(result: NonNullable<PlanArtifact["result"]>): string {
   if (result.kind === "issue.note.create") {
     return "note #" + String(result.noteId ?? "unknown") +
       (result.noteReused ? " already present" : " created");
+  }
+  if (result.kind === "issue.criterion.toggle") {
+    const criterion = result.criterion;
+    return "issue #" + String(result.iid ?? "unknown") + " criterion " +
+      JSON.stringify(criterion?.id ?? "unknown") +
+      (criterion ? (criterion.checked ? " checked" : " unchecked") : "") +
+      (result.noteId !== undefined ? " (note #" + String(result.noteId) + ")" : "");
   }
   if (result.kind === "issue.iteration.update") {
     return "issue #" + String(result.iid ?? "unknown") + " iteration set to " +
@@ -4372,6 +4421,51 @@ function validateIssueLabelList(value: string, field: string): string[] {
     );
   }
   return labels;
+}
+
+/**
+ * Refuse a plan that adds a label the project does not define.
+ *
+ * A label the project does not define cannot be added, and oflow previously
+ * discovered that only at verify time -- after the plan had been approved and
+ * applied. Rejecting it here keeps the failure loud and cheap, with
+ * `oflow plan label create` as the documented way to add the label first.
+ *
+ * Removal is deliberately not checked: removing an absent label is already
+ * the requested end state.
+ */
+async function assertIssueLabelsExist(
+  client: GitLabClient,
+  projectPath: string,
+  addedLabels: string[],
+): Promise<void> {
+  if (addedLabels.length === 0) return;
+  const page = await client.listLabelsPage(projectPath);
+  // Truncated to the first page, this check would call every label past it
+  // missing, so refuse to judge rather than accuse a label that does exist.
+  if (page.pagination.hasNextPage) {
+    throw new OflowError(
+      "This project has more labels than one page, so their existence cannot be verified here. " +
+        "Check the name in GitLab, or add it with `oflow plan label create`.",
+      "LABEL_LIST_INCOMPLETE",
+    );
+  }
+  // A stored label is one name, so trim it rather than running it through
+  // normalizeLabels: that helper splits on commas, and a legal label may
+  // itself contain one ("bug, urgent"), which it would tear in half.
+  const available = new Set(
+    page.items.map((label) => label.name.trim()).filter(Boolean),
+  );
+  const missing = addedLabels.filter((label) => !available.has(label));
+  if (missing.length > 0) {
+    throw new OflowError(
+      "Label" + (missing.length === 1 ? " " : "s ") + missing.map((label) => JSON.stringify(label)).join(", ") +
+        " " + (missing.length === 1 ? "does" : "do") + " not exist in " + projectPath + ". " +
+        "Create " + (missing.length === 1 ? "it" : "them") +
+        " first with `oflow plan label create`.",
+      "UNKNOWN_ISSUE_LABEL",
+    );
+  }
 }
 
 function checkLabelsPresent(

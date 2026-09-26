@@ -87,7 +87,7 @@ export const OFLOW_README_MARKDOWN = [
   "- templates/merge-request.md is the acceptance-aware MR template.",
   "- GitLab credentials live outside the repository; use oflow auth login.",
   "- oflow reads GitLab through its typed REST API; explicit group-epic reads use GraphQL, while glab and MCP remain optional integrations.",
-  "- oflow glab api is an explicit GET-only fallback for unwrapped endpoints.",
+  "- oflow glab api <GET endpoint> is an explicit GET-only fallback for unwrapped endpoints.",
   "- Use work/sync filters, --limit, and sync --stale-days when an explicit age threshold is useful to keep planning context focused.",
   "- Live sync and work reads write credential-free ignored caches; sync --cached and work --cached never contact GitLab and report snapshot age. Refresh before relying on current state or preparing a remote write.",
   "- Mandatory cache policy: refresh at session start, use cached reads during exploration, refresh before remote changes, stop remote mutations if refresh fails, and refresh again after applying changes.",
@@ -161,12 +161,13 @@ export function agentInstructionBlock(agent: AgentName): string {
     "  1. Refresh: oflow work --mine --refresh --json and oflow sync --summary --refresh --json. If refresh fails, do not apply a remote mutation.",
     "  2. Select a story: oflow start --json or oflow start --story <iid> --json.",
     "  3. Explore locally: oflow work --mine --cached --json, oflow sync --summary --cached --json, oflow context --story <iid> --json, oflow assess --story <iid> --json, and oflow capabilities --json.",
+    "     Optional: oflow assess --story <iid> --triage --json adds an advisory hint about how much of the story is verification work rather than new construction. It needs a local Laya install, returns nothing when that is absent, and is a hint only -- never treat it as a decision.",
     "  4. Run repository verification checks. If workflow.verification.checks is declared, oflow verify-local --json records bounded, tree-bound evidence under .oflow/cache/ that oflow check and oflow finish consume.",
     "  5. Before claiming completion: oflow verify --story <iid> --json, then oflow finish --story <iid> --json. finish is read-only and reports readiness across acceptance criteria, merged MR, pipeline policy/evidence, clean Git, and repository verification.",
     "  6. Only when finish.ready=true may the agent create, approve, apply, and verify the guarded close plan: oflow plan issue update --story <iid> --state closed, oflow approve <plan>, oflow apply <plan>, oflow verify --plan <plan>.",
     "  7. Refresh again after every remote change and emit oflow handoff --story <iid> --json for the next agent.",
     "Cache policy: --cached reads are offline and never contact GitLab; they reuse the actor identity recorded by the last live refresh. Cached assigned-work reads require a fresh identity; run oflow work --mine --refresh whenever the GitLab identity changes.",
-    "Safety: never place a token in the repository; use oflow auth login or --token-stdin. If a capability is missing, oflow normalizeForbidden names the oflow-level mitigation. workflow.verification with policy:required will block oflow finish when stale or missing.",
+    "Safety: never place a token in the repository; use oflow auth login or --token-stdin. If a capability is missing, oflow doctor --check-api --json names the oflow-level mitigation. workflow.verification with policy:required will block oflow finish when stale or missing.",
     "Delegated MCP scope: merge_request.create only. Direct REST/glab backends carry MR create/update and other issue writes; git push -o merge_request.create is a separate Git transport fallback, not MCP.",
   ].join("\n");
 }

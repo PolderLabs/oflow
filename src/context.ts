@@ -334,7 +334,19 @@ export function formatWorkItemSummariesMarkdown(
     "",
   ];
   if (items.length === 0) {
-    lines.push("_No work items found._");
+    // An author or assignee filter that matched nothing is ambiguous: the
+    // person may genuinely have no work, or the name may simply be wrong. A
+    // wrong name is silent -- the same shape as "no work exists" -- so say so
+    // rather than let the reader conclude the first.
+    const identityFilter = options?.issueFilters.author ?? options?.issueFilters.assignee;
+    lines.push(
+      identityFilter === undefined
+        ? "_No work items found._"
+        : "_No work items found._ No " +
+          (options?.issueFilters.author !== undefined ? "author" : "assignee") +
+          " matched " + JSON.stringify(identityFilter) +
+          "; check the name, or the person may simply have none.",
+    );
   } else {
     lines.push(
       ...items.map((item) => {
