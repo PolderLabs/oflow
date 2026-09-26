@@ -33,7 +33,7 @@ table of 7 rows alongside prose claiming twelve, and the two disagreed.
 | 15 | `LayaRouter` / per-item checkpoint selection | rejected | on a German board neither checkpoint separates: typed-decisions 7 of 8 construction items falsely flagged, multilingual 8 of 8 |
 | 16 | a laya version upgrade | rejected | 0.3.20 is byte-identical to 0.3.10: same RuntimeWarning, same score, same confidence |
 | 17 | `moderation_questions` (toxicity on issue text) | rejected | separated on a first benign set, then inverted: blunt technical criticism scored 0.38-0.45 against 0.38 for real abuse |
-| 18 | ranking items instead of labelling them | **kept**, after the confound was removed | AUC 0.86 on one length-matched acceptance-criteria corpus, against 0.50 for length alone and 0.54 for an unrelated control question. On unmatched text a word counter scores 0.79, so the first attempt at this was a length artefact. The 0.14 quoted as a falsification control was an index-swap of the same pairs and proves nothing; see the section on that |
+| 18 | ranking items instead of labelling them | **kept**, after the confound was removed | AUC 0.86 on one length-matched acceptance-criteria corpus, against 0.50 for length alone and 0.54 for an unrelated control question. On a different, unmatched criteria corpus the question scores 0.79 against 0.78 for length -- a lead of +0.01, so that first attempt was a length artefact. The 0.14 quoted as a falsification control was an index-swap of the same pairs and proves nothing; see the section on that |
 
 **Eighteen measured and not shipped: 2 withdrawn after shipping, 15 rejected
 outright, and 1 kept** (row 18, found only after the length confound was

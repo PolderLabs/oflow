@@ -286,16 +286,25 @@ test("an unreadable item leaves the range describing only the scored items", { s
       "]))",
     ].join("\n"));
     chmodSync(python, 0o755);
-    const summary = await summariseBoardText(
-      // The unreadable text is deliberately the LONGEST item on the board, so
-      // if it leaked into the range the assertion below would fail.
-      [
-        "Verify the rollback path",
-        "This particular item is deliberately long and the engine could not read it at all",
-        "Bump deps",
-      ],
-      { python, timeoutMs: 30000 },
-    );
+    // summariseBoardText is withheld on measurement, so this test has to say so
+    // the way its siblings do. Without the override it returns null and the
+    // assertion below fails on the gate rather than on the behaviour.
+    process.env.OFLOW_LAYA_SCRUM_UNCALIBRATED = "1";
+    let summary;
+    try {
+      summary = await summariseBoardText(
+        // The unreadable text is deliberately the LONGEST item on the board, so
+        // if it leaked into the range the assertion below would fail.
+        [
+          "Verify the rollback path",
+          "This particular item is deliberately long and the engine could not read it at all",
+          "Bump deps",
+        ],
+        { python, timeoutMs: 30000 },
+      );
+    } finally {
+      delete process.env.OFLOW_LAYA_SCRUM_UNCALIBRATED;
+    }
     assert.ok(summary, "summary expected");
     assert.equal(summary.items, 2, "only the scored items are counted");
     // The unreadable item is 16 words. If its length leaked into the range,
