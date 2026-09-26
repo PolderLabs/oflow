@@ -72,11 +72,14 @@ Do not make token minting a normal setup requirement. Any future credential-
 minting flow is opt-in, short-lived, explicitly scoped, tested, and followed
 by explicit bootstrap-token revocation instructions.
 
-## Next release target — v0.3.0
+## Release target — v0.3.0 (shipped)
 
-The recommended next release is a reliability and agent-integration release,
-not an attempt to wrap every GitLab endpoint. The detailed execution plan is
-kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
+This section records what the v0.3.0 milestone covered and is kept for
+history: the project is now past it, and the reliability and agent-integration
+work described below all landed. The detailed execution plan lived in a local
+`.omx/` artifact, which is untracked, so nothing here depends on a reader
+having it. For what is still open, see the friction reconciliation below and
+[LAYA-TRIAGE.md](LAYA-TRIAGE.md).
 
 ### Must ship
 
@@ -116,7 +119,7 @@ kept in the local OMX plan artifact at `.omx/plans/next-release-0.3.0.md`.
 ### Mandatory session-friction closure
 
 The following items came from an actual near-miss and repeated agent
-operability friction. They are all part of v0.3.0, not optional backlog. The
+operability friction. They were part of v0.3.0, not optional backlog. The
 implementation order is impact-first: lifecycle safety, capability truth,
 delivery writes, verification flexibility, discoverability, then ergonomics.
 
@@ -307,8 +310,9 @@ gap F1's partial-progress work must close.
   setup.
 
 If the native plugin surfaces cannot be installed and smoke-tested in the same
-release workflow, ship the corrected bridge and compatibility fixtures in
-v0.3.0 and move the distributable plugin artifacts to v0.3.1.
+release workflow, the fallback was to ship the corrected bridge and
+compatibility fixtures and move the distributable plugin artifacts to the
+following patch.
 
 ### Explicitly deferred
 
@@ -595,7 +599,7 @@ one in-process capability probe, and it runs only on an explicit click.
 ### Phase 4h — Delivery capabilities (bounded next-release slice)
 
 Merge-request review/discussion state and delivery automation remain postponed,
-but v0.3.0 includes the bounded, plan-backed MR create/update slice below.
+but v0.3.0 included the bounded, plan-backed MR create/update slice below.
 Merge-request and pipeline reads are already included in the compact
 sync/context evidence. Delivery actions enter as backend-neutral actions under
 the same plan -> approve -> apply -> verify gates:
