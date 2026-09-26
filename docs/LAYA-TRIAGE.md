@@ -295,6 +295,43 @@ measured on real input" below.
 Recalibrating means re-fitting the question on real story text, not moving a
 threshold. Until that is done with a held-out set, the per-item path stays off.
 
+## One capability survived, on a different axis
+
+Everything withdrawn above is a *classifier*: asked to judge the work, it
+fails. `laya.is_english` asks something else entirely -- can the English
+checkpoint read this input at all -- and on that it behaves.
+
+| input | `is_english` | script |
+|---|---|---|
+| English story text | true | latin |
+| German, French, Japanese, Hindi | **false** | latin / kana |
+| code, acronym soup | true | latin |
+| emoji only, digits only, whitespace | **true** | -- |
+
+Two limits, both worth stating. It detects **natural language**, not checkpoint
+reachability, so code and acronyms pass -- correct for work items, which are
+prose, but not a general safety check. And `detect_language` returns `None` for
+most short strings while `is_english` returns true for them, so the two disagree
+on exactly the short items a board is made of. Use `is_english`.
+
+This also tests the premise of everything above. Every withdrawn result assumed
+the engine could read the input, and `multilingual` scoring 15 of 20
+construction items is what a model that cannot read tends to do. It can: every
+story-shaped item reports `is_english: true`, script `latin`, language `en`. So
+the failures are genuine judgement failures, not a decoder artifact, and the
+conclusions about the question stand.
+
+One thing the gate could legitimately be used for. A matched
+construction/verification pair separates by **+0.57 in English and +0.33 in
+German** -- the question degrades on non-English input but does not flip sign.
+So a readability check makes any future triage path *weaker*, never
+wrong-signed, which is a usable precondition rather than a fix.
+
+`src/laya-readability.ts` exposes it, with every failure mode returning `null`
+rather than a confident "unreadable": no engine, a crashed engine, an undecided
+answer, and blank input each resolve differently, and only a real engine
+verdict of `false` reports unreadable.
+
 ## The signal is asymmetric, and short titles are its weakness
 <!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 
