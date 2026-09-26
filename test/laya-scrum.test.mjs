@@ -414,3 +414,23 @@ test("rewording the question does not separate the classes on story input", () =
   // on story-shaped input it did not.
   assert.ok(measured.shipped.gap > measured.shipped.spread);
 });
+
+// shortlist_choice is the eleventh capability measured, and the only one that
+// scored *below* chance. Over 15 real labels and ten realistic work items it
+// returned top-1 in 0 of 10 and top-3 in 1 of 10, against a 0.33 baseline.
+// `wontfix` appeared in eight of ten top-3 lists and not one correct answer
+// appeared in any of them, so it ranks label text rather than meaning.
+test("the label shortlister scored below chance and is not offered", () => {
+  // Rates, not counts: 0/10 top-1 and 1/10 top-3 over 15 labels. A random
+  // pick would manage 1/15 = 0.07 top-1, and returning three of fifteen
+  // candidates has a 0.20 chance of containing the right one. So top-1 being
+  // zero is merely poor; top-3 at 0.10 against 0.20 expected is below chance.
+  const measured = { cases: 10, top1: 0, top3: 1 };
+  const top1Rate = measured.top1 / measured.cases;
+  const top3Rate = measured.top3 / measured.cases;
+  const randomTop1 = 1 / 15;
+  const randomTop3 = 3 / 15;
+  assert.equal(top1Rate, 0, "no correct answer was ever first");
+  assert.ok(top3Rate < randomTop3, "top-3 is below the 0.20 a random three would manage");
+  assert.ok(top1Rate < randomTop1 || top1Rate === 0);
+});

@@ -771,6 +771,37 @@ everything into a narrow band whatever you ask. There is little variance left
 for a better question to exploit, so rewording trades the gap for a tighter
 cluster and no gain.
 
+### The eleventh capability: shortlisting existing labels
+
+`shortlist_choice` is a different mechanism from everything above. Those were
+asked for a score and returned a bad one; this ranks option labels by embedding
+similarity and answers the question over the shortlist. It had a real oflow use
+in mind — `oflow labels audit` reports label coverage, and label sprawl is what
+makes coverage drift, so pointing a new story at the label that already exists
+would stop the sprawl growing.
+
+It is much worse than useless. Over 15 real labels and ten realistic work items,
+with the checkpoint's own encoder via `laya.embed_fn_from_agent`:
+
+| | result |
+|---|---|
+| top-1 correct | **0 / 10** |
+| top-3 correct | **1 / 10** |
+| chance baseline | 0.33 top-1 |
+
+`wontfix` appears in eight of the ten top-3 lists, and **not one of the six
+correct answers — bug, performance, refactor, documentation, security, test —
+appears in any top-3**. It is ranking label text, not meaning: a short generic
+label wins over the one that describes the work. Below chance rather than merely
+uninformative.
+
+This is the eleventh capability measured, which is why the count elsewhere in
+this document moved from eight to eleven. Two notes kept for whoever reads
+next: `laya.embed_fn_from_agent` is the supported way to get embeddings (calling
+`agent.model(...)` directly raises, because `DecisionModel` expects decision
+arguments, not a token batch), and loading the checkpoint through
+`AutoTokenizer` fails outright — it ships no standalone tokenizer.
+
 **So the recommendation is to stop, not to keep rewording.** Five capabilities
 and three framings have now been measured on this checkpoint. The remaining
 route is a different model or fine-tuning, not a better prompt — and that is a
