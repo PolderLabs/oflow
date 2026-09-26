@@ -185,7 +185,7 @@ what sprint planning tends to get wrong.
 | `promptInjection` screen | dropped | benign max 0.819 vs injection min 0.335 -- no threshold exists; the most dangerous injection ranks 11th of 20 |
 | `LayaEvaluator` rubric grading | dropped, hard | grades verbosity not content: r=+0.758 with word count, and a 77-word paragraph with no evidence scores 0.81 while real test evidence scores 0.30 |
 | `shortlist_choice` label ranking | dropped | top-1 0/10, top-3 1/10 against 0.20 for a random three of fifteen — below chance, and ranks label text rather than meaning |
-| `noul` phishing / injection screen | dropped, hard | credential theft catches 1/5 because the attacks score as low as ordinary text; the injection question is net positive (3/5 against 2/10) but its worst false alarm outranks two of the five attacks |
+| `noul` phishing / injection screen | dropped, hard | credential theft catches 1/5 and none at a higher threshold, because two attacks score inside the ordinary range; the injection question separates by 0.099 against a spread of 0.499, and its worst false alarm (0.5862) outranks three of five attacks |
 
 Every dropped signal failed in a way that would have been actively harmful:
 `executorFit` would have handed mechanical work to an agent that needed a human,
@@ -809,28 +809,44 @@ holds. It is also materially different in kind from everything rejected above:
 closer to lexical.
 
 Measured over five attacks and ten benign engineering notes that merely
-*mention* credentials, approval, or commands:
+*mention* credentials, approval, or commands. Counts are the engine's own, at
+each threshold:
 
 | question | at 0.5 | at 0.7 |
 |---|---|---|
 | credential theft | caught 1/5, false alarms 0/10 | caught 0/5, false alarms 0/10 |
 | agent-directed instruction | caught 2/5, false alarms 2/10 | caught 2/5, false alarms 0/10 |
 
-Rejected, and the failure shape is different from the classifier's in a way
-worth stating:
+A note on those numbers, because it nearly went the other way. An earlier
+version of this section filtered the *printed* scores to derive the counts, and
+got 3/5 for the injection question where the engine counted 2/5. The printed
+`0.5` in the attack row is really 0.4997, three ten-thousandths short of the
+bar. Anything derived from rounded output inherits that error, so the counts
+above are the engine's and the scores below are given at full precision only
+where a ranking claim needs them.
 
-- **Credential theft barely separates the classes — because the attacks are
-  also low.** The one attack that literally prints a token scores 0.56; the
-  four that ask politely score 0.15-0.44, at or below ordinary benign text
-  (max 0.26). Low overlap here is not a good sign, it is a signal that is not
-  responding to the thing it names.
-- **The injection question is net positive but still not usable.** It catches
-  3 of 5 attacks against 2 false alarms in 10 — an earlier reading of this table
-  said it fired more often than it caught, which is wrong, and the rate check
-  below says so. What disqualifies it is the shape: the three subtlest attacks
-  all fall below the bar (0.20, 0.31, 0.50) while the worst benign note, "Approval
-  is required before apply", scores 0.59 and outranks two of the five attacks.
-  A screen whose worst false alarm outranks real attacks cannot gate anything.
+Rejected, on two grounds:
+
+- **Credential theft does not respond to the thing it names.** One of five at
+  the natural threshold, **none** at a higher one — so the misses are not
+  borderline. Two of the five attacks (0.1525, 0.2287) score at or below the
+  benign maximum of 0.2607. The one that literally prints a token scores
+  0.5600; the four that ask politely do not.
+- **The injection question mis-ranks oflow's own safety vocabulary.** Its
+  worst false alarm, the benign note "Approval is required before apply",
+  scores **0.5862** and outranks **three of the five attacks** — including the
+  owner-impersonation one at **0.4997**. A screen that ranks honest text above
+  real attacks cannot gate anything, and the shape does not depend on where the
+  threshold is placed.
+
+  The *rate* is the fragile part and is deliberately not the headline: 2 of 5
+  caught against 2 false alarms in 10 depends on one attack clearing 0.5 by
+  three ten-thousandths, which n=5 cannot settle. What holds regardless is the
+  ranking, and the gap-versus-spread rule (0.099 against a spread of 0.499)
+  agrees that the classes do not separate.
+
+With n=5 against n=10 no threshold conclusion here is stable, and that is the
+point at which to stop probing this primitive.
 
 This is the twelfth capability measured. The count in this document and in the
 review guide says twelve for the same reason the previous change said eleven.
