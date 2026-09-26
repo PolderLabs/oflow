@@ -166,6 +166,8 @@ interface CliOptions {
   milestone?: string;
   epic?: string;
   assignee?: string;
+  /** Request optional Laya triage on assess. Off by default. */
+  triage?: boolean;
   author?: string;
   search?: string;
   updatedAfter?: string;
@@ -464,7 +466,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       }
       case "assess": {
         const storyIid = await resolveStoryIid(root, options.story);
-        const result = await assessStory(root, storyIid);
+        const result = await assessStory(root, storyIid, { triage: options.triage });
         print(options.json, result, formatAssessmentMarkdown(result));
         // A completed assessment is a successful read even when its findings
         // are unknown, in-progress, or blocked. The status is in the report;
@@ -1302,7 +1304,9 @@ function parseArgs(argv: string[]): CliOptions {
 
   for (let index = firstOptionIndex; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--json") {
+    if (argument === "--triage") {
+      options.triage = true;
+    } else if (argument === "--json") {
       options.json = true;
     } else if (argument === "--force") {
       options.force = true;
@@ -2256,7 +2260,7 @@ function helpText(): string {
     "  cadence [--limit <n>]               list parent-group iteration cadences",
     "  sync [filters] [--story <iid>]      compact project and Scrum snapshot",
     "  sync --summary                       token-light counts and planning health",
-    "  assess --story <iid> [--json]       compact story progress and local evidence",
+    "  assess --story <iid> [--json] [--triage]  compact story progress; --triage adds an advisory Laya hint",
     "  capabilities [--json]               show supported and planned operations",
     "  audit [--limit <n>] [--json]         read local plan lifecycle history",
     "  cache status [--json]                inspect local cache age/schema/invalidation",

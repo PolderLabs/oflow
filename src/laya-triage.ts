@@ -9,23 +9,47 @@
  * runtime, so oflow stays dependency-light and installable from a bare
  * `npm install`.
  *
- * The interface is a plain text-in / verdict-out shape with no GitLab types,
- * so the same module can back planning in other tools.
+ * The interface is a plain text-in / verdict-out shape with no oflow types, so
+ * the same module can back planning in other tools.
  *
  * ## What the engine is actually good for
  *
- * Measured on this host against a ten-item probe, Laya's difficulty score
- * correlates 0.82 with input word count. On equal-word-count pairs of one
- * genuinely trivial item against one genuinely hard item it separated them by
- * +0.02, -0.08, and +0.75 -- that is, usually not at all. Its domain guess is
- * better but still imperfect: it correctly separated both non-code probe
- * items, and mislabelled several of the code ones.
+ * Every question below was calibrated on this host before being kept, and the
+ * calibration is what decides what ships. Full results in
+ * `docs/LAYA-TRIAGE.md`.
  *
- * So there is deliberately no difficulty band here. Surfacing one would dress
- * a length meter up as a difficulty estimate, and a caller would reasonably
- * trust it. The raw score is still reported so the model's output stays
- * inspectable, but nothing in oflow may branch on it.
+ * **Kept — `verificationShare`.** Asks how much of a work item is checking
+ * existing behaviour rather than writing new behaviour. On a ten-item probe
+ * it separated construction from evidence-gathering correctly 7 of 8 times on
+ * cases with a clear expected answer, and repeated runs are bit-identical.
+ * That is a genuine review-effort signal: an item heavy in verification costs
+ * a reviewer far more attention than its size suggests.
+ *
+ * **Dropped — a difficulty band.** The engine's stock difficulty score
+ * correlates 0.82 with input word count, and on equal-word-count pairs of one
+ * genuinely trivial item against one genuinely hard item it separated them by
+ * +0.02, -0.08, and +0.75 -- that is, usually not at all. Surfacing a
+ * `trivial`/`easy`/`moderate`/`hard` label computed from that would dress a
+ * length meter up as a difficulty estimate, and a caller would reasonably
+ * trust it. The raw `score` is still reported so the model's output stays
+ * inspectable, but nothing may branch on it.
+ *
+ * **Dropped — `executorFit` and `specificationGap`.** Both were implemented,
+ * calibrated, and removed. `executorFit` called every verify/audit/confirm
+ * task agent-suitable, including ones that plainly need human judgement
+ * (5 of 10 correct). `specificationGap` ranged 0.07-0.54 with no ordering that
+ * matched obvious specificity -- "rename the button label" scored 0.09, the
+ * *most* specific item in the set. Neither is exposed, because a hint that is
+ * wrong in this way is worse than no hint.
+ *
+ * ## Why the score is not trusted
+ *
+ * The published checkpoint ships invalid temperatures, and its own
+ * RuntimeWarning states the affected confidences are uncalibrated.
+ * Forwarding that number would mean passing along a figure the engine
+ * disowned, so `confidence` is reported as 0 and callers must not gate on it.
  */
+
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -33,14 +57,15 @@ const run = promisify(execFile);
 
 export interface TriageSignal {
   /**
-   * Laya's raw difficulty score, typically 0..3. Inspectable only -- see the
-   * module comment for the measurements showing it tracks input length.
+   * Raw score for the `verificationShare` question, on that question's own
+   * 0..3 scale: 0 is all new construction, 3 is mostly verification and
+   * evidence gathering. Inspectable only -- see the module comment for the
+   * measurements on the engine's other outputs.
    */
   score: number;
   /**
    * Laya's own confidence. Zero for the currently published checkpoint, whose
-   * RuntimeWarning states the affected entries are uncalibrated. Reporting a
-   * number the engine disowned would be worse than reporting none.
+   * RuntimeWarning states the affected entries are uncalibrated.
    */
   confidence: number;
   /**
@@ -48,6 +73,8 @@ export interface TriageSignal {
    * hint, never a routing decision.
    */
   domain: string;
+  /** True when the score sits within 0.2 of a band edge, making the label weak. */
+  uncertain: boolean;
 }
 
 export interface TriageOptions {
@@ -59,10 +86,10 @@ export interface TriageOptions {
 
 /**
  * A real Laya call on this host takes ~3.7s, dominated by engine start-up
- * rather than by the input. The floor is therefore well above a normal
- * network round trip, and 4s left no headroom at all -- a slightly slower
- * machine would have turned every probe into a silent null, which reads as
- * "Laya is not installed" and makes the feature look dead.
+ * rather than by the input. The floor is therefore well above a normal network
+ * round trip, and 4s left no headroom at all -- a slightly slower machine
+ * would have turned every probe into a silent null, which reads as "Laya is
+ * not installed" and makes the feature look dead.
  */
 const DEFAULT_TIMEOUT_MS = 20000;
 
@@ -101,6 +128,7 @@ function parsePayload(raw: string): TriageSignal | null {
     score,
     confidence: 0,
     domain: topDomain(payload.answers?.domain?.probabilities),
+    uncertain: Math.abs(score * 2 - Math.round(score * 2)) < 0.4,
   };
 }
 

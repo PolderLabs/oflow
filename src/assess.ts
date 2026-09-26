@@ -5,6 +5,31 @@ import { loadStoryContext, selectVerificationEvidence } from "./context.js";
 import { evaluateCriteria, parseVerificationEvidence } from "./criteria.js";
 import { OflowError } from "./errors.js";
 import { getCurrentBranch, runGit } from "./git.js";
+import { runCustomQuestions } from "./laya-runner.js";
+import { SCRUM_QUESTIONS, readVerificationShare, describeVerificationShare } from "./laya-scrum.js";
+
+/**
+ * Ask Laya how much of a story is verification work rather than construction.
+ *
+ * Entirely optional and entirely advisory. The engine's checkpoint disowns its
+ * own confidences, so a missing engine, a failure, or an uncalibrated answer
+ * all yield `undefined` -- never a blocker, and never a change to the status.
+ */
+async function triageAssessment(
+  title: string,
+  description: string | null | undefined,
+): Promise<AssessmentResult["triage"]> {
+  const text = [title, description].filter((part) => typeof part === "string" && part.trim() !== "").join("\n");
+  const answers = await runCustomQuestions(text, SCRUM_QUESTIONS);
+  const value = readVerificationShare(answers);
+  if (value === null) return undefined;
+  const note = describeVerificationShare(value);
+  if (note === null) return undefined;
+  return {
+    verificationShare: { score: value.score, band: value.band, uncertain: value.uncertain },
+    note: note + " (advisory; Laya triage, uncalibrated checkpoint)",
+  };
+}
 
 export type CriterionStatus = "satisfied" | "partial" | "blocked" | "unknown";
 export type AssessmentStatus = "satisfied" | "in-progress" | "blocked" | "unknown";
@@ -84,6 +109,19 @@ export interface AssessmentResult {
     }>;
   };
   local: LocalEvidence;
+  /**
+   * Optional Laya triage, present only when the engine was reached and
+   * `triage` was requested. Never a blocker: the engine's own checkpoint
+   * disowns its confidences, so this is context for a human, not a gate.
+   */
+  triage?: {
+    verificationShare: {
+      score: number;
+      band: "construction" | "mixed" | "verification";
+      uncertain: boolean;
+    };
+    note: string;
+  };
   blockers: string[];
   nextActions: string[];
   warnings: string[];
@@ -92,6 +130,7 @@ export interface AssessmentResult {
 export async function assessStory(
   root: string,
   storyIid: number,
+  options: { triage?: boolean } = {},
 ): Promise<AssessmentResult> {
   if (!Number.isSafeInteger(storyIid) || storyIid < 1) {
     throw new OflowError("Story IID must be a positive integer.", "INVALID_ISSUE_IID");
@@ -199,6 +238,9 @@ export async function assessStory(
       })),
     },
     local,
+    triage: options.triage === true
+      ? await triageAssessment(context.story.title, context.story.description)
+      : undefined,
     blockers,
     nextActions: nextActions(
       status,
@@ -267,6 +309,9 @@ export function formatAssessmentMarkdown(result: AssessmentResult): string {
     "Changed files: " + String(result.local.changedFiles.length),
     ...(result.local.diffStat ? [result.local.diffStat] : []),
   );
+  if (result.triage !== undefined) {
+    lines.push("", "## Triage", "", "- " + result.triage.note);
+  }
   if (result.nextActions.length > 0) {
     lines.push("", "## Next actions", "", ...result.nextActions.map((action) => "- " + action));
   }

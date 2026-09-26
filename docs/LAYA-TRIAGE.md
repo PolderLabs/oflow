@@ -1,10 +1,10 @@
-# Laya triage: calibration findings
+# Laya triage: what the engine is actually good for
 
-**Status: experimental, not wired into any oflow command.** The module exists
-(`src/laya-triage.ts`) and is fully tested, but nothing in oflow calls it yet.
-This document records what the engine actually does, measured, so the next
-person does not have to re-derive it — and so the decision to wire it in, or
-not, is made on evidence rather than on a tool's description.
+**Status: module built and calibrated, not wired into any command.** The
+exportable module and the scrum question set exist; nothing in oflow calls them
+yet. This document records the measurements that decided what ships, so the
+next reader does not re-derive them and so the "wire it in or not" decision is
+made on evidence rather than on a tool's description.
 
 ## What Laya is
 
@@ -12,68 +12,94 @@ not, is made on evidence rather than on a tool's description.
 `convaiinnovations/laya`. Its own summary: a "fast, non-autoregressive System 1
 decision engine with calibrated probabilities."
 
-It is **not** an agentic tool. It cannot read a repository, run tests, or
-write code. It takes a block of text and returns properties of it:
+It is **not** an agentic tool. It cannot read a repository, run tests, or write
+code. It takes a block of text and returns properties of it, and — the part
+that matters here — **it accepts a custom question set**, so the properties do
+not have to be the stock ones.
 
-| Property | Meaning |
+## The two call paths
+
+| Path | Mechanism | Use |
+|---|---|---|
+| `runDefaultQuestions` | shells out to the `laya` CLI, `--predict --json` | stock router questions; no Python API needed |
+| `runCustomQuestions` | library API, question set passed via stdin | domain-specific questions; the reason this is useful at all |
+
+The custom path passes its JSON on **stdin**, never argv and never a temp file,
+so no local path can leak into a process list.
+
+## The headline finding: a question that is not a length meter
+
+The engine's **stock difficulty score is close to useless.** Measured here:
+
+- correlation with input word count: **r = 0.822**
+- equal-word-count pairs of one genuinely trivial item against one genuinely
+  hard item separated by **+0.024, −0.083, and +0.749** — one pair ran backwards
+
+So a `trivial`/`easy`/`moderate`/`hard` band was built, measured, and **removed**.
+It dressed a length meter up as a difficulty estimate, and a caller would
+reasonably have trusted it.
+
+A **custom** question survives the same control:
+
+> How much of the work item is checking existing behaviour and evidence rather
+> than writing new behaviour?
+
+| Control | Result |
 |---|---|
-| `difficulty` | a 0–3 score with a documented legend, plus a confidence |
-| `domain` | `code`, `math_or_logic`, `writing`, `factual_lookup`, `data_analysis`, `chitchat` |
-| `needs_tools` | probability the task needs external tools |
-| `is_sensitive` | probability the content is sensitive |
+| mean separation (verification − construction), 6 matched pairs | **+1.001** |
+| pairs with positive separation | **6 of 6** |
+| min / max separation | +0.105 / +1.526 |
+| **correlation with word count** | **r = +0.022** |
 
-## What the measurements showed
+**r = 0.02 against length, versus 0.82 for the stock difficulty score.** This
+question measures the thing it claims to measure.
 
-### Difficulty tracks input length
+One caveat found while reading the table: the engine's score and its
+highest-probability *bucket* can disagree. "Confirm the helper output matches
+expectations" scored **1.90** — above the 1.5 band edge — while its top
+probability was still level 1, "mostly construction". The continuous score and
+the argmax are not the same signal. oflow therefore bands on the score, never
+on the engine's own bucket, and marks anything within 0.2 of an edge as
+uncertain rather than rounding it to a side. On a labelled ten-item probe
+it was right on **6 of the 8 cases that had a clear expected answer** (the two
+labelled "mid" are excluded, since the answer there is a judgement call), and
+repeated runs are bit-identical. The two misses were both verification items it
+called mid rather than high.
 
-Across a ten-item probe spanning trivial to hard, the correlation between word
-count and Laya's difficulty score was **r = 0.822**.
+That is a genuine review-effort signal: an item that is mostly verification
+costs a reviewer far more attention than its length suggests, which is exactly
+what sprint planning tends to get wrong.
 
-### The equal-length control
+## Questions that were built, measured, and dropped
 
-Correlation alone is not proof of a confound, so the decisive test: pairs of one
-genuinely trivial item and one genuinely hard item, written to the same word
-count. If difficulty separates them, it is measuring something real.
+| Question | Verdict | Evidence |
+|---|---|---|
+| `verificationShare` | **kept** | 6/6 matched pairs; r=0.02 vs length; deterministic |
+| `executorFit` | dropped | 5/10; called every verify/audit/confirm task agent-suitable, including ones needing human judgement |
+| `specificationGap` | dropped | wrong in *direction*, not just noisy — see below |
+| stock difficulty band | dropped | r=0.82 vs length; equal-length pairs separated by +0.02, −0.08, +0.75 |
 
-| Pair (matched length) | Trivial | Hard | Separation |
-|---|---|---|---|
-| 1 | rename the button label to Cancel (6w) | migrate sessions to signed rotating scoped tokens (7w) | **+0.024** |
-| 2 | bump the timeout constant from five to ten (8w) | design resumable partial apply surviving process death (7w) | **−0.083** |
-| 3 | add a test asserting the parser rejects empty input (9w) | prove absence of drift sound under concurrent modification (8w) | **+0.749** |
-
-Mean separation **0.230**, and one pair is negative — the "trivial" item scored
-*higher* than the "hard" one.
-
-**Conclusion: the difficulty score is close to a length meter.** It is not a
-difficulty estimate and must not be presented as one.
-
-### Domain classification is better but still unreliable
-
-It correctly separated both non-code probe items, but mislabelled several code
-items — the resumable-apply protocol came back as `writing`, and a one-line
-constant bump came back as `math_or_logic`. Usable as a weak hint; not usable
-for routing.
-
-## Consequences for oflow
-
-The first version of this module exposed a `band` field with `trivial`/`easy`/
-`moderate`/`hard` labels. **That was removed.** A band label computed from a
-length-correlated score presents a proxy as an estimate, and callers trust
-labels. The raw `score` remains available in `--json` for inspection; nothing
-in oflow may branch on it.
+Both dropped questions failed in a way that would have been actively harmful:
+`executorFit` would have handed mechanical work to an agent that needed a human,
+and `specificationGap` was worse than a wrong-direction bug, because the scale made
+it unmistakable: the question is "could an engineer start this without asking a
+question", so 1.0 means *fully specified*. It scored "rename the button label"
+at **0.09** — judging the single most specific item in the set to be almost
+entirely unspecified — and "make it faster somehow" at 0.073. Read on a
+"1.0 = specified" scale the answers are close to inverted. A hint that is wrong
+in these ways is worse than no hint.
 
 ## Two environmental traps
 
 **`--predict` cannot use the default device here.** It aborts inside a broken
 triton build (`Python.h: No such file or directory` — no CUDA toolkit headers).
-The probe forces `--device cpu`. A real call costs **~3.7s**, almost all of it
-engine start-up.
+Both paths force CPU. A real call costs **~3.7s**, almost all engine start-up.
 
 **The original 4s timeout was inside that cost.** It was a coin flip: a slower
-machine, or one under load, turned every successful call into a silent `null`,
-which is indistinguishable from "Laya is not installed" and makes the feature
-look dead rather than flaky. The default is now 20s, and a behavioural test
-pins it by requiring a 5s stub call to still return a signal.
+machine turned every successful call into a silent `null`, which is
+indistinguishable from "Laya is not installed" and makes the feature look dead
+rather than flaky. The default is now 20s, with a behavioural test that a 5s
+stub call must still return a signal.
 
 ## The checkpoint disowns its own confidences
 
@@ -83,39 +109,33 @@ Every run emits:
 > outside [0.5, 5] ... Treat confidence from the affected entries as
 > uncalibrated.`
 
-Forwarding that confidence would mean passing along a number the engine
-explicitly disowned, so the module reports `confidence: 0` and never a
-plausible-looking figure.
+Forwarding that would mean passing along a figure the engine explicitly
+disowned, so the module reports `confidence: 0` and callers must not gate on it.
 
 ## What is in the code
 
-`src/laya-triage.ts` — plain text-in, domain-out, no GitLab types, so it can
-back planning in other tools unchanged. It is advisory by construction:
-`triageText` returns `null` for every failure mode (missing binary, timeout,
-crash, unparseable output, non-numeric score), so no oflow command can be
-broken by Laya. oflow takes **no npm dependency** on it; the engine is
-discovered at runtime, which preserves the bare-`npm-install` constraint.
+- **`src/laya-runner.ts`** — the engine wrapper. Text in, answers out, no oflow
+  types, no GitLab, no npm dependency on the Python engine. Every failure mode
+  returns `null` rather than throwing, so no caller can be broken by Laya.
+- **`src/laya-triage.ts`** — the earlier stock-questions wrapper, kept for the
+  CLI path and its existing tests.
+- **`src/laya-scrum.ts`** — the calibrated question set and the band reader, with
+  the calibration table in its header.
 
-12 tests. Each of the five guarantees below was mutation-verified: the listed
-mutation was applied, the suite was rebuilt, and the corresponding test was
-confirmed to turn red before the source was restored.
+## Open questions for the maintainer
 
-| Guarantee | Mutation that must turn the suite red |
-|---|---|
-| probe errors degrade to `null` | let `execFile` rejection propagate |
-| the timeout is bounded | delete the `timeout` option |
-| the timeout is generous enough | set the default back to 4000ms |
-| uncalibrated confidence is not forwarded | forward the raw confidence |
-| a non-numeric score yields no signal | accept a string score |
+1. **Should `oflow-workflow` gain an `exports` map** so these modules are
+   importable by another planning tool? That changes what the published package
+   *is* — from CLI-only to also a library — so it is a product decision, not a
+   detail. Deliberately not done on this branch. The modules are already
+   portable: no GitLab imports, no oflow types, a stable text→signal contract.
+2. **Should `assess` surface a verification-share hint?** It would be advisory
+   only, behind an explicit opt-in flag, and must show its own uncertainty
+   rather than rounding to a band. A story heavy in verification work is
+   genuinely different work to review, and oflow currently has no way to say so.
+3. **Re-calibrate when a newer checkpoint lands.** The confidence warning is the
+   signal that the numbers would be worth trusting; until it disappears, the
+   score should be shown with its uncertainty and never used to gate.
 
-## If you want to revisit this
-
-The interesting question is not whether the current checkpoint is good — it
-measurably is not, on difficulty — but whether a **calibrated** checkpoint
-separates equal-length trivial from hard. If a future version clears the
-equal-length control with consistent positive separation, `band` becomes
-defensible and the module could grow one. Until then, treat Laya as a
-length-and-vocabulary classifier, which is roughly what it is.
-
-Reproduce with `OFLOW_LAYA_E2E=1` set and the real engine on `PATH`; the
-stub-level suite needs no Python at all.
+Reproduce the calibration with `OFLOW_LAYA_PYTHON` pointed at the interpreter
+that has `laya` installed. The stub-level suite needs no Python at all.
