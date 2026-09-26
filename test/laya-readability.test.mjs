@@ -70,20 +70,41 @@ test("the reported script is surfaced, not discarded", async () => {
   );
 });
 
-// The measured reliability, as a characterization test. 23 cases: 0 false
-// "readable" and 1 false "unreadable" (eight bare acronyms read as Italian).
+// The measured reliability, as a characterization test that actually runs the
+// engine. The previous version asserted a hard-coded object against itself,
+// so it could never fail and never measured anything -- which is how a wrong
+// row in the module's own table survived: it listed French as filtered.
+//
 // The asymmetry is the property that makes this safe to gate on: a caller
-// acting on the single miss skips an item, while a false "readable" would feed
-// an English checkpoint text it cannot judge.
-test("the measured error profile is one-sided", () => {
-  const measured = { cases: 23, falseReadable: 0, falseUnreadable: 1 };
-  assert.equal(measured.falseReadable, 0,
-    "any false 'readable' would be a silent mislabel, which is the direction that must be zero");
-  assert.equal(measured.falseUnreadable, 1,
-    "the known miss is a bare acronym run, which fails safe");
-  // Six acronyms read correctly, so the miss needs eight or more with no
-  // punctuation and no sentence structure.
-  assert.equal(measured.falseUnreadable, 1, "update if the boundary moves");
+// acting on a false "unreadable" skips an item, while a false "readable"
+// feeds an English checkpoint text it cannot judge. So false "readable" is
+// the direction that must be zero.
+const PROBE_CASES = [
+  ["English story", "Add cursor pagination to the work item listing", true],
+  ["English criteria", "Verify the rollback path restores the previous state", true],
+  ["German", "Bestaetigen Sie, dass der Rollback-Pfad den vorherigen Zustand wiederherstellt", false],
+  ["Japanese", "ロールバックが以前の状態を正確に復元することを確認します", false],
+  ["Hindi", "यह सत्यापित करें कि रोलबैक पिछली स्थिति को बहाल करता है", false],
+  ["Greek", "Επιβεβαιώστε ότι η επιστροφή επαναφέρει την προηγούμενη κατάσταση", false],
+  ["Arabic", "تحقق من أن التراجع يستعيد الحالة السابقة بالكامل", false],
+  ["Hebrew", "אמת שהגל הוא משחזר את המצב הקודם במלואו", false],
+  ["Thai", "ตรวจสอบว่าการย้อนกลับคืนสถานะก่อนหน้าได้ครบถ้วน", false],
+  ["French", "Verifiez que le retour annule exactement les modifications precedentes", true],
+  ["Code", "export const handler = (req, res) => res.status(200).json(req.body)", true],
+  ["Emoji only", "\u{1F642}\u{1F389}\u{2728}", true],
+];
+
+test("the measured error profile is one-sided", { skip: !process.env.OFLOW_LAYA_TRIAGE_E2E }, async () => {
+  const { probeReadability } = await import("../dist/laya-runner.js");
+  const results = await probeReadability(PROBE_CASES.map(([, text]) => text));
+  assert.ok(Array.isArray(results) && results.length === PROBE_CASES.length,
+    "the probe must answer every case, or this test measures nothing");
+  const wrong = PROBE_CASES
+    .map(([label, , expected], i) => ({ label, expected, got: results[i]?.readable }))
+    .filter((c) => c.got !== c.expected)
+    .map((c) => `${c.label}: expected ${c.expected}, got ${c.got}`);
+  assert.deepEqual(wrong, [],
+    "a case changed answer; the table in src/laya-readability.ts must be updated with it");
 });
 
 // Regression: assess passed probeReadability as a bare function reference, so

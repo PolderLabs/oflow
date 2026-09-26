@@ -372,6 +372,17 @@ rather than a confident "unreadable": no engine, a crashed engine, an undecided
 answer, and blank input each resolve differently, and only a real engine
 verdict of `false` reports unreadable.
 
+The gate is not a language filter in general. Measured over 23 cases against
+the real `is_english`, German, Japanese, Hindi, Korean, Chinese, Russian,
+Greek, Arabic, Hebrew and Thai all read `false`, while **French, Portuguese
+and Dutch read `true`** and are therefore *not* filtered: they are Latin script
+and close enough to English that the engine accepts them. The cost is bounded
+-- the question degrades on non-English rather than inverting -- but a
+French-language board is not gated, so nothing here should be read as
+"non-English input never reaches the question". Code, emoji-only, digits-only
+and whitespace also read `true`, by design: work items are prose.
+
+
 Two corrections found while wiring it up, both worth recording because the first
 version looked finished:
 

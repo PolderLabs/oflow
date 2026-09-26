@@ -13,7 +13,8 @@
  * | input | `is_english` | script |
  * |---|---|---|
  * | English story text | true | latin |
- * | German, French, Japanese, Hindi | **false** | latin / kana |
+ * | German, Japanese, Hindi, Korean, Chinese, Russian, Arabic | **false** | latin / kana |
+ * | French, Portuguese, Dutch | true -- **not** filtered | latin |
  * | code, acronym soup | true | latin |
  * | emoji only, digits only, whitespace | **true** | -- |
  *
