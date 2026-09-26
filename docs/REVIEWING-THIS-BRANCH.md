@@ -17,8 +17,13 @@ Branched from `main`, containing seven commits and no Laya code:
 | `fix(build)` | `npm run build` never cleaned `dist`, so a deleted module kept shipping in the tarball |
 | `fix(templates)` | the agent instruction blocks told agents to run `oflow normalizeForbidden`, which is not a command |
 
-Verified in isolation from `main`: **298 tests, all passing**, and `typecheck`,
-`check:public` and `pack --dry-run` all green. It contains no Laya source.
+Verified in isolation from `main`: **298 tests, 298 passing, 0 skipped**, and
+`typecheck`, `check:public` and `pack --dry-run` all green. It contains no
+Laya source.
+
+That is fewer tests than the experiment branch (342) because the Laya test
+files are simply not on it -- the difference is the experiment's own suite, not
+skipped coverage. Neither branch skips anything unconditionally.
 
 Review that one first. It is the diff most likely to be merged, and it stands
 without the experiment.
