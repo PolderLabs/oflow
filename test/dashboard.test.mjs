@@ -53,6 +53,37 @@ test("dropSecretFields removes secret values but keeps token state signals", () 
   });
 });
 
+// The original exact-match regex only caught a bare `token`, so every shape a
+// real API actually uses -- `accessToken`, `client_secret`, `x-api-key` --
+// crossed the HTTP boundary intact. This fails if the matcher regresses to
+// exact matches, and it pins the state signals that must survive.
+test("dropSecretFields catches prefixed and suffixed secret names", () => {
+  const dropped = dropSecretFields({
+    accessToken: "aaa", authToken: "bbb", tokenValue: "ccc", refreshToken: "ddd",
+    gitlabToken: "eee", botToken: "fff", apiKey: "ggg", apiKeyValue: "hhh",
+    privateKey: "iii", privateKeyPem: "jjj", private_key: "kkk", sshKey: "lll",
+    clientSecret: "mmm", client_secret: "nnn", oauthSecret: "ooo", passphrase: "ppp",
+    userPassword: "qqq", bearerToken: "rrr", authHeader: "sss", "x-api-key": "ttt",
+    PAT: "uuu", credentials: "vvv", certificate: "www",
+    nested: { deep: { accessToken: "xxx", keep: 1 } },
+    list: [{ clientSecret: "yyy", keep: 2 }],
+    // State, not values: these describe the transport and must survive.
+    tokenConfigured: true, tokenSource: "env", tokenScopes: ["read_api"],
+    tokenAcceptedInBrowser: false, tokenPresent: true, tokenValid: true,
+    hasToken: true, authSource: "keyring", GitLabTokenSource: "env",
+    id: 1, title: "story", state: "opened", labels: ["bug"], pipeline: "passed",
+  });
+  assert.deepEqual(Object.keys(dropped).sort(), [
+    "GitLabTokenSource", "authSource", "hasToken", "id", "labels", "list",
+    "nested", "pipeline", "state", "title", "tokenAcceptedInBrowser",
+    "tokenConfigured", "tokenPresent", "tokenScopes", "tokenSource", "tokenValid",
+  ]);
+  assert.deepEqual(dropped.nested, { deep: { keep: 1 } });
+  assert.deepEqual(dropped.list, [{ keep: 2 }]);
+  assert.equal(dropped.tokenSource, "env");
+  assert.equal(dropped.title, "story");
+});
+
 test("doctor reports are sanitized before they leave the process", () => {
   const safe = sanitizeDoctorReport({
     root: homedir() + "/projects/example",
@@ -294,4 +325,24 @@ test("the doctor report is projected by allowlist, not filtered by denylist", ()
   assert.ok(Array.isArray(safe.requiredFiles), "requiredFiles must survive");
   assert.ok(safe.capabilities === undefined || Array.isArray(safe.capabilities));
   assert.ok(safe.backends !== undefined, "backends must survive");
+});
+
+
+test("same-origin browser actions work on an ephemeral dashboard port", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-dash-own-origin-"));
+  const dashboard = await startDashboard(root, { port: 0 });
+  try {
+    const response = await fetch(new URL("api/refresh", dashboard.url), {
+      method: "POST", headers: { Origin: new URL(dashboard.url).origin },
+    });
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).credentialsExposed, false);
+    const wrongPort = await fetch(new URL("api/refresh", dashboard.url), {
+      method: "POST", headers: { Origin: "http://127.0.0.1:0" },
+    });
+    assert.equal(wrongPort.status, 403);
+  } finally {
+    await dashboard.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
