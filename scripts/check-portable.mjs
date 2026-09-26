@@ -17,13 +17,28 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(here, "..", "src");
 
-const PORTABLE_MODULES = ["laya-runner.ts", "laya-scrum.ts"];
+/**
+ * Portable modules are discovered, not listed. A hardcoded array meant a new
+ * src/laya-*.ts file would be invisible to this gate until someone remembered
+ * to add it, which is the same failure as the orphaned-dist check: a guard
+ * that only covers what it was told about.
+ */
+const PORTABLE_MODULES = readdirSync(srcDir)
+  .filter((file) => /^laya-.*\.ts$/.test(file))
+  .sort();
 
-/** Imports these are fine in a portable module: node builtins, and either
- * of the two portable modules. Nothing else. */
-const ALLOWED_LOCAL = new Set(["./laya-runner.js", "./laya-scrum.js"]);
+if (PORTABLE_MODULES.length === 0) {
+  process.stderr.write("FAIL no src/laya-*.ts modules found; the glob is wrong");
+  process.exit(1);
+}
+
+/** Imports these are fine: node builtins, and any other portable module. */
+const ALLOWED_LOCAL = new Set(
+  PORTABLE_MODULES.map((file) => `./${file.replace(/\.ts$/, ".js")}`),
+);
 const isAllowedImport = (specifier) =>
   specifier.startsWith("node:") || ALLOWED_LOCAL.has(specifier);
+
 
 let failures = 0;
 for (const name of PORTABLE_MODULES) {
