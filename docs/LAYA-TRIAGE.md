@@ -33,7 +33,7 @@ table of 7 rows alongside prose claiming twelve, and the two disagreed.
 | 15 | `LayaRouter` / per-item checkpoint selection | rejected | on a German board neither checkpoint separates: typed-decisions 7 of 8 construction items falsely flagged, multilingual 8 of 8 |
 | 16 | a laya version upgrade | rejected | 0.3.20 is byte-identical to 0.3.10: same RuntimeWarning, same score, same confidence |
 | 17 | `moderation_questions` (toxicity on issue text) | rejected | separated on a first benign set, then inverted: blunt technical criticism scored 0.38-0.45 against 0.38 for real abuse |
-| 18 | ranking items instead of labelling them | **kept**, after the confound was removed | AUC 0.86 on length-matched acceptance criteria, against 0.50 for length alone and 0.54 for an unrelated control question. On unmatched text a word counter scores 0.79, so the first attempt at this was a length artefact |
+| 18 | ranking items instead of labelling them | **kept**, after the confound was removed | AUC 0.86 on one length-matched acceptance-criteria corpus, against 0.50 for length alone and 0.54 for an unrelated control question. On unmatched text a word counter scores 0.79, so the first attempt at this was a length artefact. The 0.14 quoted as a falsification control was an index-swap of the same pairs and proves nothing; see the section on that |
 
 **Eighteen measured and not shipped: 2 withdrawn after shipping, 15 rejected
 outright, and 1 kept** (row 18, found only after the length confound was
@@ -1236,11 +1236,19 @@ across the two classes:
 Both baselines sit on chance, so neither the ordering nor the labels are length
 or register.
 
-The result that would have falsified it: the same pairs with the padding
-applied to the **verification** side instead, so any filler lands on the other
-class. The question then inverts to **AUC 0.14**, 95% CI 0.08-0.20, which
-excludes chance. An ordering that depends on which class was padded would
-collapse here, and it did not. The padding is not carrying the signal.
+The swap corpus that was going to falsify this does not. It was recorded as
+the same pairs with the padding moved to the **verification** side, scoring
+0.14 and excluding chance. Re-running it shows the file holds the *same*
+twelve pairs in reversed index order and nothing else: the per-pair word
+counts are an identical vector on both classes, so there is no padding to
+move. An AUC and the same AUC read against the opposite class sum to one by
+arithmetic, so 0.86 and 0.14 are one measurement counted twice, not a
+falsification that failed to fire.
+What actually supports the row is narrower: the question separates the two
+classes at 0.86 while length alone sits at 0.50 on these same texts and an
+unrelated control sits at 0.54. That is one length-matched corpus showing the
+ordering is not length, and it is the whole of the evidence. A real control
+would vary the padding between the classes on texts that are not index-swapped.
 
 Building that corpus also cost the run it should not have: the length assertion
 was added after roughly fifteen turns of editing a corpus into shape, and it
