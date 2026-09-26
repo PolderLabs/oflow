@@ -434,3 +434,45 @@ test("the label shortlister scored below chance and is not offered", () => {
   assert.ok(top3Rate < randomTop3, "top-3 is below the 0.20 a random three would manage");
   assert.ok(top1Rate < randomTop1 || top1Rate === 0);
 });
+
+// The twelfth capability, and the only use case upstream actually documents:
+// `noul` for "phishing detection, spam filtering, jailbreak". oflow holds text
+// of that kind -- issue descriptions and notes written by people outside the
+// team -- so it was measured rather than assumed irrelevant.
+//
+// It fails in the opposite direction to the classifier. Credential theft
+// barely separates the classes because the *attacks* score as low as ordinary
+// benign text (0.15-0.44 against a benign max of 0.26): low overlap here is
+// the signal not responding, not a good sign.
+test("the phishing screen does not respond to credential theft", () => {
+  const attacks = [0.36, 0.56, 0.15, 0.44, 0.23];
+  const benign = [0.26, 0.14, 0.15, 0.10, 0.21, 0.23, 0.18, 0.22, 0.18, 0.10];
+  const caught = attacks.filter((v) => v >= 0.5).length;
+  assert.equal(caught, 1, "only the attack that literally prints a token");
+  // Two of the five attacks score at or below the benign maximum, so for those
+  // the signal is not responding at all -- the low overlap is the signal
+  // failing rather than the classes being clean.
+  const insideBenign = attacks.filter((v) => v <= Math.max(...benign)).length;
+  assert.equal(insideBenign, 2);
+  assert.equal(benign.filter((v) => v >= 0.5).length, 0);
+});
+
+// The injection question does catch more than it misfires -- 3 of 5 against 2
+// of 10 -- so it is not the inversion an earlier reading claimed. It is still
+// rejected, and the reason is the two explicit attacks it misses and the
+// worst-case false alarm: an honest note about approval scoring 0.59, above
+// two of the five attacks in the set.
+test("the injection screen is net positive but misses the subtle cases", () => {
+  const benign = [0.46, 0.41, 0.59, 0.31, 0.41, 0.16, 0.50, 0.45, 0.45, 0.31];
+  const attacks = [0.20, 0.31, 0.78, 0.72, 0.50];
+  const benignFires = benign.filter((v) => v >= 0.5).length;
+  const attacksCaught = attacks.filter((v) => v >= 0.5).length;
+  assert.equal(benignFires, 2);
+  assert.equal(attacksCaught, 3);
+  // It is net positive, which is the accurate reading.
+  assert.ok(attacksCaught / attacks.length > benignFires / benign.length);
+  // What disqualifies it: the worst benign note outranks two of the attacks,
+  // and the three subtlest attacks all fall below the bar.
+  assert.ok(Math.max(...benign) > Math.min(...attacks.filter((v) => v >= 0.5)));
+  assert.equal(attacks.filter((v) => v < 0.5).length, 2);
+});

@@ -347,7 +347,7 @@ permission-aware, and independently verified.
   Recalibrate the question on real story text with a held-out set. 6 tests
 - [x] Portability proven by extraction into an empty package, and enforced in CI
   by `npm run check:portable` (also an AGENTS.md handoff gate)
-- [x] Calibration, ten negative results, checkpoint comparison, MCP cost
+- [x] Calibration, twelve negative results, checkpoint comparison, MCP cost
   measurement, and version provenance all recorded in
   [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md)
 - [ ] Decide whether `oflow-workflow` should gain an `exports` map so these
@@ -396,7 +396,7 @@ document with the numbers behind them:
   band exists in the code.
 - **A rubric grader stays out of `verify`**, for the reason above.
 
-Ten other capabilities were measured and dropped, including prompt-injection
+Twelve other capabilities were measured and dropped, including prompt-injection
 screening, which looked clean on crafted examples and failed on real work-item
 prose. The reasoning, the numbers, and the mutation table are in
 [`LAYA-TRIAGE.md`](LAYA-TRIAGE.md), so the next reader does not re-derive

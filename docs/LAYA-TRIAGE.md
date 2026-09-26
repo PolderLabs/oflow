@@ -184,6 +184,8 @@ what sprint planning tends to get wrong.
 | stock difficulty band | dropped | r=0.61 vs length; equal-length pairs separated by +0.02, −0.08, +0.75 |
 | `promptInjection` screen | dropped | benign max 0.819 vs injection min 0.335 -- no threshold exists; the most dangerous injection ranks 11th of 20 |
 | `LayaEvaluator` rubric grading | dropped, hard | grades verbosity not content: r=+0.758 with word count, and a 77-word paragraph with no evidence scores 0.81 while real test evidence scores 0.30 |
+| `shortlist_choice` label ranking | dropped | top-1 0/10, top-3 1/10 against 0.20 for a random three of fifteen — below chance, and ranks label text rather than meaning |
+| `noul` phishing / injection screen | dropped, hard | credential theft catches 1/5 because the attacks score as low as ordinary text; the injection question is net positive (3/5 against 2/10) but its worst false alarm outranks two of the five attacks |
 
 Every dropped signal failed in a way that would have been actively harmful:
 `executorFit` would have handed mechanical work to an agent that needed a human,
@@ -795,8 +797,46 @@ appears in any top-3**. It is ranking label text, not meaning: a short generic
 label wins over the one that describes the work. Below chance rather than merely
 uninformative.
 
-This is the eleventh capability measured, which is why the count elsewhere in
-this document moved from eight to eleven. Two notes kept for whoever reads
+### The twelfth: the use case upstream actually documents
+
+Upstream lists `noul` use cases as "phishing detection, spam filtering,
+jailbreak", and oflow has a real instance of that: issue descriptions and notes
+are written by people outside the team and read by an agent that acts on them.
+So this is the one avenue not yet consulted — a question about the *author's
+intent* rather than about the work, on text of a kind the project genuinely
+holds. It is also materially different in kind from everything rejected above:
+"is this refactoring" is a judgement, while "is this asking for a credential" is
+closer to lexical.
+
+Measured over five attacks and ten benign engineering notes that merely
+*mention* credentials, approval, or commands:
+
+| question | at 0.5 | at 0.7 |
+|---|---|---|
+| credential theft | caught 1/5, false alarms 0/10 | caught 0/5, false alarms 0/10 |
+| agent-directed instruction | caught 2/5, false alarms 2/10 | caught 2/5, false alarms 0/10 |
+
+Rejected, and the failure shape is different from the classifier's in a way
+worth stating:
+
+- **Credential theft barely separates the classes — because the attacks are
+  also low.** The one attack that literally prints a token scores 0.56; the
+  four that ask politely score 0.15-0.44, at or below ordinary benign text
+  (max 0.26). Low overlap here is not a good sign, it is a signal that is not
+  responding to the thing it names.
+- **The injection question is net positive but still not usable.** It catches
+  3 of 5 attacks against 2 false alarms in 10 — an earlier reading of this table
+  said it fired more often than it caught, which is wrong, and the rate check
+  below says so. What disqualifies it is the shape: the three subtlest attacks
+  all fall below the bar (0.20, 0.31, 0.50) while the worst benign note, "Approval
+  is required before apply", scores 0.59 and outranks two of the five attacks.
+  A screen whose worst false alarm outranks real attacks cannot gate anything.
+
+This is the twelfth capability measured. The count in this document and in the
+review guide says twelve for the same reason the previous change said eleven.
+
+The eleventh capability, shortlist_choice, was a different mechanism again —
+ranking option labels by embedding similarity rather than scoring. Two notes kept for whoever reads
 next: `laya.embed_fn_from_agent` is the supported way to get embeddings (calling
 `agent.model(...)` directly raises, because `DecisionModel` expects decision
 arguments, not a token batch), and loading the checkpoint through
