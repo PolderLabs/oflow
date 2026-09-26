@@ -484,8 +484,10 @@ The measurement behind it, including every signal that was tried and rejected,
 is in [docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md). The short version: the
 engine's own difficulty score was dropped because it tracks input length; a
 custom question about verification work was shipped and then withdrawn on
-measurement; and eleven further capabilities were rejected outright. What
-remains enabled is the ~20ms readability check above.
+measurement; and twelve further capabilities were rejected outright --
+fourteen measured and not shipped in total, counted from the numbered list in
+[docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md). What remains enabled is the ~20ms
+readability check above.
 
 ### Plan and change safely
 

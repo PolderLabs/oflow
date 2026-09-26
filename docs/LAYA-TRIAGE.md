@@ -18,7 +18,7 @@ table of 7 rows alongside prose claiming twelve, and the two disagreed.
 |---:|---|---|---|
 | 1 | `verificationShare` custom question | **withdrawn** after shipping | 75% false alarms on story-shaped input; classes overlap |
 | 2 | `summariseBoardText` board aggregation | **withdrawn** after shipping | 100% false alarms on story-shaped input |
-| 3 | stock difficulty band | rejected | r=0.82 with word count; a length meter |
+| 3 | stock difficulty band | rejected | r=0.61 with word count (the 0.822 first recorded did not reproduce); a length meter |
 | 4 | `executorFit` | rejected | 5/10; calls human-judgement work agent-suitable |
 | 5 | `specificationGap` | rejected | wrong direction: scored the clearest item 0.09 |
 | 6 | `promptInjection` screen | rejected | benign max 0.819 vs injection min 0.335; no threshold |
