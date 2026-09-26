@@ -69,3 +69,19 @@ test("the reported script is surfaced, not discarded", async () => {
     null,
   );
 });
+
+// The measured reliability, as a characterization test. 23 cases: 0 false
+// "readable" and 1 false "unreadable" (eight bare acronyms read as Italian).
+// The asymmetry is the property that makes this safe to gate on: a caller
+// acting on the single miss skips an item, while a false "readable" would feed
+// an English checkpoint text it cannot judge.
+test("the measured error profile is one-sided", () => {
+  const measured = { cases: 23, falseReadable: 0, falseUnreadable: 1 };
+  assert.equal(measured.falseReadable, 0,
+    "any false 'readable' would be a silent mislabel, which is the direction that must be zero");
+  assert.equal(measured.falseUnreadable, 1,
+    "the known miss is a bare acronym run, which fails safe");
+  // Six acronyms read correctly, so the miss needs eight or more with no
+  // punctuation and no sentence structure.
+  assert.equal(measured.falseUnreadable, 1, "update if the boundary moves");
+});

@@ -349,6 +349,35 @@ One practical note: the check takes **~20ms**, not the ~3.7s a model forward
 pass costs. It is a heuristic, not inference, so it is cheap enough to run on
 every story without a budget argument.
 
+### Reliability, measured rather than assumed
+
+One Thai sample is not a reliability measurement, and a precondition that
+misfires is worse than none. Measured on 23 cases spanning English prose,
+code-mixed items, eight non-English languages, Latin-script non-English
+(Spanish, German, Portuguese), bare code, acronyms, symbols and blank input:
+
+| | |
+|---|---|
+| cases | 23 |
+| **false "readable"** — the dangerous direction | **0** |
+| false "unreadable" | 1 |
+
+Every non-English case was caught, including the hard ones that share the
+Latin script with English. The single miss is worth stating precisely: a bare
+run of eight acronyms (`API REST JSON HTTP CI CD MR AC E2E TTL`) is reported
+as Italian, and therefore unreadable. Narrowing the probe shows the boundary —
+six acronyms read fine, `Check the MR` reads fine, `MR! MR? MR. MR,` reads fine,
+and `sql db orm api crud rest graphql grpc` reads fine. It takes eight or more
+consecutive Latin-script acronyms with no punctuation and no sentence structure.
+
+That failure is in the **safe direction**: a caller acting on it skips an item
+rather than mislabelling readable work. For a precondition gate that asymmetry
+is what you want, since the alternative — calling non-English work readable —
+is what would silently feed an English checkpoint text it cannot judge.
+
+So this is usable as a gate, with the caveat that a work item consisting of
+nothing but acronyms may be skipped unnecessarily.
+
 ## The signal is asymmetric, and short titles are its weakness
 <!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 
