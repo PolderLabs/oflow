@@ -1256,7 +1256,7 @@ would have caught the first problem immediately. The assertion now runs before
 any engine call, and it asserts the *count* as well as the lengths -- a length
 check over an empty list passes, and a swap corpus that parsed to zero pairs
 reported itself clean while measuring nothing. On the *unmatched* version of the same criteria the question
-scores 0.79 and length scores 1.00; that gap is the confound, now removed.
+scores 0.79 against 0.78 for length alone -- a lead of +0.01, which is the confound, now removed.
 
 This is usable for scrum planning, and only as a sort: a board ordered by
 verification share puts the checking work first, which is a reading aid with no
