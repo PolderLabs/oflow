@@ -360,7 +360,7 @@ the checklist so it cannot be closed as if it were work to do.
 survived. The signal is a custom question -- how much of a work item is
 checking existing behaviour rather than writing new -- which clears the
 equal-length control at r=+0.022 where the engine's stock difficulty score
-fails it at 0.82. It answers on a single item via `assess --triage` and
+fails it at 0.61. It answers on a single item via `assess --triage` and
 aggregates to a board, where the flagged count is a *direction* rather than a
 measurement: a pure-construction board still flags 5 of 16 items on the default
 checkpoint, and every figure carries that floor.

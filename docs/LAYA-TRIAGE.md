@@ -81,7 +81,9 @@ so no local path can leak into a process list.
 
 The engine's **stock difficulty score is close to useless.** Measured here:
 
-- correlation with input word count: **r = 0.822**
+- correlation with input word count: **r = 0.612** (re-measured on the same
+  ten items; the figure originally recorded here was 0.822 and did not
+  reproduce — see Re-verification)
 - equal-word-count pairs of one genuinely trivial item against one genuinely
   hard item separated by **+0.024, −0.083, and +0.749** — one pair ran backwards
 
@@ -101,7 +103,7 @@ A **custom** question survives the same control:
 | min / max separation | +0.105 / +1.526 |
 | **correlation with word count** | **r = +0.022** |
 
-**r = 0.02 against length, versus 0.82 for the stock difficulty score.** This
+**r = 0.02 against length, versus 0.61 for the stock difficulty score.** This
 question measures the thing it claims to measure.
 
 One caveat found while reading the table: the engine's score and its
@@ -136,7 +138,7 @@ what sprint planning tends to get wrong.
 | `verificationShare` | **kept** | 6/6 matched pairs; r=0.02 vs length; deterministic. *Corpus measured on `english` @ 0.3.10; the default is now `typed-decisions` — see the checkpoint section* |
 | `executorFit` | dropped | 5/10; called every verify/audit/confirm task agent-suitable, including ones needing human judgement |
 | `specificationGap` | dropped | wrong in *direction*, not just noisy — see below |
-| stock difficulty band | dropped | r=0.82 vs length; equal-length pairs separated by +0.02, −0.08, +0.75 |
+| stock difficulty band | dropped | r=0.61 vs length; equal-length pairs separated by +0.02, −0.08, +0.75 |
 | `promptInjection` screen | dropped | benign max 0.819 vs injection min 0.335 -- no threshold exists; the most dangerous injection ranks 11th of 20 |
 | `LayaEvaluator` rubric grading | dropped, hard | grades verbosity not content: r=+0.758 with word count, and a 77-word paragraph with no evidence scores 0.81 while real test evidence scores 0.30 |
 
@@ -725,6 +727,15 @@ load-bearing ones were re-checked afterwards, and hold:
 - the 8.28 s outlier did not reproduce across three runs and its cause is
   **not established** -- a cold-engine control ran faster per item than the
   warm figure, so cold start does not explain it.
+
+The 0.822 length-correlation figure originally recorded for the stock
+difficulty score did not reproduce: re-measured on the same ten items it is
+0.612. The conclusion is unchanged -- the score still tracks length, still
+fails the equal-length control, still gets dropped -- but the number was wrong
+and the check that would have caught it had silently not run, because it
+constructed the agent as if `english` were a subfolder when it is the default.
+So the failure was double-sided: the figure was unverified, and the verifier
+reported success without running.
 
 Two habits came out of that. Measure the thing through the code path that
 will actually use it: the batch speedup was 1.75x on a warm agent and 7.93x
