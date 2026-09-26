@@ -582,12 +582,17 @@ one in-process capability probe, and it runs only on an explicit click.
   states for each backend. *(Implemented: `TransportState` in `src/transport.ts`,
   probed by `probeTransport`, and surfaced per capability by
   `buildPerCapabilityState`.)*
-- [ ] Make core reads honor the selected read transport. `src/context.ts` builds
-  `new GitLabClient(remote.host)` directly in six places rather than resolving
-  the transport a probe selected, so a `reduced` result describes a capability
-  the reader did not actually use. `reduced` is also only ever set inside the
-  `--probe` branch of `getCapabilities`, so a caller that does not probe always
-  sees `reduced: false` — which is the one thing this item was meant to prevent.
+- [ ] Make core reads honor the selected read transport. The selection already
+  exists — `pickReadBackend` in `src/auth-resolver.ts:152`, consulted at
+  `src/context.ts:43` — and `resolveContextRead` records it on
+  `ContextReadResolution.read` (`src/context.ts:51-52`). Nothing ever reads
+  that field, and `client` is always `new GitLabClient(remote.host)`, so a
+  `glab` selection changes nothing observable. The six direct constructions
+  that would each need the resolved transport: `src/context.ts:51, 94, 124,
+  146, 169, 479`. Separately, `reduced` is assigned in exactly one place, inside
+  the `--probe` branch (`src/capabilities.ts:118`) and initialised false at
+  `:86`, so `oflow capabilities --json` reports `reduced: false`
+  unconditionally — the one thing this item existed to prevent.
 - [x] Add `oflow identity --json` with GitLab principal and
   credential/backend metadata; make `work --mine` ID/server based.
   *(Verified 2026-09-26: `identity --json` ships, `work --mine` filters on
