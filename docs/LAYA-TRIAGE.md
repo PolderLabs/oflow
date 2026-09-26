@@ -230,8 +230,6 @@ disowned, so the module reports `confidence: 0` and callers must not gate on it.
 - **`src/laya-runner.ts`** — the engine wrapper. Text in, answers out, no oflow
   types, no GitLab, no npm dependency on the Python engine. Every failure mode
   returns `null` rather than throwing, so no caller can be broken by Laya.
-- **`src/laya-triage.ts`** — the earlier stock-questions wrapper, kept for the
-  CLI path and its existing tests.
 - **`src/laya-scrum.ts`** — the calibrated question set and the band reader, with
   the calibration table in its header.
 

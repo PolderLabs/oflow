@@ -331,7 +331,8 @@ permission-aware, and independently verified.
 
 ### Experimental — local decision-engine triage (not wired in)
 
-- [x] `src/laya-triage.ts` — advisory wrapper over the stock CLI questions
+- [x] Stock-questions wrapper — first written as `src/laya-triage.ts`, then folded
+  into `src/laya-runner.ts` (`runDefaultQuestions`) and removed as dead code
 - [x] `src/laya-runner.ts` — portable engine wrapper: text in, answers out, no
   oflow or GitLab types, question set on stdin. 15 tests
 - [x] `src/laya-scrum.ts` — the one question that survived calibration, plus a
