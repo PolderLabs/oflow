@@ -107,6 +107,10 @@ separate. A zero from an unreadable source must not imply absence in GitLab.
 | GET | `/api/plans` | Local plan summaries. |
 | GET | `/api/verification` | Current local verification status. |
 | GET | `/api/audit` | Recent local audit events. |
+| GET | `/api/actions` | Job history: id, action, story, status, and the recorded result. |
+| POST | `/api/actions` | `{action, story?}`; starts one job and returns it with `202`. The action must be `refresh`, `context`, `assess`, `handoff` or `verify-local`. Anything else, including `apply`, is rejected. Arguments are fixed argv — the browser cannot name an executable, path, flag or shell. |
+| GET | `/api/actions/{id}` | One job, refreshed while it runs. |
+| POST | `/api/actions/{id}/cancel` | Requests cancellation and returns the job. Cancellation stops work that has not started; a completed check is not undone. |
 
 Auth requests do not launch a prompt, clear credentials, or create a bridge.
 Token entry and clearing use `oflow auth login` / `oflow auth clear` in the
