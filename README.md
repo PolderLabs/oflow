@@ -458,9 +458,12 @@ Use server-side filters to keep responses small:
 
 `oflow assess --story <iid> --triage` adds one advisory line about how much of
 a story is checking existing behaviour and evidence rather than writing new
-behaviour. That is a review-effort signal, not a size estimate: a story that
-is mostly verification costs a reviewer far more attention than its length
-suggests.
+behaviour. That is a review-effort signal rather than a size estimate: a story
+that is mostly verification costs a reviewer far more attention than its length
+suggests. On mixed-length prose it is partly length-sensitive, so treat a high
+score as suggestive and compare like with like; on equal-length inputs it
+discriminates reliably. The measurements are in
+[docs/LAYA-TRIAGE.md](docs/LAYA-TRIAGE.md).
 
 It is off by default and depends on nothing. Without a local
 [Laya](https://github.com/NandhaKishorM/laya) install it simply returns

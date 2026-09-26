@@ -76,7 +76,7 @@ four construction items.
 The custom path passes its JSON on **stdin**, never argv and never a temp file,
 so no local path can leak into a process list.
 
-## The headline finding: a question that is not a length meter
+## The headline finding: a question that is not *only* a length meter
 <!-- All figures in this section: `english` checkpoint, laya 0.3.10. -->
 
 The engine's **stock difficulty score is close to useless.** Measured here:
@@ -100,7 +100,7 @@ item sets, with the shipped question wording:
 |---|---:|---:|
 | original ten-item probe | 10 | **+0.612** |
 | alternate nine items | 9 | **+0.548** |
-| matched-length control pairs | 8 | **+0.044** |
+| matched-length control pairs | 8 | **−0.020** |
 
 **So the honest statement is: length sensitivity is real for free text and
 absent under length control.** On unmatched issue prose this question
@@ -113,7 +113,7 @@ still reads the content:
 |---|---|
 | mean separation (verification − construction), 6 pairs | **+1.001** |
 | pairs with positive separation | **6 of 6** |
-| min / max separation | +0.105 / +1.526 |
+| min / max separation | +0.105 / +1.526 (4-pair re-check: +0.26, +0.75, +0.60, +0.87) |
 
 The practical consequence: on real work-item text of mixed length, treat a
 high score as *suggestive* rather than established, and compare like with like
