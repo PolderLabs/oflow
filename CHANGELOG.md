@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+### Added
+- `oflow labels audit` reports labels defined on a project against the ones
+  actually used by issues, so an unused label is visible without opening the
+  project settings. Read-only: it opens no plan and applies nothing. The report
+  carries a coverage warning when the issue listing could not be exhaustive, so
+  a partial result is never read as a complete one.
+
+### Fixed
+- `plan issue update --add-labels` accepted a label the project does not
+  define. GitLab took the request and added nothing, so the command reported
+  success and showed a label that does not exist. It is now rejected before the
+  request, naming the label.
+- `--assignee` leaked raw GitLab JSON into the output when the token lacked
+  granular scope. It now reports that the lookup is not permitted.
+- Toggling a criterion printed `issue updated (unknown)` because the apply
+  path never set the state field. It now names the criterion that landed.
+- `work --author` sent the username as typed rather than the canonical one
+  GitLab expects, and an empty result under an author filter read as "this
+  person has no work". It now normalises the name and distinguishes an empty
+  filtered result from no work at all.
+- The agent instruction blocks told agents to run `oflow
+  normalizeForbidden`, which is not a command. The blocks are the one thing
+  an agent reads before acting, so a missing command there is a dead end.
+- `npm run build` did not clean `dist`, so a module deleted from `src` kept
+  shipping in the published tarball.
+
 ## 0.5.2
 Correct the 0.5.0 changelog entry and harden the criterion-toggle verifier.
 ### Fixed
