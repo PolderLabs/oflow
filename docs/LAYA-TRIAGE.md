@@ -157,10 +157,30 @@ overlap**: construction reached 1.35 while verification started at 1.16, so the
 two cannot be separated by a threshold on short text. The same ten items as
 sentences separate cleanly, 1.05 against 1.20.
 
-The more important result is the two items in bold. "Check pipeline gating" and
-"Review the apply ordering" are verification work that the engine scores as
-construction, **at both lengths**. That is a systematic weakness in the
-question, not noise, and it is a miss no reviewer would catch by eye.
+The two items in bold are verification work the engine scores as construction,
+**at both lengths**. Length is therefore not the variable: neither "gating" nor
+"ordering" reads as "checking" to the model, and both sit at the edge of what
+the question resolves. What length does affect is *separability* -- no
+error-free threshold exists on short titles, while the sentence form separates
+cleanly.
+
+### The uncertainty margin already covers half of it
+
+The module disclaims any score within 0.2 of a band edge, and that turns out to
+catch one of the two failures:
+
+| item | score | distance to the 1.5 edge | disclaimed? |
+|---|---:|---:|---|
+| Review the apply ordering | 1.47 | 0.03 | **yes** |
+| Check pipeline gating | 1.16 | 0.34 | **no** |
+
+So the honest figure is **one** verification item in ten that is both
+mis-banded *and* presented without a caveat -- not two. That is better than
+raw banding suggests, and it is the correct number to quote.
+
+The failure it does not cover is the worse of the pair, and that is the part
+worth stating plainly: **a score well clear of a band edge is not evidence of
+correctness.** 1.16 is a confident wrong answer.
 
 **So the signal is asymmetric, and the module is built to say so.** It is
 informative in one direction: a high score does mean the item is

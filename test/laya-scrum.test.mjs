@@ -98,3 +98,21 @@ test("the measured overlap between the two classes is recorded, not smoothed ove
   assert.equal(readVerificationShare(score(2.04, "2")).band, "mixed");
   assert.equal(readVerificationShare(score(2.35, "3")).band, "verification");
 });
+
+// The margin catches one of the two measured misses and not the other, and the
+// one it misses is the more confident wrong answer. That asymmetry is the
+// documented behaviour, so it is pinned here rather than left to prose.
+test("the uncertainty margin covers one measured miss and not the other", () => {
+  // 0.03 from the 1.5 edge: inside the 0.2 margin, so it is disclaimed even
+  // though it is banded as construction.
+  const near = readVerificationShare(score(1.47, "1"));
+  assert.equal(near.band, "construction");
+  assert.equal(near.uncertain, true);
+  assert.equal(describeVerificationShare(near), null);
+
+  // 0.34 from the same edge: outside the margin, so it is a confident answer
+  // that is nonetheless wrong. This is the failure mode to keep visible.
+  const clear = readVerificationShare(score(1.16, "1"));
+  assert.equal(clear.band, "construction");
+  assert.equal(clear.uncertain, false);
+});

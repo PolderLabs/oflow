@@ -38,15 +38,31 @@ import type { LayaQuestion, LayaQuestions } from "./laya-runner.js";
  * started at 1.16, so the two classes overlap. The same ten items written as
  * full sentences separate cleanly, 1.05 against 1.20.
  *
- * More important than the overlap, the same two items are mis-banded at both
- * lengths: "Check pipeline gating" (1.16) and "Review the apply ordering"
- * (1.47) are verification work scored as construction. That is a systematic
- * weakness in the question rather than noise, and it is a miss a reviewer
- * would not catch by eye.
+ * ## Where the residual failures actually are
  *
- * So a caller must never read a construction verdict as evidence that an item
- * contains no verification work. The hint is informative in the direction it
- * is reliable: it flags verification-heavy items, and silence says nothing.
+ * Two items are mis-banded at *both* lengths: "Check pipeline gating" (1.16
+ * title, 1.20 sentence) and "Review the apply ordering" (1.47 / 1.30). Length is
+ * therefore not the variable -- neither "gating" nor "ordering" reads as
+ * "checking" to the engine, and both sit at the edge of what the question
+ * resolves. What length does affect is separability: no error-free threshold
+ * exists on short titles, while the sentence form separates cleanly.
+ *
+ * The uncertainty margin covers one of the two, and the honest figure is
+ * therefore better than raw banding suggests:
+ *
+ * | item | score | distance to the 1.5 edge | disclaimed? |
+ * |---|---:|---:|---|
+ * | Review the apply ordering | 1.47 | 0.03 | **yes** |
+ * | Check pipeline gating | 1.16 | 0.34 | **no** |
+ *
+ * So **one** verification item in ten is both mis-banded and presented without
+ * a caveat, not two. The one that slips through is the worse of the pair, and
+ * that is the failure mode to state: a score well clear of a band edge is not
+ * evidence of correctness.
+ *
+ * A caller must still never read a construction verdict as proof that an item
+ * contains no verification work. The hint is informative in the direction it is
+ * reliable -- it flags verification-heavy items, and silence says nothing.
  */
 export const VERIFICATION_SHARE: LayaQuestion = {
   type: "score",
