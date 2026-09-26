@@ -713,6 +713,25 @@ The exported surface, for anyone porting these:
 | `DEFAULT_CHECKPOINT`, `LayaCheckpoint` | `VerificationShare`, `VerificationShareBand` |
 | `LayaQuestion`, `LayaQuestions`, `LayaAnswer`, `LayaAnswers`, `RunnerOptions` | |
 
+## Re-verification
+
+Every figure above was measured at a different point in the session, on
+different engine and process states, and a few were initially mis-scoped. The
+load-bearing ones were re-checked afterwards, and hold:
+
+- the kept question still separates matched-length construction/verification
+  pairs, all positive, mean +1.011 against the +1.001 recorded above;
+- the runner-level batch figure stands at 7.93x with bit-identical scores;
+- the 8.28 s outlier did not reproduce across three runs and its cause is
+  **not established** -- a cold-engine control ran faster per item than the
+  warm figure, so cold start does not explain it.
+
+Two habits came out of that. Measure the thing through the code path that
+will actually use it: the batch speedup was 1.75x on a warm agent and 7.93x
+through oflow's runner, and only the second describes oflow. And do not write
+a causal story the numbers do not support -- a plausible sentence in a
+findings document reads as verified to whoever picks it up next.
+
 ## Open questions for the maintainer
 
 1. **Should `oflow-workflow` gain an `exports` map** so these modules are
