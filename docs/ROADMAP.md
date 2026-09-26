@@ -578,10 +578,16 @@ one in-process capability probe, and it runs only on an explicit click.
   scraping agent OAuth caches)
 - [x] `oflow auth status` (text and `--json`, metadata only, no credentials)
 - [x] Backend/auth selection diagnostics
-- [ ] Separate configured, authenticated, readable, mutable, and verifiable
-  states for each backend; make core reads honor the selected read transport
-  or report explicit reduced mode. Transport/capability reporting exists, but
-  `src/context.ts` still constructs the REST client directly.
+- [x] Separate configured, authenticated, readable, mutable, and verifiable
+  states for each backend. *(Implemented: `TransportState` in `src/transport.ts`,
+  probed by `probeTransport`, and surfaced per capability by
+  `buildPerCapabilityState`.)*
+- [ ] Make core reads honor the selected read transport. `src/context.ts` builds
+  `new GitLabClient(remote.host)` directly in six places rather than resolving
+  the transport a probe selected, so a `reduced` result describes a capability
+  the reader did not actually use. `reduced` is also only ever set inside the
+  `--probe` branch of `getCapabilities`, so a caller that does not probe always
+  sees `reduced: false` — which is the one thing this item was meant to prevent.
 - [x] Add `oflow identity --json` with GitLab principal and
   credential/backend metadata; make `work --mine` ID/server based.
   *(Verified 2026-09-26: `identity --json` ships, `work --mine` filters on
