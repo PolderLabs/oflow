@@ -34,19 +34,27 @@ that constrain what the shipped signal can honestly be claimed to do — are in
 ## How the split was produced
 
 Cherry-picking the seven commits onto `main` conflicted in `docs/ROADMAP.md`
-only, because the roadmap was edited repeatedly between them. The resolution was
-to take each commit's code and the roadmap from this branch, which is the
-newer document anyway.
+only, because the roadmap was edited repeatedly between them while this
+experiment was in progress. Every commit's code applied cleanly.
+
+**Take `main`'s roadmap, not this branch's.** Doing the opposite was tried and
+reverted: it left the fixes branch carrying the Laya sections and three links
+to `docs/LAYA-TRIAGE.md`, a file that does not exist there. A fixes-only branch
+whose roadmap claims features absent from its own diff is misleading, and
+`check:public` does not catch it.
 
 In short:
 
 ```bash
 git checkout -b product-fixes main
 git cherry-pick -n <commit>
-# if docs/ROADMAP.md conflicts, take this branch's copy:
-git checkout overnight/laya-2026-09-26 -- docs/ROADMAP.md
+# docs/ROADMAP.md will conflict; keep main's copy:
+git checkout main -- docs/ROADMAP.md
 git commit
 ```
+
+Verified on the finished branch: 298 tests passing, and `typecheck`,
+`check:public` and `pack --dry-run` green.
 
 ## Nothing here is a release
 
