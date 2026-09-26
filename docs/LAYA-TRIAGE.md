@@ -951,7 +951,50 @@ That is why nothing is wired into `sync` or the dashboard yet. A board summary
 that is right in direction and wrong by a third in magnitude is a good
 conversation starter and a bad number to put on a wall.
 
-## How others are using it
+## Two things checked after the fourteen: the version, and the router
+
+Every measurement above was made on **laya 0.3.10**. PyPI serves **0.3.20**,
+ten releases later, so the obvious question is whether a newer release fixes the
+checkpoint defect that underlies most of these failures.
+
+It does not. Run side by side on the same input:
+
+| | RuntimeWarning | score | confidence |
+|---|---|---|---|
+| 0.3.10 | `invalid temperatures ... choice:11+=... -> 0.5` | 0.958 | 0.1324 |
+| 0.3.20 | `invalid temperatures ... choice:11+=... -> 0.5` | 0.958 | 0.1324 |
+
+Byte-identical, warning included. **A version upgrade cannot rescue any of
+this**, and the `confidence: 0` the module reports is still correct on the
+current release.
+
+### The router, which was the one untested idea
+
+`LayaRouter` was listed in the inventory as never tested, and the reasoning
+looked sound: `multilingual` was rejected as a *global* default on English
+items, which is exactly the case you would never route to it. The English
+checkpoint is only usable on English text, so for a German project a two-line
+router — English to `typed-decisions`, everything else to `multilingual` —
+would be a capability none of the fourteen rejections covers.
+
+It is not. On a German board of eight construction and six verification items:
+
+| checkpoint | gap | spread | separates | false alarms | surfaced |
+|---|---:|---:|---|---:|---:|
+| typed-decisions | +0.157 | 0.400 | no | 7 / 8 | 6 / 6 |
+| multilingual | +0.095 | 0.319 | no | **8 / 8** | 6 / 6 |
+
+**Neither checkpoint separates on non-English text**, and `multilingual` is the
+*worse* of the two on construction — every single construction item scores above
+the 1.5 edge, from 1.73 to 2.22, against `typed-decisions`' 1.45 to 2.01. Its
+verification scores are also nearly flat (2.04-2.19), so it is not trading
+construction false alarms for verification recall.
+
+So the fifteenth idea closes the same way: the failure is not the checkpoint,
+it is the question. Routing cannot rescue a signal that does not separate in
+the language it is reading.
+
+
 
 Three public integrations, read to see whether the patterns here are unusual or
 standard:
