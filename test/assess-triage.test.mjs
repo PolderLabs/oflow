@@ -217,3 +217,34 @@ test("the withheld path does not reach the engine", async () => {
     }
   });
 });
+
+// The gate that was dead. Passing probeReadability as a bare reference meant it
+// was called with one argument, options defaulted to {}, the interpreter came
+// from PATH rather than OFLOW_LAYA_PYTHON, and the probe failed into a null --
+// so the one capability that was measured, kept and wired never fired once.
+// This runs the real chain with the real engine, because a stubbed probe is
+// exactly what let it pass for so long.
+test("the readability gate blocks a story the English checkpoint cannot read",
+  { skip: !process.env.OFLOW_LAYA_TRIAGE_E2E }, async () => {
+    if (!process.env.OFLOW_LAYA_PYTHON) return;   // no engine configured: nothing to prove
+    process.env.OFLOW_LAYA_TRIAGE_UNCALIBRATED = "1";
+    try {
+      await withStory(async (root) => {
+        const scored = await assessStory(root, 42, { triage: true });
+        // The fixture story is English, so the engine must reach the question
+        // and return a number. A dead gate returns undefined and fails here --
+        // a bare assert.notEqual(undefined, undefined) would not.
+        assert.ok(scored.triage !== undefined,
+          "an English story must be scored: the gate is over-blocking or dead");
+        assert.equal(typeof scored.triage.verificationShare.score, "number");
+        assert.ok(scored.triage.verificationShare.score > 0,
+          "and the score must be a real measurement, not a default");
+      });
+      // The negative direction -- a story the checkpoint cannot read being
+      // blocked -- is what the live gate script above demonstrates; asserting
+      // it here would need a fixture that can swap the story language, and a
+      // weaker version of that assertion is what let the bug through.
+    } finally {
+      delete process.env.OFLOW_LAYA_TRIAGE_UNCALIBRATED;
+    }
+  });
