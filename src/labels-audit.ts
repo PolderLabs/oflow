@@ -176,6 +176,10 @@ export async function auditLabels(options: {
       index + 1,
     );
     pages.push(page);
+    // Stopping because the last page said so is the only clean exit. Running
+    // out of budget instead leaves the last page's own hasNextPage set, which
+    // is what flags the result as truncated -- the loop cannot reach the cap
+    // without having read that flag as true.
     if (!page.pagination.hasNextPage) break;
   }
   return buildLabelsAudit(

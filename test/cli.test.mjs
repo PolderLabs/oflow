@@ -130,6 +130,16 @@ test("the criterion toggle flags are discoverable in help", () => {
   assert.match(result.stdout, /--uncheck <ac\|position>/);
 });
 
+test("the labels audit command is discoverable in help", () => {
+  const result = spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  // A command missing from --help is undiscoverable, and this one replaces a
+  // workflow agents were hand-rolling. It must also not be filed among the
+  // plan subcommands, which carry their own lifecycle.
+  assert.match(result.stdout, /labels audit/);
+  assert.doesNotMatch(result.stdout, /plan labels audit/);
+});
+
 test("identity --json emits a stable secret-free principal record", async () => {
   const root = mkdtempSync(join(tmpdir(), "oflow-identity-cli-"));
   const originalFetch = globalThis.fetch;

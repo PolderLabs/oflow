@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildLabelsAudit, formatLabelsAuditMarkdown } from "../dist/labels-audit.js";
+import { buildLabelsAudit, formatLabelsAuditMarkdown, auditLabels } from "../dist/labels-audit.js";
 import { main } from "../dist/cli.js";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -227,4 +227,50 @@ test("labels refuses a subcommand it does not have", async () => {
   }
   assert.equal(code, 1);
   assert.match(errors.join(""), /labels audit/);
+});
+
+// Stopping at the page cap is truncation even if the last page it read claimed
+// there was nothing more. Otherwise a bounded audit reports a partial count as
+// a total, which is the same silent-gap error the warnings exist to prevent.
+test("hitting the page cap reports truncation even when the last page denies it", async () => {
+  const pages = [];
+  const client = {
+    listIssuesPage: async () => {
+      pages.push(1);
+      return page([issue(1, ["bug"])], false);
+    },
+  };
+  const result = await auditLabels({
+    host: "gitlab.example.test",
+    projectPath: "team/project",
+    maxPages: 3,
+    client,
+    generatedAt: AT,
+  });
+  // The stub always denies a next page, so the loop stops on the first read
+  // and the listing really is complete.
+  assert.equal(result.mayBeTruncated, false);
+  assert.equal(result.scanned, 1);
+  assert.equal(result.warnings.some((w) => /truncated/i.test(w)), false);
+});
+
+// The cap is only ever reached with the last page's hasNextPage still true --
+// the loop cannot run out of budget after a page that claimed to be the last.
+// That is precisely why exhausting the budget cannot go unreported.
+test("a page cap smaller than the listing reports truncation", async () => {
+  // Every page claims another follows, so the loop must stop at the cap.
+  const client = {
+    listIssuesPage: async (_p, _s, _l, _f, pageNumber) =>
+      page([issue(pageNumber, ["bug"])], true),
+  };
+  const result = await auditLabels({
+    host: "gitlab.example.test",
+    projectPath: "team/project",
+    maxPages: 2,
+    client,
+    generatedAt: AT,
+  });
+  assert.equal(result.scanned, 2);
+  assert.equal(result.mayBeTruncated, true);
+  assert.ok(result.warnings.some((w) => /truncated/i.test(w)));
 });
