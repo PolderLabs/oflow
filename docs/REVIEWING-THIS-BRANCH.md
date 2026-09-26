@@ -79,6 +79,27 @@ Merging the experiment **first** and then `product-fixes` has the same
 conflicts, since the overlap is additive from both sides. Resolving by hand is
 unavoidable, and this note is where to start.
 
+## The package has no entry point, and the fix is one block
+
+`oflow-workflow` declares a `bin` and no `main`, `types` or `exports`. Every
+`.d.ts` is already emitted, so the Laya modules and the labels audit are
+importable today by deep path -- but nothing says which paths are supported, and
+a consumer reaching past them gets no protection at all.
+
+Adding an `exports` map was verified in a scratch copy of the packed tarball
+rather than asserted:
+
+- a fresh project installed the tarball and resolved all four subpaths
+- all 27 exports across the four modules type-checked under `--strict`,
+  including the union types `LayaCheckpoint` and `VerificationShareBand`
+- deliberately wrong values produce `TS2322`, and an unknown subpath produces
+  `TS2307` and `ERR_PACKAGE_PATH_NOT_EXPORTED` at runtime
+
+So the map is a boundary, not decoration: without it nothing is protected, and
+with it the supported surface is the only surface. It is one block of JSON with
+no code behind it, which is why it is left as a decision rather than folded in
+with the experiment.
+
 ## How the split was produced
 
 Cherry-picking the seven commits onto `main` conflicted in `docs/ROADMAP.md`
