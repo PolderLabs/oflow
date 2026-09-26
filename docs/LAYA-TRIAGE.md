@@ -495,6 +495,29 @@ Monotone across the range, and a single verification item moves the count
 (7 construction: 1/8; plus one verify: 2/8; plus two: 3/8). That is the property
 a planning summary needs.
 
+### Batching makes it practical
+
+A board is many items, and the single-item path costs one engine call each.
+`predict_batch` packs many states into shared forward passes. On a ten-item
+board:
+
+| | time | per item |
+|---|---:|---:|
+| one call per item | 1.81 s | 0.18 s |
+| `predict_batch` | 1.04 s | 0.10 s |
+
+**1.75x, with bit-identical scores.** Every one of the ten matched to the
+digit, so this is a cost win rather than a trade of accuracy for speed -- the
+only kind worth having, given the false-positive floor the summary already has
+to report. `runCustomQuestionsBatch` and `summariseBoardText` use it; the
+single-item path is unchanged and still serves `assess --triage`.
+
+Two details that are load-bearing rather than cosmetic: an item the engine
+could not answer is left out of the count rather than scored as zero, because
+zero reads as "definitely construction" when it means "we do not know"; and an
+absent engine yields `null`, never an empty summary, so a caller cannot
+confuse "no reading" with "nothing is verification work".
+
 ### The limit, stated plainly
 
 A **pure-construction** board still flags items:
