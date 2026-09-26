@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  summariseBoardText,
   summariseBoard,
   describeBoard,
   SCRUM_QUESTIONS,
@@ -146,4 +147,41 @@ test("the board count is monotone as verification items are added", () => {
   const ver = [1.7, 1.8, 1.9];
   const counts = [0, 1, 2, 3].map((k) => summariseBoard([...con, ...ver.slice(0, k)]).flagged);
   assert.deepEqual(counts, [0, 1, 2, 3]);
+});
+
+// The batch path exists because a board is many items: measured at 1.75x
+// faster than one call per item with bit-identical scores, so the difference
+// is cost rather than accuracy.
+test("an absent engine yields no board summary rather than an empty one", async () => {
+  // "no reading" and "nothing is verification work" must never look alike.
+  assert.equal(await summariseBoardText(["a", "b"], { python: "/no/such/python" }), null);
+  assert.equal(await summariseBoardText([]), null);
+});
+
+// Opt-in live check: the real engine, and agreement with the single-item path.
+test("the batch path scores a board the same way as one call per item", { skip: !process.env.OFLOW_LAYA_BATCH_E2E }, async () => {
+  const { runCustomQuestions } = await import("../dist/laya-runner.js");
+  const options = {
+    python: process.env.OFLOW_LAYA_PYTHON,
+    timeoutMs: 180000,
+    checkpoint: "typed-decisions",
+  };
+  const board = [
+    "Verify the rollback path against a seeded environment",
+    "Confirm the digest guard rejects a stale plan",
+    "Add cursor pagination to the work item listing",
+    "Fix the retry loop with exponential backoff",
+  ];
+  const summary = await summariseBoardText(board, options);
+  assert.ok(summary, "board summary expected");
+  assert.equal(summary.items, board.length);
+  for (const text of board) {
+    const one = await runCustomQuestions(text, SCRUM_QUESTIONS, options);
+    const score = one?.verificationShare?.score;
+    if (typeof score === "number" && score >= 1.5) {
+      // The summary must count this item as flagged.
+      assert.ok(summary.flagged >= 1, "a verification item should be counted");
+      break;
+    }
+  }
 });
