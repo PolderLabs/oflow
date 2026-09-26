@@ -23,6 +23,18 @@
   a partial result is never read as a complete one.
 
 ### Fixed
+- The dashboard page did not load. A route-matching regular expression was
+  written with a single backslash-escaped slash inside the page's inline
+  script, and the backslash was consumed when the template was emitted, so the
+  script failed to parse with `SyntaxError: Unexpected token ')'` and the
+  browser rendered nothing. The companion URL check was double-escaped and
+  survived, which is what located it.
+- Secret redaction on the dashboard's HTTP boundary matched field names
+  exactly, so only a bare `token` was dropped. `accessToken`, `apiKey`,
+  `clientSecret`, `privateKeyPem`, `refreshToken`, `x-api-key` and similar
+  shapes crossed to the browser intact. Names are now matched per word across
+  camelCase and separators, with the transport health signals the auth panel
+  renders kept explicitly.
 - Same-origin browser actions now work when the dashboard uses `--port 0`;
   Origin validation uses the actual bound port rather than zero.
 - `plan issue update --add-labels` accepted a label the project does not
