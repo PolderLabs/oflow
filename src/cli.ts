@@ -94,6 +94,7 @@ import {
 } from "./sync.js";
 import { evaluateCriteria } from "./criteria.js";
 import { loadConfig, resolvePipelinePolicy } from "./config.js";
+import { auditLabels, formatLabelsAuditMarkdown } from "./labels-audit.js";
 import { runLocalVerification } from "./local-verification.js";
 import {
   formatReadModelStatusMarkdown,
@@ -500,6 +501,22 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           story: options.story === undefined ? undefined : await resolveStoryIid(root, options.story),
         });
         print(options.json, result, formatHandoffMarkdown(result));
+        return 0;
+      }
+      case "labels": {
+        if (options.planResource !== "audit") {
+          throw new OflowError(
+            "labels takes the audit subcommand. Use oflow labels audit.",
+            "UNKNOWN_LABELS_SUBCOMMAND",
+          );
+        }
+        const remote = await getGitLabRemote(root);
+        const audit = await auditLabels({
+          host: remote.host,
+          projectPath: remote.projectPath,
+          label: options.label,
+        });
+        print(options.json, audit, formatLabelsAuditMarkdown(audit));
         return 0;
       }
       case "capabilities": {
@@ -1243,6 +1260,10 @@ function parseArgs(argv: string[]): CliOptions {
     firstOptionIndex = 2;
   } else if (command === "mr" && argv[1] && !argv[1].startsWith("-")) {
     options.mrAction = argv[1];
+    firstOptionIndex = 2;
+  } else if (command === "labels" && argv[1] && !argv[1].startsWith("-")) {
+    // Single subcommand, consumed the same way `mr <action>` is.
+    options.planResource = argv[1];
     firstOptionIndex = 2;
   } else if (command === "plan") {
     if (argv[1] === "--help" || argv[1] === "-h" || argv[1] === "help") {
@@ -2241,6 +2262,7 @@ function helpText(): string {
     "  cache status [--json]                inspect local cache age/schema/invalidation",
     "  cache request-refresh                record a local refresh request (no network)",
     "  dashboard [--port <n>] [--open]      serve the local read-only planning dashboard",
+    "  labels audit [--label <name>]  report label usage; read-only, carries a coverage warning",
     "  --open                               open the dashboard in your default browser",
     "  glab api <GET endpoint> [--json]     optional read-only glab fallback",
     "  plan issue create --title <title> [--type <type>] prepare an auditable work-item create",
