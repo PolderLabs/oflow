@@ -350,12 +350,12 @@ is now on 0.5.2, so the log is partly stale. Verified against `src/`:
 | 6 | 50-IID bulk cap undocumented in help | **Partly shipped** — enforced at `plan.ts:2588`; help mentions it at `cli.ts:2252` and `cli.ts:2298`, not for every bulk command |
 | 7 | Apply leaves ambiguous `applied-partial` state | **Shipped** — the state is declared at `plan.ts:45` and the resume path is at `plan.ts:1316` |
 | 8 | `work --json` omits `issue_type` | **Shipped** — `compactWorkItems` (`context.ts:269`) maps `issueType` at `context.ts:274` straight from the wire |
-| 9 | No `labels audit` coverage command | **Still open** — the only `audit` case is the plan audit (`cli.ts:519`, calling `readAudit` at `cli.ts:520`), which has no label-coverage mode |
+| 9 | No `labels audit` coverage command | **Shipped on this branch** — `oflow labels audit [--label <name>]` (`src/labels-audit.ts`) reports per-label open/closed/total counts grouped by type and milestone, and always carries the type-coverage warning the log required |
 | 10 | No surface to change work-item type after create | **Still open** — no `workItemConvert` GraphQL mutation anywhere in `src/` |
 
-#1, #4 (partly) and #5 are fixed on this branch; #4's `--assignee-id` half is
-not. The confirmed-open backlog is #3, #9, #10, and that half of #4. Treat the
-rest of the log as history rather than as a queue.
+#1, #4 (partly), #5, and #9 are addressed on this branch; #4's
+`--assignee-id` half is not. The confirmed-open backlog is #3, #10, and that
+half of #4. Treat the rest of the log as history rather than as a queue.
 
 ## Status
 
