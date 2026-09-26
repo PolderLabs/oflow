@@ -50,6 +50,35 @@ other count here is derived from. The measurements — including the ones
 that constrain what the shipped signal can honestly be claimed to do — are in
 [LAYA-TRIAGE.md](LAYA-TRIAGE.md).
 
+## Merging order matters, and the obvious order breaks
+
+Merging `product-fixes` into `main` is clean, and was verified by trial merge.
+But merging the experiment **on top of a post-fix `main` conflicts**, because
+both branches independently added four of the same files:
+
+| file | `product-fixes` | experiment | differing lines |
+|---|---:|---:|---:|
+| `src/labels-audit.ts` | 215 | 219 | 4 |
+| `scripts/check-portable.mjs` | 100 | 115 | 23 |
+| `test/labels-audit.test.mjs` | 230 | 302 | 74 |
+| `test/agent-instructions.test.mjs` | 96 | 170 | 152 |
+| `src/templates.ts` | — | — | conflict, both edited |
+
+`labels-audit.ts` is effectively the same code. The others diverged, because
+the experiment added coverage while the fix branch did not: the instruction
+test grew from 96 to 170 lines, and the labels test from 230 to 302.
+
+So the merge order is a decision, not a formality. `labels-audit.ts` resolves
+by taking either copy. For the two tests, take the experiment's version and
+re-run -- it is a superset. `src/templates.ts` is a genuine text conflict in
+the agent instruction block, which both branches edited for different reasons:
+the fix branch removed a phantom command, the experiment corrected the triage
+description. Both edits are wanted.
+
+Merging the experiment **first** and then `product-fixes` has the same
+conflicts, since the overlap is additive from both sides. Resolving by hand is
+unavoidable, and this note is where to start.
+
 ## How the split was produced
 
 Cherry-picking the seven commits onto `main` conflicted in `docs/ROADMAP.md`
