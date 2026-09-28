@@ -490,6 +490,14 @@ export interface DoctorReport {
     };
     reduced: boolean;
   };
+  /**
+   * Type-coverage census for project work items. REST issue listings report
+   * only `issue` and `task`; GraphQL sees every custom type (User Story, EPIC,
+   * ...). When `hiddenCount > 0` oflow cannot see those items on the REST path
+   * and any listing, label-coverage audit, or board aggregation is partial.
+   * `null` means the census was not run -- never evidence of full coverage.
+   */
+  workItemCoverage?: { graphqlCount: number; restTotal: number; hiddenCount: number } | null;
 }
 
 /** One discovered credential source for a GitLab host; never token material. */

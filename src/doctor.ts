@@ -8,6 +8,7 @@ import { normalizeForbidden, resolveAuth } from "./auth-resolver.js";
 import { deriveTransportState, type TransportState } from "./transport.js";
 import { GitLabClient } from "./gitlab.js";
 import { detectBackends } from "./backends.js";
+import { workItemTypeCoverage } from "./context.js";
 import { dim, statusMarker, type PresentationOptions } from "./presentation.js";
 import type {
   AuthCapability,
@@ -156,9 +157,15 @@ export async function doctor(
     ? "skipped"
     : "not-requested";
   let apiChecks: DoctorCapabilityCheck[] = [];
+  let workItemCoverage: DoctorReport["workItemCoverage"];
+  let apiProbed = false;
+  let restTotalFromProbe: number | null = null;
   if (options.checkApi) {
     if (remote && tokenSource) {
-      apiChecks = await checkApiCapabilities(remote, backends);
+      const apiResult = await checkApiCapabilities(remote, backends);
+      apiChecks = apiResult.checks;
+      apiProbed = true;
+      restTotalFromProbe = apiResult.restTotal;
       // The headline answers "can oflow read this project?", not "does every
       // optional probe succeed?". A fine-grained token legitimately lacks
       // `User: Read` (only --mine needs it) and `pipelines.read` degrades
@@ -188,6 +195,9 @@ export async function doctor(
         backends,
       );
     }
+  }
+  if (apiProbed && remote && restTotalFromProbe !== null) {
+    workItemCoverage = await workItemTypeCoverage(root, restTotalFromProbe, "opened");
   }
   let capabilities: AuthCapability[] | undefined;
   let transport: DoctorReport["transport"];
@@ -225,6 +235,7 @@ export async function doctor(
     tokenSource: tokenSource?.kind ?? null,
     apiCheck,
     apiChecks,
+    ...(workItemCoverage !== undefined ? { workItemCoverage } : {}),
     ...(capabilities ? { capabilities } : {}),
     ...(transport ? { transport } : {}),
     backends,
@@ -236,7 +247,7 @@ export async function doctor(
 async function checkApiCapabilities(
   remote: GitLabRemote,
   backends: DoctorReport["backends"],
-): Promise<DoctorCapabilityCheck[]> {
+): Promise<{ checks: DoctorCapabilityCheck[]; restTotal: number | null }> {
   const client = new GitLabClient(remote.host);
   const checks: DoctorCapabilityCheck[] = [];
   const projectProbe = await runProbe(
@@ -422,7 +433,7 @@ async function checkApiCapabilities(
     detail: "MCP belongs to the connected agent runtime and is not inspectable by the CLI.",
   });
   checks.push(...writeChecks());
-  return checks;
+  return { checks, restTotal: workItemsProbe.value?.pagination.total ?? null };
 }
 
 function skippedApiChecks(
@@ -582,18 +593,31 @@ function inferGroupPath(project: GitLabProject | null, projectPath: string): str
 }
 
 export function formatDoctor(report: DoctorReport, presentation: PresentationOptions = { color: false }): string {
-  const lines = [
-    dim("# oflow doctor", presentation),
+  const apiWord = report.apiCheck;
+  const apiHeadline =
+    apiWord === "passed"
+      ? statusMarker("PASS", presentation)
+      : apiWord === "failed"
+        ? statusMarker("FAIL", presentation)
+        : apiWord === "skipped"
+          ? statusMarker("SKIP", presentation)
+          : statusMarker("N/A", presentation);
+  const lines: string[] = [dim("# oflow doctor", presentation)];
+  if (apiWord !== "not-requested") {
+    lines.push("[GitLab API: " + apiHeadline + "]");
+  }
+
+  lines.push(
     "",
-    "Repository: " + report.root,
+    "Repository:    " + report.root,
     "GitLab remote: " + (report.remote ? report.remote.projectPath : "not detected"),
-    "oflow config: " + (report.configFound ? "present" : "missing"),
-    "Detected agents: " + report.agent.mode,
-    "GitLab token: " +
-      (report.tokenConfigured
-        ? "configured (" + report.tokenSource + ")"
-        : "missing"),
-    "GitLab API check: " + report.apiCheck,
+    "Config:        " + (report.configFound ? "present" : "missing"),
+    "Agent:         " + report.agent.mode,
+    "Token:         " +
+      (report.tokenConfigured ? "configured (" + report.tokenSource + ")" : "missing"),
+  );
+
+  lines.push(
     "",
     "Backends:",
     "- REST: available (core)",
@@ -603,46 +627,93 @@ export function formatDoctor(report: DoctorReport, presentation: PresentationOpt
           (report.backends.glab.version ? " (" + report.backends.glab.version + ")" : "") +
           " (optional fallback)"
         : "not installed (optional fallback)"),
-    "- MCP: agent-runtime optional (reported by the connected agent, not the CLI)",
-  ];
+    "MCP: agent-runtime optional (reported by the connected agent, not the CLI)",
+  );
+
   if (report.apiChecks.length > 0) {
     lines.push(
       "",
-      "API capability checks (read probes only; no remote writes):",
+      "── Read capabilities ",
       ...report.apiChecks
         .filter((check) => check.access === "read")
         .map((check) => formatCapabilityCheck(check, presentation)),
       "",
-      "Write capability checks:",
+      "── Write capabilities ",
       ...report.apiChecks
         .filter((check) => check.access === "write")
         .map((check) => formatCapabilityCheck(check, presentation)),
       "",
+      "API capability checks (read probes only; no remote writes):",
       "Write check policy: doctor never tests a mutation. Use an approved plan and verify the result.",
     );
   }
+
+  if (report.workItemCoverage) {
+    const c = report.workItemCoverage;
+    const reachable = Math.max(0, c.graphqlCount - c.hiddenCount);
+    if (c.hiddenCount > 0) {
+      lines.push(
+        "",
+        "── Custom work item types ",
+        "  " + statusMarker("FAIL", presentation) +
+          "  " + c.graphqlCount + " project items  ·  " + reachable + " reachable via REST  ·  " +
+          c.hiddenCount + " need GraphQL fallback (e.g. User Story, EPIC)",
+        "",
+        "  oflow cannot list those items through the REST issue endpoints,",
+        "  so any board, label-coverage audit, or summary is partial until",
+        "  GraphQL coverage is wired in. See docs/SCRUM-PLANNING.md.",
+      );
+    } else if (c.graphqlCount > 0) {
+      lines.push(
+        "",
+        "── Custom work item types ",
+        "  " + statusMarker("PASS", presentation) +
+          "  all " + c.graphqlCount + " items reachable via REST.",
+      );
+    }
+  }
+
   if (report.capabilities && report.capabilities.length > 0) {
     lines.push(
       "",
-      "Capability usability (F2, probe-based):",
-      ...report.capabilities.map((cap) => "- " + formatAuthCapability(cap, presentation)),
+      "── Capability usability (F2, probe-based) ",
+      ...report.capabilities.map((cap) => "  " + formatAuthCapability(cap, presentation)),
     );
   }
+
   lines.push(
     "",
-    "Required files:",
-    ...report.requiredFiles.map(
-      (file) => "- " + (file.present ? "present" : "missing") + " " + file.path,
-    ),
+    "── Recommendations ",
+    ...recommendationsFor(report, presentation),
+    "",
+    "Token tips:",
+    "  Use the smallest useful fine-grained token scope. On hosted GitLab and",
+    "  self-managed >=16.9, custom work item types also need",
+    "  'Work Item Type: Read' -- REST issue endpoints cannot list them.",
+    "  Doctor never probes writes. Use an approved plan to test a write path.",
   );
-  if (report.warnings.length > 0) {
-    lines.push("", "Warnings:", ...report.warnings.map((warning) => "- " + warning));
-  } else {
-    lines.push("", "No warnings.");
-  }
   return lines.join("\n") + "\n";
 }
 
+function recommendationsFor(report: DoctorReport, presentation: PresentationOptions): string[] {
+  const out: string[] = [];
+  if (report.tokenConfigured && report.apiCheck === "failed") {
+    out.push("  " + statusMarker("FAIL", presentation) + "  GitLab API check failed -- inspect failed probes below and check scopes.");
+  }
+  if (report.workItemCoverage && report.workItemCoverage.hiddenCount > 0) {
+    out.push("  " + statusMarker("FAIL", presentation) + "  " + report.workItemCoverage.hiddenCount + " project item(s) need a higher-scope token or GraphQL fallback to be visible.");
+  }
+  const failedRequired = report.apiChecks.filter(
+    (c) => c.access === "read" && c.required && c.status === "failed",
+  );
+  if (failedRequired.length > 0) {
+    out.push("  " + statusMarker("FAIL", presentation) + "  required read probes failed: " + failedRequired.map((c) => c.id).join(", "));
+  }
+  if (out.length === 0) {
+    out.push("  " + statusMarker("PASS", presentation) + "  All required probes passed.");
+  }
+  return out;
+}
 function formatCapabilityCheck(check: DoctorCapabilityCheck, presentation: PresentationOptions): string {
   const marker: Record<DoctorCheckStatus, string> = {
     passed: "PASS",
