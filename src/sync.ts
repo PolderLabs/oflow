@@ -688,8 +688,22 @@ export function formatSyncMarkdown(result: SyncResult): string {
     }
   }
 
-  if (result.warnings.length > 0) {
-    lines.push("", "## Warnings", "", ...result.warnings.map((warning) => "- " + warning));
+  const coverageWarnings = result.warnings.filter((w) => w.startsWith("Type coverage:"));
+  const otherWarnings = result.warnings.filter((w) => !w.startsWith("Type coverage:"));
+  if (coverageWarnings.length > 0) {
+    lines.push(
+      "",
+      "## Coverage gap",
+      "",
+      ...coverageWarnings.map((w) => "- " + w.replace(/^Type coverage: /, "")),
+      "",
+      "REST issue endpoints cannot list custom work-item types (User Story, EPIC, ...).",
+      "Use a fine-grained token with 'Work Item Type: Read' on hosted GitLab or self-managed >=16.9.",
+      "Run `oflow doctor --check-api` for the full capability report.",
+    );
+  }
+  if (otherWarnings.length > 0) {
+    lines.push("", "## Warnings", "", ...otherWarnings.map((warning) => "- " + warning));
   }
   lines.push(
     "",
@@ -849,8 +863,22 @@ export function formatSyncSummaryMarkdown(result: SyncSummary): string {
           : "")),
     );
   }
-  if (result.warnings.length > 0) {
-    lines.push("", "## Warnings", "", ...result.warnings.map((warning) => "- " + warning));
+  const coverageWarnings = result.warnings.filter((w) => w.startsWith("Type coverage:"));
+  const otherWarnings = result.warnings.filter((w) => !w.startsWith("Type coverage:"));
+  if (coverageWarnings.length > 0) {
+    lines.push(
+      "",
+      "## Coverage gap",
+      "",
+      ...coverageWarnings.map((w) => "- " + w.replace(/^Type coverage: /, "")),
+      "",
+      "REST issue endpoints cannot list custom work-item types (User Story, EPIC, ...).",
+      "Use a fine-grained token with 'Work Item Type: Read' on hosted GitLab or self-managed >=16.9.",
+      "Run `oflow doctor --check-api` for the full capability report.",
+    );
+  }
+  if (otherWarnings.length > 0) {
+    lines.push("", "## Warnings", "", ...otherWarnings.map((warning) => "- " + warning));
   }
   lines.push("", "Use `oflow assess --story <iid>` for detailed acceptance and delivery evidence.", "");
   return lines.join("\n");

@@ -175,6 +175,7 @@ For the current Scrum/planning features, use this project-level starter set:
 | `Label` | `Create`, `Update` | Manage labels through an approved plan when needed. |
 | `Merge Request` | `Read` | Include related MR status in story context and verification. |
 | `Pipeline` | `Read` | Check pipeline evidence during story verification. |
+| `Work Item Type` | `Read` | List **custom** work-item types (User Story, EPIC, ...). The REST issue endpoints cannot see custom types; without this scope the project appears empty for everything but `issue` and `task`. Hosted GitLab and self-managed >=16.9 only. |
 
 Add these only when the workflow needs group-level planning data:
 
@@ -221,6 +222,7 @@ the CLI verifies representative endpoint access rather than claiming to decode
 the token configuration.
 
 #### Understand `doctor --check-api`
+`oflow doctor` reports the configured resources (REST, glab, MCP) and the GitLab token state. `oflow doctor --check-api` also runs bounded read probes and reports per-check latency plus any missing capabilities; the "Custom work item types" section names the items REST cannot see so the right scope (`Work Item Type: Read`) can be granted.
 
 ```bash
 oflow doctor --check-api

@@ -21,6 +21,13 @@
   project settings. Read-only: it opens no plan and applies nothing. The report
   carries a coverage warning when the issue listing could not be exhaustive, so
   a partial result is never read as a complete one.
+- `oflow doctor --check-api` now reports in a structured layout: a coloured
+  banner with a `[GitLab API: PASS/FAIL/SKIP/N/A]` badge, grouped read and
+  write capabilities with latency, a "Custom work item types" section that
+  names the items REST cannot see (User Story, EPIC, etc.) and tells you the
+  count, and a Recommendations block with concrete remediation paths for
+  failed probes and the missing `Work Item Type: Read` scope on hosted GitLab
+  and self-managed >=16.9.
 
 ### Fixed
 - The dashboard page did not load. A route-matching regular expression was
