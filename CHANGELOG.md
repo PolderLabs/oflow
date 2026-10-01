@@ -32,16 +32,16 @@
 ### Changed
 - GitHub Actions are gone. `quality` (push and pull request, Ubuntu and
   Windows) and the manual `publish` workflow were removed, and Actions are
-  disabled for the repository, because runner minutes exceeded the plan
-  allowance. Nothing was ever gated on them: `quality` was failing on `main`
-  while releases shipped, and `publish` published through npm Trusted
-  Publishing without a local rerun. The same checks now run only where they
-  are invoked, from a maintainer machine, before a push or a release.
-  `.github/dependabot.yml` keeps the npm dependency updates and drops the
-  `github-actions` ecosystem, which had no workflows left to update.
-  Releases are published with `npm publish --access public`, which runs
-  `prepublishOnly` (`check:public`, then `build`) and can no longer carry npm
-  provenance attestations.
+  disabled for the repository, because Actions usage had outgrown what the
+  account's plan covers. Nothing was gated on them: `quality` had been failing
+  on `main` at the Windows `Run tests` step while releases shipped, and
+  `publish` published through npm Trusted Publishing without a local rerun. The
+  same checks now run only where they are invoked, from a maintainer machine,
+  before a push or a release. `.github/dependabot.yml` keeps the npm
+  dependency updates and drops the `github-actions` ecosystem, which had no
+  workflows left to update. Releases are published with
+  `npm publish --access public`, which runs `prepublishOnly` (`check:public`,
+  then `build`) and can no longer carry npm provenance attestations.
 
 ### Fixed
 - The dashboard page did not load. A route-matching regular expression was
