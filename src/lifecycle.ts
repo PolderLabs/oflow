@@ -19,13 +19,14 @@ import {
   formatFailedJobLines,
   getCurrentGitLabUser,
   listWorkItems,
+  loadStoryContext,
+  loadWorkItemByIid,
   type FailedJobSummary,
 } from "./context.js";
 import { loadConfig } from "./config.js";
 import { getLocalVerificationStatus, type LocalVerificationStatus } from "./local-verification.js";
 import { OflowError } from "./errors.js";
 import { getCurrentBranch } from "./git.js";
-import { loadStoryContext } from "./context.js";
 import { dim, statusMarker } from "./presentation.js";
 import type { PresentationOptions } from "./presentation.js";
 import type { GitLabIssue } from "./types.js";
@@ -91,9 +92,12 @@ async function pickStory(
   explicit?: number,
 ): Promise<{ story: GitLabIssue; reason: string }> {
   if (explicit) {
-    const context = await loadStoryContext(root, explicit);
+    // One normalized issue read. The full story context (notes, related merge
+    // requests, branch and merge-request pipelines, failed jobs) is loaded once
+    // by the caller, and loading it here only to read the IID doubled every
+    // request this command makes on the path agents are told to always use.
     return {
-      story: context.story,
+      story: await loadWorkItemByIid(root, explicit),
       reason: "story " + explicit + " selected explicitly",
     };
   }

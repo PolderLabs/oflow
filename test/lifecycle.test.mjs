@@ -185,6 +185,39 @@ test("check unifies criteria status, MR/pipeline gaps, and the next action", asy
   }
 });
 
+test("selecting a story by IID reads the story context once, not once per lookup", async () => {
+  // The selection step used to load the full story context (notes, related
+  // merge requests, pipelines, jobs) only to read the IID, doubling every
+  // request on the explicit --story path that agents are told to always use.
+  const root = await mkdtemp(join(tmpdir(), "oflow-check-requests-"));
+  const originalFetch = globalThis.fetch;
+  const previousToken = process.env.GITLAB_TOKEN;
+  process.env.GITLAB_TOKEN = "check-requests-token";
+  const paths = [];
+  const stub = gitlabFetchStub();
+  try {
+    await initStoryRepo(root);
+    globalThis.fetch = async (input) => {
+      paths.push(new URL(String(input)).pathname);
+      return stub(input);
+    };
+
+    await checkStory({ root, story: 42 });
+
+    const contextLoads = paths.filter((path) => path.endsWith("/related_merge_requests"));
+    assert.equal(
+      contextLoads.length,
+      1,
+      "story context was loaded " + contextLoads.length + " times: " + paths.join(" "),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("finish gates completion on criteria, merge request, pipeline, and clean git", async () => {
   const root = await mkdtemp(join(tmpdir(), "oflow-finish-"));
   const originalFetch = globalThis.fetch;

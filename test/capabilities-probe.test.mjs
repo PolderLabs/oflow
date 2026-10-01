@@ -278,3 +278,25 @@ test("normalizeForbidden returns remediation for 401 with re-auth hint", async (
   assert.equal(out.probe, "forbidden");
   assert.ok(/oflow auth login/.test(out.remediation ?? ""));
 });
+
+test("a deliberately unprobed capability explains itself instead of reading as an oversight", async () => {
+  const StubClient = makeStubClient({});
+  const caps = await probeCapabilities(
+    {
+      host: "gitlab.example.test",
+      projectPath: "team/project",
+      clientFactory: (host) => new StubClient(host),
+      perProbeTimeoutMs: 1000,
+    },
+    SOURCES_ENV,
+    "rest",
+  );
+  const jobs = caps.find((c) => c.id === "pipelines.jobs.read");
+  assert.ok(jobs, "pipelines.jobs.read must appear in the probed capability list");
+  assert.equal(jobs.probe, "skipped");
+  // The generic "no probe handler registered" reads like a missing
+  // implementation while `doctor --check-api` reports this capability as
+  // passed, or skipped with the real reason.
+  assert.notEqual(jobs.reason, "no probe handler registered");
+  assert.match(jobs.reason, /doctor --check-api/);
+});

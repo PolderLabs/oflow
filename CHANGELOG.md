@@ -60,6 +60,19 @@
   workflows left to update. Releases are published with
   `npm publish --access public`, which runs `prepublishOnly` (`check:public`,
   then `build`) and can no longer carry npm provenance attestations.
+- `start`, `check`, `finish`, and `handoff` selected a story by loading the
+  whole story context -- project, issue, notes, related merge requests, branch
+  and merge-request pipelines, and now failed jobs -- and then threw it away
+  to read the IID, before loading the same context again. On the explicit
+  `--story <iid>` path that is the path the agent instructions tell agents to
+  always use, `oflow check --story 42` issued ten GitLab requests where it now
+  issues six. Story selection is one normalized issue read; the full context is
+  loaded once, by the command that needs it. A regression test counts the
+  context loads.
+- `oflow capabilities --probe` reported `pipelines.jobs.read` with the generic
+  "no probe handler registered", which reads like an oversight while
+  `doctor --check-api` reports the same capability as passed or skipped with a
+  real reason. A deliberately unprobed capability now states why.
 
 ### Fixed
 - The dashboard page did not load. A route-matching regular expression was

@@ -299,6 +299,11 @@ interface CapabilityDefinition {
   access: "read" | "write";
   required: boolean;
   probe?: (client: GitLabClient, projectPath: string) => Promise<unknown>;
+  /**
+   * Why this capability has no probe handler here. The generic fallback reads
+   * like an oversight, so a deliberately unprobed capability must say so.
+   */
+  probeReason?: string;
 }
 
 const CAPABILITY_DEFINITIONS: CapabilityDefinition[] = [
@@ -316,7 +321,8 @@ const CAPABILITY_DEFINITIONS: CapabilityDefinition[] = [
   // a project that has never run CI must not be reported as lacking the scope.
   // `oflow doctor --check-api` probes this one properly (passed, or skipped with
   // the reason); here it stays honestly "not probed" rather than guessing.
-  { id: "pipelines.jobs.read", backend: "rest", access: "read", required: false },
+  { id: "pipelines.jobs.read", backend: "rest", access: "read", required: false,
+    probeReason: "Reading jobs needs an existing pipeline, so `oflow doctor --check-api` probes it instead and reports it as passed or skipped with the reason." },
   { id: "labels.read", backend: "rest", access: "read", required: true,
     probe: (client, projectPath) => client.listLabelsPage(projectPath, 1) },
   { id: "milestones.read", backend: "rest", access: "read", required: true,
@@ -400,7 +406,7 @@ export async function probeCapabilities(
     if (!def.probe) {
       results.push({
         id: def.id, usable: false, probe: "skipped", backend: baseBackend,
-        reason: "no probe handler registered",
+        reason: def.probeReason ?? "no probe handler registered",
       });
       continue;
     }
