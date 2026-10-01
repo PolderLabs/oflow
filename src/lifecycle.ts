@@ -20,7 +20,6 @@ import {
   getCurrentGitLabUser,
   listWorkItems,
   loadStoryContext,
-  loadWorkItemByIid,
   type FailedJobSummary,
 } from "./context.js";
 import { loadConfig } from "./config.js";
@@ -29,7 +28,6 @@ import { OflowError } from "./errors.js";
 import { getCurrentBranch } from "./git.js";
 import { dim, statusMarker } from "./presentation.js";
 import type { PresentationOptions } from "./presentation.js";
-import type { GitLabIssue } from "./types.js";
 
 export interface StartOptions {
   root: string;
@@ -90,14 +88,13 @@ function slugifyBranch(iid: number, title: string): string {
 async function pickStory(
   root: string,
   explicit?: number,
-): Promise<{ story: GitLabIssue; reason: string }> {
+): Promise<{ storyIid: number; reason: string }> {
   if (explicit) {
-    // One normalized issue read. The full story context (notes, related merge
-    // requests, branch and merge-request pipelines, failed jobs) is loaded once
-    // by the caller, and loading it here only to read the IID doubled every
-    // request this command makes on the path agents are told to always use.
+    // An explicit --story needs no lookup at all. Every caller loads the full
+    // story context anyway, so reading the issue here to return its IID cost
+    // a second round of requests on the path agents are told to always use.
     return {
-      story: await loadWorkItemByIid(root, explicit),
+      storyIid: explicit,
       reason: "story " + explicit + " selected explicitly",
     };
   }
@@ -118,13 +115,16 @@ async function pickStory(
   const reason = inProgress
     ? "in progress and assigned to @" + user.username
     : "first opened item assigned to @" + user.username + " (none in progress)";
-  return { story, reason };
+  return { storyIid: story.iid, reason };
 }
 
 export async function startWork(options: StartOptions): Promise<StartResult> {
   const { root } = options;
-  const { story, reason } = await pickStory(root, options.story);
-  const context = await loadStoryContext(root, story.iid);
+  const { storyIid, reason } = await pickStory(root, options.story);
+  const context = await loadStoryContext(root, storyIid);
+  // The context read is the normalized, web_url-complete one, so the work block
+  // reports the same story the criteria and pipeline evidence came from.
+  const story = context.story;
   const config = context.project;
 
   const warnings: string[] = [...context.warnings];
@@ -260,17 +260,17 @@ export async function checkStory(options: CheckOptions): Promise<CheckResult> {
     options.root,
     config?.workflow?.verification,
   );
-  const { story } = await pickStory(options.root, options.story);
-  const assessment = await assessStory(options.root, story.iid);
+  const { storyIid } = await pickStory(options.root, options.story);
+  const assessment = await assessStory(options.root, storyIid);
 
   const nextAction = assessment.nextActions[0]
     ?? (assessment.status === "satisfied"
-      ? "Story looks complete; run oflow verify --story " + story.iid + " for delivery checks."
+      ? "Story looks complete; run oflow verify --story " + storyIid + " for delivery checks."
       : "Continue implementation; see assessment details.");
 
   return {
     generatedAt: new Date().toISOString(),
-    story: story.iid,
+    story: storyIid,
     status: assessment.status,
     criteria: assessment.criteria.map((criterion) => ({
       id: criterion.id,
@@ -372,8 +372,8 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
     options.root,
     config?.workflow?.verification,
   );
-  const { story } = await pickStory(options.root, options.story);
-  const assessment = await assessStory(options.root, story.iid);
+  const { storyIid } = await pickStory(options.root, options.story);
+  const assessment = await assessStory(options.root, storyIid);
 
   const unsatisfied = assessment.criteria.filter(
     (criterion) => criterion.status !== "satisfied",
@@ -435,12 +435,12 @@ export async function finishStory(options: FinishOptions): Promise<FinishResult>
 
   return {
     generatedAt: new Date().toISOString(),
-    story: story.iid,
+    story: storyIid,
     ready: gates.every((gate) => gate.passed),
     gates,
     repositoryVerification,
     nextCommand:
-      "oflow plan issue update --story " + story.iid + " --state closed",
+      "oflow plan issue update --story " + storyIid + " --state closed",
     warnings: [
       ...assessment.warnings,
       ...(pipelinePolicy === "enabled" && pipeline === null && assessment.ciConfigPresent === false
@@ -516,8 +516,8 @@ export interface HandoffResult {
  * work on the current story without re-deriving it from scratch.
  */
 export async function handoffStory(options: FinishOptions): Promise<HandoffResult> {
-  const { story } = await pickStory(options.root, options.story);
-  const assessment = await assessStory(options.root, story.iid);
+  const { storyIid } = await pickStory(options.root, options.story);
+  const assessment = await assessStory(options.root, storyIid);
   const project = assessment.story.webUrl
     ? new URL(assessment.story.webUrl)
     : null;

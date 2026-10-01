@@ -185,10 +185,12 @@ test("check unifies criteria status, MR/pipeline gaps, and the next action", asy
   }
 });
 
-test("selecting a story by IID reads the story context once, not once per lookup", async () => {
-  // The selection step used to load the full story context (notes, related
-  // merge requests, pipelines, jobs) only to read the IID, doubling every
-  // request on the explicit --story path that agents are told to always use.
+test("an explicit --story loads the story context once, not once per lookup", async () => {
+  // Selecting the story used to load the whole context (notes, related merge
+  // requests, pipelines, jobs) and keep only the IID, then the caller loaded
+  // the same context again. `check --story 42` issued ten requests for five
+  // distinct reads. The explicit path now performs no lookup of its own, so
+  // every context read happens exactly once.
   const root = await mkdtemp(join(tmpdir(), "oflow-check-requests-"));
   const originalFetch = globalThis.fetch;
   const previousToken = process.env.GITLAB_TOKEN;
@@ -204,12 +206,21 @@ test("selecting a story by IID reads the story context once, not once per lookup
 
     await checkStory({ root, story: 42 });
 
-    const contextLoads = paths.filter((path) => path.endsWith("/related_merge_requests"));
-    assert.equal(
-      contextLoads.length,
-      1,
-      "story context was loaded " + contextLoads.length + " times: " + paths.join(" "),
-    );
+    // Assert on the expensive reads. The bare issue endpoint is hit once by
+    // the context load and is a cheap call, so counting it would only assert
+    // on a detail of the implementation.
+    for (const suffix of [
+      "/issues/42/notes",
+      "/issues/42/related_merge_requests",
+      "/pipelines",
+    ]) {
+      const hits = paths.filter((path) => path.endsWith(suffix) || path === suffix);
+      assert.equal(
+        hits.length,
+        1,
+        suffix + " was read " + hits.length + " times: " + paths.join(" "),
+      );
+    }
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
