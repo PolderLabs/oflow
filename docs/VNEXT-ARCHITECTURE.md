@@ -129,11 +129,15 @@ implementation already provides:
 - guarded work-item creates/updates, notes, labels, milestones, board changes,
   iteration assignment, bounded bulk changes,
 - a local read-only dashboard,
-- Linux and Windows CI, npm packaging/release work.
+- npm packaging and release work.
 
 These are the parts that make `oflow` differentiated.
 
 They should be **refactored around a clearer boundary, not thrown away**.
+
+The repository itself runs no continuous integration and GitHub Actions are
+disabled for it, so the local check block in
+[`RELEASING.md`](RELEASING.md) is the release gate rather than a hosted runner.
 
 ---
 

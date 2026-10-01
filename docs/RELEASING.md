@@ -26,14 +26,25 @@ unrelated package, so release commands must use `oflow-workflow`.
    git push origin "v$VERSION"
    ```
 
-6. Publish from the tagged commit. This repository has no continuous
+6. Publish the tagged commit, not `HEAD`. This repository has no continuous
    integration and GitHub Actions are disabled for it, so the local checks in
-   step 3 are the whole release gate. A GitHub release created before this
+   step 3 are the whole release gate. `npm publish` packages whatever is
+   checked out, so a docs commit made after tagging would publish a tree npm
+   has never been shown. Check the tag against the version, publish from a
+   detached tag checkout, then publish. A GitHub release created before this
    point advertises a version npm does not have:
 
    ```bash
+   VERSION=$(node -p "require('./package.json').version")
+   test "v$VERSION" = "$(git describe --tags --exact-match)" || { echo "tag does not match version"; exit 1; }
+   git switch --detach "v$VERSION"
    npm publish --access public
    ```
+
+   The `test` guard replaces the assertion the removed `publish` workflow made
+   with `workflow_dispatch`; it throws on a tag/version mismatch rather than
+   asking the maintainer to compare two lines by eye. Return to `main`
+   afterwards with `git switch main`.
 
    Then confirm the registry, and check `gitHead` against the tag. It must be
    the tagged commit, not merely `HEAD`; a docs commit made after tagging
@@ -95,11 +106,12 @@ npm publish --access public
 ```
 
 `npm publish` runs `prepublishOnly` (`check:public`, then `build`) itself. The
-tag still has to name the package version:
+tag has to name the package version, and the publish has to run from the tagged
+commit rather than `HEAD`; step 6 does both. To repeat the check on its own:
 
 ```bash
-node -p "require('./package.json').version"
-git describe --tags --exact-match
+test "v$(node -p "require('./package.json').version")" = "$(git describe --tags --exact-match)" \
+  || { echo "tag does not match version"; exit 1; }
 ```
 
 Do not pass `--provenance`. npm only attests provenance for a publish it can
