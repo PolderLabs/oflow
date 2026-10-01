@@ -619,6 +619,10 @@ npm run typecheck
 npm pack --dry-run
 ```
 
+There is no continuous integration in this repository and GitHub Actions are
+disabled for it. That block is the entire verification gate: run it before
+every push and before every release.
+
 The package is intentionally dependency-light. Provider-specific API behavior
 belongs in adapters, while the local workflow contract remains stable.
 
@@ -628,8 +632,9 @@ This project is published as open source. Do not add private client/company
 details, employee identities, private GitLab hosts or paths, screenshots, raw
 API responses, credentials, or local checkout paths. Use synthetic placeholders
 such as `gitlab.example.com`, `team/project`, and `test-user`. See the
-[`public content policy`](docs/PUBLIC-CONTENT-POLICY.md); CI rejects common
-credential, private-host, email, and local-path indicators.
+[`public content policy`](docs/PUBLIC-CONTENT-POLICY.md); the public-content
+scan rejects common credential, private-host, email, and local-path
+indicators.
 
 ## Learn more
 

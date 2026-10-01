@@ -38,7 +38,8 @@ The public-content scanner checks tracked and non-ignored working-tree files for
 known token formats, private-key headers, non-placeholder email addresses,
 absolute user paths, and unapproved external Git hosts. It is a guardrail, not a
 substitute for human review: when in doubt, remove the data and use a
-placeholder. CI runs the same check on every push and pull request.
+placeholder. The repository has no continuous integration, so the scan runs
+only where it is invoked: locally, before a push or a release.
 
 If private data is discovered after a commit or push, remove public access and
 rotate/revoke any exposed credential immediately. Deleting the file in a later

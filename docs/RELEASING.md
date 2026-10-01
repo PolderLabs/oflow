@@ -26,12 +26,13 @@ unrelated package, so release commands must use `oflow-workflow`.
    git push origin "v$VERSION"
    ```
 
-6. Run the publish workflow and wait for it. A GitHub release created before
-   this point advertises a version npm does not have:
+6. Publish from the tagged commit. This repository has no continuous
+   integration and GitHub Actions are disabled for it, so the local checks in
+   step 3 are the whole release gate. A GitHub release created before this
+   point advertises a version npm does not have:
 
    ```bash
-   gh workflow run publish.yml -f tag="v$VERSION"
-   gh run watch "$(gh run list -w publish.yml -L1 -q '.[0].databaseId')" --exit-status
+   npm publish --access public
    ```
 
    Then confirm the registry, and check `gitHead` against the tag. It must be
@@ -79,29 +80,13 @@ unrelated package, so release commands must use `oflow-workflow`.
    rather than pending, that `0.2.1` carries the first shipped `0.2.x`, and
    that the number must not be reused.
 
-## Publishing from GitHub Actions
-
-The manual [`publish` workflow](../.github/workflows/publish.yml) checks out
-an existing tag, reruns all release checks, verifies that the tag matches the
-package version, and publishes the package through npm Trusted Publishing.
-
-Before running it, configure an npm Trusted Publisher for the package:
-
-- Provider: GitHub Actions
-- Organization or user: `PolderLabs`
-- Repository: `oflow`
-- Workflow filename: `publish.yml`
-- Allow direct `npm publish`
-
-The workflow uses GitHub OIDC with `id-token: write`; it does not need an npm
-publishing token. The workflow is intentionally manual. Creating a GitHub
-release does not silently publish to npm, and ordinary CI never receives npm
-credentials.
-
 ## Publishing locally
 
-For a one-off local publish, authenticate interactively and verify the account
-before publishing:
+Releases are published from a maintainer machine. No npm credential or
+automation path exists on the GitHub side, so creating a GitHub release never
+publishes to npm.
+
+Authenticate interactively and verify the account before publishing:
 
 ```bash
 npm login
@@ -109,8 +94,22 @@ npm whoami
 npm publish --access public
 ```
 
-The `--provenance` flag is used by the GitHub Actions workflow, where npm can
-verify the CI identity. Local publishing should omit it.
+`npm publish` runs `prepublishOnly` (`check:public`, then `build`) itself. The
+tag still has to name the package version:
+
+```bash
+node -p "require('./package.json').version"
+git describe --tags --exact-match
+```
+
+Do not pass `--provenance`. npm only attests provenance for a publish it can
+attribute to a CI identity, and there is no CI identity here. If interactive 2FA
+is impractical, use an npm automation token with publish rights configured in
+the user-level `~/.npmrc`, never in the repository.
+
+Any npm Trusted Publisher entry that still points at this repository's removed
+`publish.yml` workflow should be deleted on npm. It can no longer be used, and a
+left-over entry is a stale grant.
 
 Confirm the result without exposing credentials:
 

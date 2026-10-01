@@ -14,8 +14,11 @@ Codex agents.
   use synthetic placeholders and run `npm run check:public`.
 - Keep `oflow install` idempotent and preserve user-authored content.
 - Add or update tests for parser, detection, scaffold, and verification changes.
-- Run `npm run check:public`, `npm test`, `npm run typecheck`, and
-  `npm pack --dry-run` before handoff.
+- There is no continuous integration in this repository and GitHub Actions are
+  disabled for it. Do not add files under `.github/workflows/`. Run
+  `npm run check:public`, `npm test`, `npm run typecheck`, and
+  `npm pack --dry-run` locally before every push and release; that is the only
+  verification gate.
 
 ## Product boundary
 

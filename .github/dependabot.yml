@@ -12,12 +12,3 @@ updates:
         dependency-type: development
     labels:
       - dependencies
-
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "chore(ci)"
-    labels:
-      - dependencies

@@ -75,11 +75,11 @@ accept a related field.
 
 ## Release and operating baseline
 
-The v0.2.1 release is the baseline for this work. The repository's GitHub
-Actions workflow is the canonical release/check path, so a local npm publish
-CLI is not a prerequisite. Keep package/version/tag checks, public-content
-scanning, tests, typechecking, and pack validation in the workflow before
-future releases.
+The v0.2.1 release is the baseline for this work. The repository has no
+continuous integration and GitHub Actions are disabled for it, so a maintainer
+machine is the release and check path. Keep package/version/tag checks,
+public-content scanning, tests, typechecking, and pack validation in the local
+release checklist in [`RELEASING.md`](RELEASING.md) before future releases.
 
 ## Findings that must shape the next implementation
 
