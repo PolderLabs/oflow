@@ -206,21 +206,17 @@ test("an explicit --story loads the story context once, not once per lookup", as
 
     await checkStory({ root, story: 42 });
 
-    // Assert on the expensive reads. The bare issue endpoint is hit once by
-    // the context load and is a cheap call, so counting it would only assert
-    // on a detail of the implementation.
-    for (const suffix of [
-      "/issues/42/notes",
-      "/issues/42/related_merge_requests",
-      "/pipelines",
-    ]) {
-      const hits = paths.filter((path) => path.endsWith(suffix) || path === suffix);
-      assert.equal(
-        hits.length,
-        1,
-        suffix + " was read " + hits.length + " times: " + paths.join(" "),
-      );
-    }
+    // Guard the class of regression, not one endpoint: the invariant is that
+    // no request is repeated, whatever it happens to be. Counting three named
+    // endpoints would miss a duplicate that surfaced on the issue read or the
+    // project read instead. The path list is echoed so a failure shows which
+    // read was repeated.
+    const unique = new Set(paths);
+    assert.equal(
+      unique.size,
+      paths.length,
+      "a request was repeated: " + paths.join(" "),
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
