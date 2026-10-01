@@ -30,6 +30,7 @@ import { formatIterationListMarkdown, listIterations } from "./iterations.js";
 import {
   chooseMergeRequest,
   compactFailedPipelineJobs,
+  formatFailedJobLines,
   compactMergeRequest,
   compactWorkItems,
   formatContextMarkdown,
@@ -2123,18 +2124,7 @@ function formatVerification(output: {
     lines.push(
       "",
       "Failed jobs:",
-      ...output.failedJobs.map(
-        (job) =>
-          "- " +
-          job.name +
-          " (" +
-          (job.stage ?? "unknown stage") +
-          ", " +
-          (job.status ?? "unknown") +
-          (job.allowFailure ? ", allow_failure" : "") +
-          ")" +
-          (job.webUrl ? " " + job.webUrl : ""),
-      ),
+      ...formatFailedJobLines(output.failedJobs).map((line) => "- " + line),
     );
   }
   if (output.result.reasons.length > 0) {

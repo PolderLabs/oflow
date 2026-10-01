@@ -1019,7 +1019,9 @@ export class GitLabClient {
         String(pipelineId) +
         "/jobs?per_page=" +
         String(limit) +
-        "&scope[]=failed&order_by=id&sort=desc",
+        "&" +
+        encodeURIComponent("scope[]") +
+        "=failed&order_by=id&sort=desc",
       "pipeline job list",
       limit,
     );

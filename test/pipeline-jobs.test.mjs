@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { assessStory } from "../dist/assess.js";
+import { main } from "../dist/cli.js";
+import { formatHandoffMarkdown, handoffStory } from "../dist/lifecycle.js";
 
 const run = promisify(execFile);
 
@@ -40,11 +42,12 @@ async function storyFixture(t, { pipelineStatus, jobs = [], jobsStatus = 200 }) 
     }),
   );
 
-  const requested = { jobs: false };
+  const requested = { jobs: false, jobsUrl: null };
   globalThis.fetch = async (input) => {
     const path = new URL(String(input)).pathname;
     if (path === "/api/v4/projects/team%2Fproject/pipelines/10/jobs") {
       requested.jobs = true;
+      requested.jobsUrl = String(input);
       if (jobsStatus !== 200) {
         return {
           ok: false,
@@ -219,4 +222,85 @@ test("a pipeline with no failed jobs names no cause", async (t) => {
 
   assert.deepEqual(result.remote.pipeline.failedJobs, []);
   assert.match(result.blockers.join("\n"), /Latest pipeline is failed; expected success\./);
+});
+
+test("the job read is bounded and percent-encodes the scope filter", async (t) => {
+  const { root, requested } = await storyFixture(t, {
+    pipelineStatus: "failed",
+    jobs: [{ id: 1, name: "unit-tests", stage: "test", status: "failed" }],
+  });
+
+  await assessStory(root, 1);
+
+  assert.ok(requested.jobsUrl, "the jobs endpoint must be requested");
+  assert.match(requested.jobsUrl, /per_page=10/);
+  // Raw "[" in a query string is rejected by strict proxies and WAFs in front of
+  // self-managed instances, so the scope filter must travel percent-encoded.
+  assert.match(requested.jobsUrl, /scope%5B%5D=failed/);
+  assert.equal(
+    requested.jobsUrl.includes("["),
+    false,
+    "no unencoded bracket may reach the wire: " + requested.jobsUrl,
+  );
+});
+
+test("oflow verify names the failed job through the real CLI text output", async (t) => {
+  const { root } = await storyFixture(t, {
+    pipelineStatus: "failed",
+    jobs: [{
+      id: 501,
+      name: "unit-tests",
+      stage: "test",
+      status: "failed",
+      allow_failure: false,
+      web_url: "https://gitlab.example.test/team/project/-/jobs/501",
+    }],
+  });
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  let out = "";
+  const originalWrite = process.stdout.write.bind(process.stdout);
+  t.after(() => {
+    process.chdir(previousCwd);
+    process.stdout.write = originalWrite;
+  });
+  process.stdout.write = (chunk, ...rest) => {
+    out += String(chunk);
+    return originalWrite(chunk, ...rest);
+  };
+
+  const code = await main(["verify", "--story", "1"]);
+
+  process.stdout.write = originalWrite;
+  assert.equal(code, 1, "a failed pipeline must still block");
+  assert.match(out, /Failed jobs:/);
+  assert.match(out, /unit-tests \(test, failed\)/);
+  assert.match(out, /https:\/\/gitlab\.example\.test\/team\/project\/-\/jobs\/501/);
+});
+
+test("oflow handoff copies the failed job into the next agent's brief", async (t) => {
+  const { root } = await storyFixture(t, {
+    pipelineStatus: "failed",
+    jobs: [{ id: 501, name: "unit-tests", stage: "test", status: "failed" }],
+  });
+
+  const markdown = formatHandoffMarkdown(await handoffStory({ root, story: 1 }));
+
+  assert.match(markdown, /## Failed jobs/);
+  assert.match(markdown, /unit-tests \(test, failed\)/);
+});
+
+test("a green pipeline's handoff brief has no failed jobs section", async (t) => {
+  // The read never happened. Rendering "no failed jobs" here would claim a
+  // clean job list nobody looked at.
+  const { root, requested } = await storyFixture(t, { pipelineStatus: "success" });
+
+  const markdown = formatHandoffMarkdown(await handoffStory({ root, story: 1 }));
+
+  assert.equal(requested.jobs, false);
+  assert.equal(
+    markdown.includes("## Failed jobs"),
+    false,
+    "an unread job list must not be rendered as an empty one",
+  );
 });

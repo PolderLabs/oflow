@@ -39,6 +39,13 @@
   and skips it when the project has never run CI, and the `pipelines.read`
   permission row now names the fine-grained `Pipeline: Read` scope that
   `doctor` already knew a token could lack.
+  The failed job also reaches the artifacts an agent actually copies: `check`,
+  `handoff`, and the story context markdown render a `Failed jobs` section,
+  and the dashboard handoff brief carries it in its delivery block. Each
+  renders only when the read actually happened, so no surface can present a
+  skipped read as a clean job list. The scope filter is percent-encoded, and a
+  `insufficient_granular_scope` rejection names GitLab issue 627693 so a user
+  is not sent hunting for a scope they already granted.
 
 ### Changed
 - GitHub Actions are gone. `quality` (push and pull request, Ubuntu and

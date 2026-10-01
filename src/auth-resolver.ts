@@ -312,6 +312,11 @@ const CAPABILITY_DEFINITIONS: CapabilityDefinition[] = [
     probe: (client, projectPath) => client.listMergeRequestsPage(projectPath, undefined, "opened", 1) },
   { id: "pipelines.read", backend: "rest", access: "read", required: true,
     probe: (client, projectPath) => client.listPipelinesPage(projectPath, null, 1) },
+  // No probe handler on purpose. Job readability needs a pipeline to exist, and
+  // a project that has never run CI must not be reported as lacking the scope.
+  // `oflow doctor --check-api` probes this one properly (passed, or skipped with
+  // the reason); here it stays honestly "not probed" rather than guessing.
+  { id: "pipelines.jobs.read", backend: "rest", access: "read", required: false },
   { id: "labels.read", backend: "rest", access: "read", required: true,
     probe: (client, projectPath) => client.listLabelsPage(projectPath, 1) },
   { id: "milestones.read", backend: "rest", access: "read", required: true,

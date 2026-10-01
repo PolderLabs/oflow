@@ -300,6 +300,7 @@ const CAPABILITY_DEFINITIONS: InternalDefinition[] = [
   { id: "story.context", access: "read" },
   { id: "merge-requests.read", access: "read" },
   { id: "pipelines.read", access: "read" },
+  { id: "pipelines.jobs.read", access: "read" },
   { id: "planning.sync", access: "read" },
   { id: "iterations.read", access: "read" },
   { id: "iteration-cadences.read", access: "read" },

@@ -680,6 +680,15 @@ export function formatContextMarkdown(context: StoryContext): string {
     );
   }
 
+  // Rendered only when the job read actually happened, so this section never
+  // implies "no job failed" from a read that was skipped.
+  const failedJobLines = formatFailedJobLines(
+    compactFailedPipelineJobs(context.verificationPipelineJobs),
+  );
+  if (failedJobLines.length > 0) {
+    lines.push("", "## Failed jobs", "", ...failedJobLines.map((line) => "- " + line));
+  }
+
   lines.push("", "## Recent notes", "");
   if (context.recentNotes.length === 0) {
     lines.push("_None found._");
@@ -867,11 +876,18 @@ async function readVerificationPipelineJobs(
   try {
     return await client.listFailedPipelineJobs(projectPath, pipeline.id, 10);
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     warnings.push(
       "Could not read failed jobs for pipeline #" +
         String(pipeline.id) +
         ": " +
-        (error instanceof Error ? error.message : String(error)),
+        message +
+        // GitLab routes this through an unwired read_pipeline_job permission,
+        // so a correctly-scoped fine-grained token can still be denied here.
+        // Without this the user goes hunting for a scope they already granted.
+        (/insufficient_granular_scope/i.test(message)
+          ? " (GitLab can deny a correctly-scoped fine-grained token on this route; see gitlab-org/gitlab#627693)"
+          : ""),
     );
     return null;
   }
@@ -903,6 +919,28 @@ export function compactFailedPipelineJobs(
     allowFailure: job.allow_failure === true,
     webUrl: job.web_url ?? null,
   }));
+}
+
+/**
+ * Failed jobs as copy-paste lines, or nothing when there is nothing to report.
+ * `null` (not read) and `[]` (read, nothing failed) both render as nothing, so
+ * no surface can present a skipped read as a clean job list.
+ */
+export function formatFailedJobLines(jobs: FailedJobSummary[] | null): string[] {
+  if (jobs === null || jobs.length === 0) {
+    return [];
+  }
+  return jobs.map(
+    (job) =>
+      job.name +
+      " (" +
+      (job.stage ?? "unknown stage") +
+      ", " +
+      (job.status ?? "unknown") +
+      (job.allowFailure ? ", allow_failure" : "") +
+      ")" +
+      (job.webUrl ? " " + job.webUrl : ""),
+  );
 }
 
 function normalizeEpic(

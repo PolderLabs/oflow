@@ -14,7 +14,13 @@
 
 import { assessStory } from "./assess.js";
 import { resolveAuth } from "./auth-resolver.js";
-import { compactWorkItems, getCurrentGitLabUser, listWorkItems } from "./context.js";
+import {
+  compactWorkItems,
+  formatFailedJobLines,
+  getCurrentGitLabUser,
+  listWorkItems,
+  type FailedJobSummary,
+} from "./context.js";
 import { loadConfig } from "./config.js";
 import { getLocalVerificationStatus, type LocalVerificationStatus } from "./local-verification.js";
 import { OflowError } from "./errors.js";
@@ -230,7 +236,11 @@ export interface CheckResult {
     localReferences: string[];
   }>;
   mergeRequest: { iid: number; state: string | null; draft: boolean } | null;
-  pipeline: { id: number; status: string | null } | null;
+  pipeline: {
+    id: number;
+    status: string | null;
+    failedJobs: FailedJobSummary[] | null;
+  } | null;
   local: {
     branch: string | null;
     clean: boolean;
@@ -274,7 +284,11 @@ export async function checkStory(options: CheckOptions): Promise<CheckResult> {
         }
       : null,
     pipeline: assessment.remote.pipeline
-      ? { id: assessment.remote.pipeline.id, status: assessment.remote.pipeline.status }
+      ? {
+          id: assessment.remote.pipeline.id,
+          status: assessment.remote.pipeline.status,
+          failedJobs: assessment.remote.pipeline.failedJobs,
+        }
       : null,
     local: {
       branch: assessment.local.branch,
@@ -319,6 +333,10 @@ export function formatCheckMarkdown(result: CheckResult): string {
     "",
     "Next action: " + result.nextAction,
   );
+  const failedJobLines = result.pipeline ? formatFailedJobLines(result.pipeline.failedJobs) : [];
+  if (failedJobLines.length > 0) {
+    lines.push("", "## Failed jobs", "", ...failedJobLines.map((line) => "- " + line));
+  }
   if (result.warnings.length > 0) {
     lines.push("", "## Warnings", "", ...result.warnings.map((w) => "- " + w));
   }
@@ -474,7 +492,11 @@ export interface HandoffResult {
     draft: boolean;
     webUrl: string | null;
   } | null;
-  pipeline: { id: number; status: string | null } | null;
+  pipeline: {
+    id: number;
+    status: string | null;
+    failedJobs: FailedJobSummary[] | null;
+  } | null;
   local: {
     branch: string | null;
     clean: boolean;
@@ -522,7 +544,11 @@ export async function handoffStory(options: FinishOptions): Promise<HandoffResul
         }
       : null,
     pipeline: assessment.remote.pipeline
-      ? { id: assessment.remote.pipeline.id, status: assessment.remote.pipeline.status }
+      ? {
+          id: assessment.remote.pipeline.id,
+          status: assessment.remote.pipeline.status,
+          failedJobs: assessment.remote.pipeline.failedJobs,
+        }
       : null,
     local: {
       branch: assessment.local.branch,
@@ -565,6 +591,10 @@ export function formatHandoffMarkdown(result: HandoffResult): string {
       : "missing"),
     "Local: " + (result.local.branch ?? "(detached)") + (result.local.clean ? ", clean" : ", dirty (" + result.local.changedFiles.length + " changed)"),
   );
+  const failedJobLines = result.pipeline ? formatFailedJobLines(result.pipeline.failedJobs) : [];
+  if (failedJobLines.length > 0) {
+    lines.push("", "## Failed jobs", "", ...failedJobLines.map((line) => "- " + line));
+  }
   if (result.local.recentCommits.length > 0) {
     lines.push("Recent commits:", ...result.local.recentCommits.map((commit) => "- " + commit));
   }
