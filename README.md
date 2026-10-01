@@ -174,7 +174,7 @@ For the current Scrum/planning features, use this project-level starter set:
 | `Label` | `Read` | Read board labels and work-item labels. |
 | `Label` | `Create`, `Update` | Manage labels through an approved plan when needed. |
 | `Merge Request` | `Read` | Include related MR status in story context and verification. |
-| `Pipeline` | `Read` | Check pipeline evidence during story verification. |
+| `Pipeline` | `Read` | Check pipeline evidence during story verification and name the job that failed it. |
 | `Work Item Type` | `Read` | List **custom** work-item types (User Story, EPIC, ...). The REST issue endpoints cannot see custom types; without this scope the project appears empty for everything but `issue` and `task`. Hosted GitLab and self-managed >=16.9 only. |
 
 Add these only when the workflow needs group-level planning data:
@@ -531,7 +531,7 @@ resumed safely.
 | Labels, milestones, boards, board lists | ✅ | Guarded plan/apply/verify operations |
 | Iteration reads and assignment | ✅ | Project/group reads plus guarded GraphQL assignment |
 | Group epics | ✅ | Explicit opt-in bounded GraphQL reads |
-| Merge-request and pipeline reads | ✅ | Compact status and verification evidence |
+| Merge-request and pipeline reads | ✅ | Compact status, head-SHA-matched verification evidence, and the name of the job that failed |
 | `glab` fallback | ◐ Optional | Explicit GET-only diagnostics and unwrapped reads |
 | GitLab MCP | ◐ Optional | Agent-facing companion; not required by oflow |
 | Local planning dashboard | ✅ | SQLite-backed workflow workspace with searchable work, delivery, planning and local lifecycle evidence |
@@ -589,7 +589,8 @@ the packaging layer for agent plugins and skill hosts.
 
 - Merge-request discussions, reviews, approvals, and other delivery operations
   with the same safety gates.
-- Richer pipeline and deployment evidence.
+- Deployment evidence and job logs. Pipeline retry, cancel, and manual play stay
+  deferred behind the plan gates rather than becoming unguarded writes.
 - More GitLab Work Item hierarchy and cadence operations.
 - Additional provider capabilities only when they preserve the local contract.
 

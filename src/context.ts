@@ -11,6 +11,7 @@ import type {
   GitLabMergeRequest,
   GitLabNote,
   GitLabPipeline,
+  GitLabPipelineJob,
   GitLabUser,
   IssueState,
   StoryContext,
@@ -541,6 +542,19 @@ export async function loadStoryContext(
     warnings.push(verificationEvidence.warning);
   }
 
+  // A pipeline status says that something broke. Naming the job that broke is
+  // what lets an agent act without leaving oflow for the GitLab UI, so the
+  // read is bounded to one pipeline and only happens when there is something
+  // to name.
+  const verificationPipelineJobs = verificationEvidence.pipeline
+    ? await readVerificationPipelineJobs(
+        client,
+        remote.projectPath,
+        verificationEvidence.pipeline,
+        warnings,
+      )
+    : undefined;
+
   return {
     generatedAt: new Date().toISOString(),
     branch,
@@ -556,6 +570,7 @@ export async function loadStoryContext(
     mergeRequests,
     pipelines,
     mergeRequestPipelines,
+    verificationPipelineJobs,
     recentNotes: recentNotes.slice(0, 20),
     warnings,
   };
@@ -830,6 +845,64 @@ async function optionalFetch<T>(
     warnings.push(label + ": " + message);
     return ([] as unknown) as T;
   }
+}
+
+/**
+ * Failed jobs of the pipeline selected for verification.
+ *
+ * A green pipeline is never read: there is nothing to name, and reporting an
+ * empty list for a read that never happened would read as evidence that no job
+ * failed. A failed read is `null` as well, with the reason in warnings, so an
+ * unreadable pipeline is never presented as a clean one.
+ */
+async function readVerificationPipelineJobs(
+  client: GitLabClient,
+  projectPath: string,
+  pipeline: GitLabPipeline,
+  warnings: string[],
+): Promise<GitLabPipelineJob[] | null> {
+  if ((pipeline.status ?? "").toLowerCase() === "success") {
+    return null;
+  }
+  try {
+    return await client.listFailedPipelineJobs(projectPath, pipeline.id, 10);
+  } catch (error: unknown) {
+    warnings.push(
+      "Could not read failed jobs for pipeline #" +
+        String(pipeline.id) +
+        ": " +
+        (error instanceof Error ? error.message : String(error)),
+    );
+    return null;
+  }
+}
+
+export interface FailedJobSummary {
+  id: number;
+  name: string;
+  stage: string | null;
+  status: string | null;
+  allowFailure: boolean;
+  webUrl: string | null;
+}
+
+/**
+ * Failed jobs of a pipeline in the shape both `assess` and `verify` emit.
+ * `null` means the jobs were not read -- a green pipeline, or a read that
+ * failed -- which is not the same claim as an empty array.
+ */
+export function compactFailedPipelineJobs(
+  jobs: GitLabPipelineJob[] | null | undefined,
+): FailedJobSummary[] | null {
+  if (jobs === undefined || jobs === null) return null;
+  return jobs.map((job) => ({
+    id: job.id,
+    name: job.name,
+    stage: typeof job.stage === "string" ? job.stage : null,
+    status: typeof job.status === "string" ? job.status : null,
+    allowFailure: job.allow_failure === true,
+    webUrl: job.web_url ?? null,
+  }));
 }
 
 function normalizeEpic(

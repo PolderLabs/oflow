@@ -251,7 +251,16 @@ Use this starter profile:
 | `Label` | `Read` | Read labels and label-backed board state. |
 | `Label` | `Create`, `Update` | Enable guarded label administration when needed. |
 | `Merge Request` | `Read` | Read related merge-request status. |
-| `Pipeline` | `Read` | Read pipeline evidence for verification. |
+| `Pipeline` | `Read` | Read pipeline evidence for verification, and the failed jobs of a non-green verification pipeline. |
+
+Reading a pipeline's jobs needs the same `Pipeline: Read` scope as the pipeline
+itself, not a separate CI/CD grant. GitLab issue
+[627693](https://gitlab.com/gitlab-org/gitlab/-/work_items/627693) reports
+correctly-scoped fine-grained tokens still receiving `403` on
+`GET /projects/:id/pipelines/:pipeline_id/jobs`, so `oflow` treats a rejected
+job read as a warning that names the pipeline: verification still blocks on the
+pipeline's own red status, and the missing job detail is never reported as
+"no job failed".
 
 Use a group boundary only for capabilities that actually need it. Add
 `Group: Read` and group-level `Work Item: Read` for group epics, iterations,

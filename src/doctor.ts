@@ -41,6 +41,7 @@ const READ_CHECKS: Array<{
   { id: "labels.read", backend: "REST", required: true },
   { id: "milestones.read", backend: "REST", required: true },
   { id: "boards.read", backend: "REST", required: true },
+  { id: "pipelines.jobs.read", backend: "REST", required: false },
   { id: "board-lists.read", backend: "REST", required: true },
   { id: "iterations.read", backend: "REST", required: true },
   { id: "group-epics.read", backend: "GraphQL", required: false },
@@ -356,6 +357,36 @@ async function checkApiCapabilities(
       status: "skipped",
       required: true,
       detail: "Skipped because the project has no readable board to inspect.",
+    });
+  }
+
+  // Pipeline jobs are only reachable through a pipeline, so this probe depends
+  // on the collection read and on the project actually having one. A missing
+  // pipeline is not a scope failure and must not report as one.
+  const samplePipeline = pipelinesProbe.value?.items[0];
+  if (pipelinesProbe.check.status === "passed" && samplePipeline) {
+    const pipelineJobsProbe = await runProbe(
+      {
+        id: "pipelines.jobs.read",
+        access: "read",
+        backend: "REST",
+        required: false,
+      },
+      () => client.listPipelineJobsPage(remote.projectPath, samplePipeline.id, 1),
+      "Pipeline job collection is readable (bounded to 1 job of the most recent pipeline).",
+    );
+    checks.push(pipelineJobsProbe.check);
+  } else {
+    checks.push({
+      id: "pipelines.jobs.read",
+      access: "read",
+      backend: "REST",
+      status: "skipped",
+      required: false,
+      detail:
+        pipelinesProbe.check.status === "passed"
+          ? "Skipped because the project has no pipeline to read jobs from."
+          : "Not probed: the pipeline collection could not be read, so there is no pipeline to read jobs from.",
     });
   }
 

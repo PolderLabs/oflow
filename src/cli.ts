@@ -29,6 +29,7 @@ import {
 import { formatIterationListMarkdown, listIterations } from "./iterations.js";
 import {
   chooseMergeRequest,
+  compactFailedPipelineJobs,
   compactMergeRequest,
   compactWorkItems,
   formatContextMarkdown,
@@ -43,6 +44,7 @@ import {
   loadStoryContext,
   loadWorkItemByIid,
   selectVerificationEvidence,
+  type FailedJobSummary,
 } from "./context.js";
 import { OflowError } from "./errors.js";
 import { startDashboard } from "./dashboard.js";
@@ -112,6 +114,7 @@ import type {
   IssueType,
   IterationState,
   IssueState,
+  VerificationResult,
 } from "./types.js";
 import { isIssueType } from "./types.js";
 import type { ExecutionReceipt } from "./actions.js";
@@ -1122,6 +1125,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           storyIid,
           mergeRequest,
           pipeline: verificationEvidence.pipeline,
+          failedJobs: compactFailedPipelineJobs(context.verificationPipelineJobs),
           pipelinePolicy,
           ciConfigPresent,
           warnings: [
@@ -2083,8 +2087,9 @@ function formatVerification(output: {
   pipeline: { id: number; status?: string; web_url?: string } | null;
   pipelinePolicy?: "enabled" | "disabled";
   ciConfigPresent?: boolean;
+  failedJobs: FailedJobSummary[] | null;
   warnings: string[];
-  result: ReturnType<typeof evaluateCriteria>;
+  result: VerificationResult;
 }): string {
   const lines = [
     "# oflow verify",
@@ -2114,6 +2119,24 @@ function formatVerification(output: {
         check.reason,
     ),
   ];
+  if (output.failedJobs !== null && output.failedJobs.length > 0) {
+    lines.push(
+      "",
+      "Failed jobs:",
+      ...output.failedJobs.map(
+        (job) =>
+          "- " +
+          job.name +
+          " (" +
+          (job.stage ?? "unknown stage") +
+          ", " +
+          (job.status ?? "unknown") +
+          (job.allowFailure ? ", allow_failure" : "") +
+          ")" +
+          (job.webUrl ? " " + job.webUrl : ""),
+      ),
+    );
+  }
   if (output.result.reasons.length > 0) {
     lines.push("", "Reasons:", ...output.result.reasons.map((reason) => "- " + reason));
   }

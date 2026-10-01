@@ -28,6 +28,17 @@
   count, and a Recommendations block with concrete remediation paths for
   failed probes and the missing `Work Item Type: Read` scope on hosted GitLab
   and self-managed >=16.9.
+- `oflow assess` and `oflow verify` now name the job that failed a story's
+  verification pipeline. A pipeline status says something broke; the failed-job
+  read says what, so an agent can act without leaving oflow for the GitLab UI.
+  One bounded read of the selected pipeline, and only when it is not green. A
+  job that failed with `allow_failure` did not fail the pipeline and is never
+  named as the cause, and a rejected read is reported as a warning instead of
+  becoming a clean result or a softer gate. `pipelines.jobs.read` is a new
+  capability, `doctor --check-api` probes it against the most recent pipeline
+  and skips it when the project has never run CI, and the `pipelines.read`
+  permission row now names the fine-grained `Pipeline: Read` scope that
+  `doctor` already knew a token could lack.
 
 ### Changed
 - GitHub Actions are gone. `quality` (push and pull request, Ubuntu and

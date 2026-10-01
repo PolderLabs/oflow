@@ -453,3 +453,96 @@ test("an unreadable project is still reported as a total API failure", async () 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a project with no pipeline skips the pipeline job probe instead of failing it", async () => {
+  // Job readability is only reachable through a pipeline. A project that has
+  // never run CI must not be reported as lacking the scope.
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-nojobs-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "test-token";
+  const requested = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requested.push(url);
+    if (url.includes("/pipelines")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => "[]" };
+    }
+    if (url.endsWith("/user")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ id: 7, username: "test-user" }) };
+    }
+    if (url.endsWith("/personal_access_tokens/self")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ scopes: ["api"], active: true, revoked: false, expires_at: null }) };
+    }
+    if (url.includes("/projects/team%2Fproduct") && !url.includes("?")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ id: 7, path_with_namespace: "team/product", web_url: "https://gitlab.com/team/product", default_branch: "main" }) };
+    }
+    return { ok: true, status: 200, headers: new Headers(), text: async () => "[]" };
+  };
+
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+
+    const report = await doctor(root, { checkApi: true });
+    const jobs = report.apiChecks.find((check) => check.id === "pipelines.jobs.read");
+    assert.ok(jobs, "doctor must name pipelines.jobs.read");
+    assert.equal(jobs.status, "skipped");
+    assert.match(jobs.detail, /no pipeline/i);
+    assert.ok(
+      !requested.some((url) => url.includes("/jobs")),
+      "no job request may be made when there is no pipeline",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("doctor probes pipeline jobs against a real pipeline", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oflow-doctor-jobs-"));
+  const previousToken = process.env.GITLAB_TOKEN;
+  const originalFetch = globalThis.fetch;
+  process.env.GITLAB_TOKEN = "test-token";
+  const requested = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requested.push(url);
+    if (url.includes("/pipelines/31/jobs")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify([{ id: 9, name: "unit-tests", stage: "test", status: "failed" }]) };
+    }
+    if (url.includes("/pipelines?")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify([{ id: 31, status: "failed" }]) };
+    }
+    if (url.endsWith("/user")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ id: 7, username: "test-user" }) };
+    }
+    if (url.endsWith("/personal_access_tokens/self")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ scopes: ["api"], active: true, revoked: false, expires_at: null }) };
+    }
+    if (url.includes("/projects/team%2Fproduct") && !url.includes("?")) {
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ id: 7, path_with_namespace: "team/product", web_url: "https://gitlab.com/team/product", default_branch: "main" }) };
+    }
+    return { ok: true, status: 200, headers: new Headers(), text: async () => "[]" };
+  };
+
+  try {
+    await run("git", ["init", "-q", root]);
+    await run("git", ["-C", root, "remote", "add", "origin", "git@gitlab.com:team/product.git"]);
+
+    const report = await doctor(root, { checkApi: true });
+    const jobs = report.apiChecks.find((check) => check.id === "pipelines.jobs.read");
+    assert.equal(jobs.status, "passed", jobs.detail);
+    assert.ok(
+      requested.some((url) => url.includes("/pipelines/31/jobs")),
+      "the probe must read the jobs of the pipeline it listed",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousToken === undefined) delete process.env.GITLAB_TOKEN;
+    else process.env.GITLAB_TOKEN = previousToken;
+    await rm(root, { recursive: true, force: true });
+  }
+});

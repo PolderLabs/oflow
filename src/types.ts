@@ -418,6 +418,17 @@ export interface GitLabPipeline {
   [key: string]: unknown;
 }
 
+export interface GitLabPipelineJob {
+  id: number;
+  name: string;
+  stage?: string;
+  status?: string;
+  allow_failure?: boolean;
+  failure_reason?: string | null;
+  web_url?: string;
+  [key: string]: unknown;
+}
+
 export interface StoryContext {
   generatedAt: string;
   branch: string | null;
@@ -428,6 +439,16 @@ export interface StoryContext {
   mergeRequests: GitLabMergeRequest[];
   pipelines: GitLabPipeline[];
   mergeRequestPipelines?: GitLabPipeline[];
+  /**
+   * Failed jobs of the pipeline selected for verification.
+   *
+   * `undefined` means no verification pipeline was selected at all, `null`
+   * means a pipeline was selected but its jobs were not read (the pipeline is
+   * green, or the read failed), and an array is a completed bounded read. An
+   * empty array therefore means "read, and nothing failed", which is the one
+   * state a consumer may treat as evidence.
+   */
+  verificationPipelineJobs?: GitLabPipelineJob[] | null;
   recentNotes: GitLabNote[];
   warnings: string[];
 }

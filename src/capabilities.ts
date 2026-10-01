@@ -162,7 +162,17 @@ export async function getCapabilities(options: CapabilitiesOptions = {}): Promis
         "read",
         "Pipeline",
         "REST",
-        "Project: Read",
+        "Project: Read; Pipeline: Read on fine-grained tokens",
+        "A fine-grained token without the pipeline read scope legitimately reports this capability as unusable while project reads keep working; oflow verify degrades to unknown/warning rather than blocking.",
+      ),
+      capability(
+        "pipelines.jobs.read",
+        "implemented",
+        "read",
+        "Failed jobs of the pipeline selected for verification",
+        "REST",
+        "Pipeline: Read (fine-grained); read_api (classic)",
+        "One bounded read of the verification pipeline's failed jobs, and only when that pipeline is not green. A job that failed with allow_failure did not fail the pipeline and is never named as the cause. GitLab issue 627693 reports correctly-scoped fine-grained tokens still receiving 403 on this route, so a rejected read is reported as a warning and never turns into a verification block.",
       ),
       capability(
         "planning.sync",

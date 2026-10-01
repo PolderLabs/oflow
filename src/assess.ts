@@ -1,7 +1,12 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { loadConfig, resolvePipelinePolicy } from "./config.js";
-import { loadStoryContext, selectVerificationEvidence } from "./context.js";
+import {
+  compactFailedPipelineJobs,
+  loadStoryContext,
+  selectVerificationEvidence,
+  type FailedJobSummary,
+} from "./context.js";
 import { evaluateCriteria, parseVerificationEvidence } from "./criteria.js";
 import { OflowError } from "./errors.js";
 import { getCurrentBranch, runGit } from "./git.js";
@@ -75,6 +80,11 @@ export interface AssessmentResult {
       status: string | null;
       ref: string | null;
       webUrl: string | null;
+      /**
+       * Failed jobs, or `null` when they were not read. An empty array means
+       * the read happened and nothing failed.
+       */
+      failedJobs: FailedJobSummary[] | null;
     } | null;
     notes: Array<{
       id: number;
@@ -117,11 +127,29 @@ export async function assessStory(
     (pipeline
       ? pipeline.status?.toLowerCase() !== "success"
       : !(ciConfigPresent === false && pipeline === null));
+  const failedJobs = compactFailedPipelineJobs(context.verificationPipelineJobs);
+  // A job that failed with allow_failure set did not fail the pipeline, so it
+  // is never named as the cause. An empty list here means the jobs were read
+  // and none of them blocked, which is itself worth saying.
+  const blockingJobs = (failedJobs ?? []).filter((job) => !job.allowFailure);
+  const pipelineBlocker = !pipelineBlocks
+    ? null
+    : blockingJobs.length > 0
+      ? "Latest pipeline is " +
+        (pipeline?.status ?? "unknown") +
+        "; it failed in " +
+        blockingJobs
+          .map((job) => job.name + " (" + (job.stage ?? "unknown stage") + ")")
+          .join(", ") +
+        "."
+      : failedJobs !== null && failedJobs.length > 0
+        ? "Latest pipeline is " +
+          (pipeline?.status ?? "unknown") +
+          "; only allow_failure jobs failed, so the failure is elsewhere."
+        : "Latest pipeline is " + (pipeline?.status ?? "unknown") + "; expected success.";
   const blockers = [
     ...blockerNotes.slice(0, 3).map((note) => "GitLab note: " + compact(note.body, 180)),
-    ...(pipelineBlocks
-      ? ["Latest pipeline is " + (pipeline?.status ?? "unknown") + "; expected success."]
-      : []),
+    ...(pipelineBlocker ? [pipelineBlocker] : []),
   ];
   const collectedLocal = await collectLocalEvidence(
     root,
@@ -187,6 +215,7 @@ export async function assessStory(
             status: pipeline.status ?? null,
             ref: pipeline.ref ?? null,
             webUrl: pipeline.web_url ?? null,
+            failedJobs,
           }
         : null,
       notes: context.recentNotes.slice(0, 5).map((note) => ({

@@ -27,6 +27,7 @@ import type {
   GitLabNoteCreate,
   GitLabNote,
   GitLabPipeline,
+  GitLabPipelineJob,
   GitLabProject,
   IssueState,
   IterationState,
@@ -1000,6 +1001,36 @@ export class GitLabClient {
     limit = 20,
   ): Promise<GitLabPipeline[]> {
     return (await this.listPipelinesPage(projectPath, ref, limit)).items;
+  }
+
+  /**
+   * Jobs of one pipeline, bounded and filtered to failures. A pipeline status
+   * says that something broke; this says what.
+   */
+  async listPipelineJobsPage(
+    projectPath: string,
+    pipelineId: number,
+    limit = 20,
+  ): Promise<GitLabListPage<GitLabPipelineJob>> {
+    return this.listResponsePage<GitLabPipelineJob>(
+      "/projects/" +
+        encodeURIComponent(projectPath) +
+        "/pipelines/" +
+        String(pipelineId) +
+        "/jobs?per_page=" +
+        String(limit) +
+        "&scope[]=failed&order_by=id&sort=desc",
+      "pipeline job list",
+      limit,
+    );
+  }
+
+  async listFailedPipelineJobs(
+    projectPath: string,
+    pipelineId: number,
+    limit = 20,
+  ): Promise<GitLabPipelineJob[]> {
+    return (await this.listPipelineJobsPage(projectPath, pipelineId, limit)).items;
   }
 
   private async listResponsePage<T>(
