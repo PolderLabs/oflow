@@ -1006,6 +1006,12 @@ export class GitLabClient {
   /**
    * Jobs of one pipeline, bounded and filtered to failures. A pipeline status
    * says that something broke; this says what.
+   *
+   * GitLab documents `id`, `pipeline_id`, `include_retried` and `scope` for
+   * this endpoint, and it already sorts by ID descending. `order_by`/`sort`
+   * belong to the *pipeline* list endpoint, not this one, so they are not sent.
+   * `include_retried` stays at its default of false: a retried job's earlier
+   * failure is not a current failure and must not be named as the cause.
    */
   async listPipelineJobsPage(
     projectPath: string,
@@ -1021,7 +1027,7 @@ export class GitLabClient {
         String(limit) +
         "&" +
         encodeURIComponent("scope[]") +
-        "=failed&order_by=id&sort=desc",
+        "=failed",
       "pipeline job list",
       limit,
     );

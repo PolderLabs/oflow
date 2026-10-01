@@ -242,6 +242,63 @@ test("the job read is bounded and percent-encodes the scope filter", async (t) =
     false,
     "no unencoded bracket may reach the wire: " + requested.jobsUrl,
   );
+  // GitLab documents only id, pipeline_id, include_retried and scope for this
+  // endpoint, and it already sorts by ID descending. Sending order_by/sort
+  // copies the *pipeline* list convention onto an endpoint that has neither.
+  assert.equal(
+    requested.jobsUrl.includes("order_by"),
+    false,
+    "undocumented parameter sent: " + requested.jobsUrl,
+  );
+  assert.equal(requested.jobsUrl.includes("sort="), false, requested.jobsUrl);
+});
+
+test("a job response in GitLab's documented shape parses to the six fields oflow uses", async (t) => {
+  // Shape taken from the "List all jobs by pipeline" example in the GitLab Jobs
+  // API docs, including the fields oflow does not read, so the parser is
+  // pinned to the real schema rather than to a minimal invented object.
+  const { root } = await storyFixture(t, {
+    pipelineStatus: "failed",
+    jobs: [{
+      id: 7,
+      name: "teaspoon",
+      stage: "test",
+      status: "failed",
+      failure_reason: "script_failure",
+      allow_failure: false,
+      web_url: "https://example.com/foo/bar/-/jobs/7",
+      ref: "main",
+      tag: false,
+      coverage: null,
+      archived: false,
+      source: "push",
+      duration: 0.173,
+      queued_duration: 0.01,
+      tag_list: ["docker runner", "ubuntu18"],
+      artifacts_file: { filename: "artifacts.zip", size: 1000 },
+      created_at: "2015-12-24T15:51:21.802Z",
+      started_at: "2015-12-24T17:54:27.722Z",
+      finished_at: "2015-12-24T17:54:27.895Z",
+      pipeline: { id: 6, project_id: 1, ref: "main", sha: "0ff3ae19", status: "pending" },
+      runner: { id: 32, description: "", status: "offline" },
+      user: { id: 1, username: "root" },
+      commit: { id: "0ff3ae19", short_id: "0ff3ae19", title: "Test the CI integration." },
+    }],
+  });
+
+  const result = await assessStory(root, 1);
+
+  // Exactly the documented fields oflow reads, and nothing else: the extra
+  // runner/user/commit/artifact fields must not leak into the output.
+  assert.deepEqual(result.remote.pipeline.failedJobs, [{
+    id: 7,
+    name: "teaspoon",
+    stage: "test",
+    status: "failed",
+    allowFailure: false,
+    webUrl: "https://example.com/foo/bar/-/jobs/7",
+  }]);
+  assert.match(result.blockers.join("\n"), /it failed in teaspoon \(test\)/);
 });
 
 test("oflow verify names the failed job through the real CLI text output", async (t) => {

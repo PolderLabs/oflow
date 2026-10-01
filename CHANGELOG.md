@@ -46,6 +46,12 @@
   skipped read as a clean job list. The scope filter is percent-encoded, and a
   `insufficient_granular_scope` rejection names GitLab issue 627693 so a user
   is not sent hunting for a scope they already granted.
+  The read was checked against GitLab's documented jobs response, which
+  confirms the six fields oflow parses and showed that `order_by`/`sort` are
+  not parameters of this endpoint — they belong to the pipeline list, and the
+  job list already returns newest first. A fixture built from the documented
+  response now pins the parse, including that the fields oflow does not read
+  stay out of its output.
 
 ### Changed
 - GitHub Actions are gone. `quality` (push and pull request, Ubuntu and
