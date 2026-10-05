@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   agentInstructionBlock,
+  ANTIGRAVITY_SKILL_MARKDOWN,
   OMP_AGENTS_BRIDGE_MARKDOWN,
   COPILOT_INSTRUCTIONS_MARKDOWN,
   OFLOW_README_MARKDOWN,
@@ -24,6 +25,8 @@ const BLOCKS = {
   "agentInstructionBlock(codex)": agentInstructionBlock("codex"),
   "agentInstructionBlock(claude)": agentInstructionBlock("claude"),
   "agentInstructionBlock(omp)": agentInstructionBlock("omp"),
+  "agentInstructionBlock(antigravity)": agentInstructionBlock("antigravity"),
+  "ANTIGRAVITY_SKILL_MARKDOWN": ANTIGRAVITY_SKILL_MARKDOWN,
   "OMP_AGENTS_BRIDGE_MARKDOWN": OMP_AGENTS_BRIDGE_MARKDOWN,
   "COPILOT_INSTRUCTIONS_MARKDOWN": COPILOT_INSTRUCTIONS_MARKDOWN,
   "OFLOW_README_MARKDOWN": OFLOW_README_MARKDOWN,

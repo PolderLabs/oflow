@@ -27,13 +27,17 @@ export function normalizeAgentMode(value: string | undefined): AgentMode | undef
     normalized === "claude" ||
     normalized === "codex" ||
     normalized === "omp" ||
+    normalized === "antigravity" ||
     normalized === "both" ||
     normalized === "unknown"
   ) {
     return normalized;
   }
+  if (normalized === "agy" || normalized === "gemini") {
+    return "antigravity";
+  }
   throw new OflowError(
-    "Unknown agent mode \"" + value + "\". Use auto, claude, codex, omp, or both.",
+    "Unknown agent mode \"" + value + "\". Use auto, claude, codex, omp, antigravity, or both.",
     "INVALID_AGENT_MODE",
   );
 }
@@ -43,10 +47,11 @@ export async function detectAgents(
   requestedMode?: string,
 ): Promise<AgentDetection> {
   const explicit = normalizeAgentMode(requestedMode);
-  const signals: Record<"claude" | "codex" | "omp", string[]> = {
+  const signals: Record<AgentName, string[]> = {
     claude: [],
     codex: [],
     omp: [],
+    antigravity: [],
   };
 
   if (explicit) {
@@ -59,11 +64,15 @@ export async function detectAgents(
     if (explicit === "omp" || explicit === "both") {
       signals.omp.push("explicit --agent selection");
     }
+    if (explicit === "antigravity" || explicit === "both") {
+      signals.antigravity.push("explicit --agent selection");
+    }
     return {
       mode: explicit,
       claude: explicit === "claude" || explicit === "both",
       codex: explicit === "codex" || explicit === "both",
       omp: explicit === "omp" || explicit === "both",
+      antigravity: explicit === "antigravity" || explicit === "both",
       signals,
     };
   }
@@ -76,6 +85,9 @@ export async function detectAgents(
     [".omp/AGENTS.md", "omp", ".omp/AGENTS.md"],
     [".omp/commands", "omp", ".omp/commands directory"],
     [".omp/skills", "omp", ".omp/skills directory"],
+    ["GEMINI.md", "antigravity", "GEMINI.md"],
+    [".agents", "antigravity", ".agents directory"],
+    [".gemini", "antigravity", ".gemini directory"],
   ];
   for (const [relativePath, agent, signal] of markerChecks) {
     try {
@@ -94,6 +106,13 @@ export async function detectAgents(
     ["CODEX_SESSION_ID", "codex", "CODEX_SESSION_ID environment"],
     ["CODEX_THREAD_ID", "codex", "CODEX_THREAD_ID environment"],
     ["OMP_PROFILE", "omp", "OMP_PROFILE environment"],
+    ["ANTIGRAVITY_AGENT", "antigravity", "ANTIGRAVITY_AGENT environment"],
+    ["ANTIGRAVITY_CONVERSATION_ID", "antigravity", "ANTIGRAVITY_CONVERSATION_ID environment"],
+    ["ANTIGRAVITY_APP_DATA_DIR", "antigravity", "ANTIGRAVITY_APP_DATA_DIR environment"],
+    ["ANTIGRAVITY_PROJECT_ID", "antigravity", "ANTIGRAVITY_PROJECT_ID environment"],
+    ["ANTIGRAVITY_LS_VERSION", "antigravity", "ANTIGRAVITY_LS_VERSION environment"],
+    ["ANTIGRAVITY_SESSION_ID", "antigravity", "ANTIGRAVITY_SESSION_ID environment"],
+    ["GEMINI_CLI", "antigravity", "GEMINI_CLI environment"],
   ];
   for (const [name, agent, signal] of envSignals) {
     if (process.env[name]) {
@@ -116,10 +135,17 @@ export async function detectAgents(
   if (await commandAvailable("omp")) {
     signals.omp.push("omp command");
   }
+  if (await commandAvailable("agy")) {
+    signals.antigravity.push("agy command");
+  }
+  if (await commandAvailable("antigravity")) {
+    signals.antigravity.push("antigravity command");
+  }
 
   const claude = signals.claude.length > 0;
   const codex = signals.codex.length > 0;
   const omp = signals.omp.length > 0;
+  const antigravity = signals.antigravity.length > 0;
   const mode: AgentMode = claude && codex
     ? "both"
     : claude
@@ -128,7 +154,9 @@ export async function detectAgents(
         ? "codex"
         : omp
           ? "omp"
-          : "unknown";
+          : antigravity
+            ? "antigravity"
+            : "unknown";
 
-  return { mode, claude, codex, omp, signals };
+  return { mode, claude, codex, omp, antigravity, signals };
 }

@@ -32,6 +32,7 @@ export function makeConfig(
       claude: detection.claude,
       codex: detection.codex,
       omp: detection.omp,
+      antigravity: detection.antigravity,
     },
     workflow: {
       storyType: "issue",

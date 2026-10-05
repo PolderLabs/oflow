@@ -153,7 +153,14 @@ export const COPILOT_INSTRUCTIONS_MARKDOWN = [
 ].join("\n") + "\n";
 
 export function agentInstructionBlock(agent: AgentName): string {
-  const name = agent === "claude" ? "Claude" : agent === "omp" ? "OMP" : "Codex";
+  const name =
+    agent === "claude"
+      ? "Claude"
+      : agent === "omp"
+        ? "OMP"
+        : agent === "antigravity"
+          ? "Antigravity"
+          : "Codex";
   return [
     "<!-- oflow instructions for " + name + " -->",
     "This repository is managed by oflow. oflow is the workflow authority: REST, glab, GraphQL, and runtime-owned GitLab MCP are interchangeable execution transports for the operations oflow capabilities advertises. Configured MCP is not authenticated MCP; only oflow capabilities --probe reports a real write.",
@@ -253,3 +260,42 @@ export function ompCommandMarkdown(command: "start" | "status" | "verify" | "han
   };
   return bodies[command].join("\n") + "\n";
 }
+
+export const ANTIGRAVITY_SKILL_MARKDOWN = [
+  "---",
+  "name: oflow",
+  "description: >-",
+  "  Use this skill when working with GitLab issues, stories, merge requests, iterations, planning,",
+  "  acceptance criteria, or delivery verification using the oflow workflow CLI.",
+  "---",
+  "",
+  "# oflow: GitLab-First Agent Workflow",
+  "",
+  "This repository uses oflow as its GitLab-first agent workflow contract.",
+  "`.oflow/WORKFLOW.md` is the workflow authority and single source of truth.",
+  "",
+  "## Mandatory cache policy",
+  "",
+  "1. At session start: `oflow work --mine --refresh --json` and `oflow sync --summary --refresh --json`.",
+  "2. Repeated context reads: `oflow work --mine --cached --json` and `oflow sync --summary --cached --json`.",
+  "3. Before remote mutations: always refresh; cached data is not remote truth.",
+  "4. If refresh fails, continue local analysis only and do not apply a remote mutation.",
+  "5. After remote mutations: refresh again.",
+  "",
+  "## Story lifecycle",
+  "",
+  "1. Start: `oflow start --json` or `oflow start --story <iid> --json`.",
+  "2. Explore: `oflow context --story <iid> --json` and `oflow assess --story <iid> --json`.",
+  "3. Local checks: `oflow verify-local --json` (when checks are configured).",
+  "4. Verify: `oflow verify --story <iid> --json`.",
+  "5. Finish readiness: `oflow finish --story <iid> --json`.",
+  "6. Close plan: `oflow plan issue update --story <iid> --state closed`, `oflow approve <plan>`, `oflow apply <plan>`, and `oflow verify --plan <plan>`.",
+  "7. Handoff: `oflow handoff --story <iid> --json`.",
+  "",
+  "## Safety",
+  "",
+  "- Remote mutations must follow `plan -> approve -> apply -> verify`.",
+  "- Never put GitLab tokens in the repository; use `oflow auth login` or `--token-stdin`.",
+  "- Inspect capabilities with `oflow capabilities --json` and diagnostics with `oflow doctor --check-api --json`.",
+].join("\n") + "\n";
+

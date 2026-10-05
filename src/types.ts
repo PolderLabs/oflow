@@ -1,6 +1,6 @@
 import type { BackendStatus } from "./backends.js";
 
-export type AgentName = "claude" | "codex" | "omp";
+export type AgentName = "claude" | "codex" | "omp" | "antigravity";
 
 export type AgentMode = AgentName | "both" | "unknown";
 
@@ -37,6 +37,7 @@ export interface AgentDetection {
   claude: boolean;
   codex: boolean;
   omp: boolean;
+  antigravity: boolean;
   signals: Record<AgentName, string[]>;
 }
 
@@ -147,6 +148,7 @@ export interface OflowConfigAgentSection {
   claude: boolean;
   codex: boolean;
   omp: boolean;
+  antigravity?: boolean;
 }
 
 export interface CriterionCheck extends AcceptanceCriterion {

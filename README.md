@@ -50,7 +50,7 @@ remote changes follow plan → approve → apply → verify
 
 | Area | What oflow provides |
 | --- | --- |
-| **Agent contract** | Generates `.oflow/WORKFLOW.md`, `AGENTS.md`, and `CLAUDE.md` instructions that teach agents the project flow. |
+| **Agent contract** | Generates `.oflow/WORKFLOW.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` instructions and Antigravity skills that teach agents the project flow. |
 | **Scrum planning** | Work items, labels, boards, milestones, iterations, group epics, filters, ownership, and timeboxes. |
 | **Story context** | Acceptance criteria, local evidence pointers, linked merge requests, notes, pipelines, and progress assessment. |
 | **Fast reads** | Compact `sync --summary`, exact cached snapshots, and SQLite-backed assigned-work reads. |
@@ -85,10 +85,13 @@ project from `origin`, and creates or updates only the project-local contract:
   WORKFLOW.md                 # shared agent contract
   README.md                   # local operating notes
   templates/merge-request.md  # acceptance-aware MR template
+.agents/
+  skills/oflow/SKILL.md       # Antigravity CLI and 2.0 skill
 .github/
   copilot-instructions.md     # GitHub Copilot / VS Code handoff
 AGENTS.md                     # managed Codex instructions
 CLAUDE.md                     # managed Claude instructions
+GEMINI.md                     # managed Antigravity instructions
 ```
 
 The installer is idempotent. It preserves user-authored instruction content
@@ -324,13 +327,14 @@ The ownership model is deliberate:
    access to GitLab, but oflow does not assume an MCP server exists or silently
    configure one. The workflow contract and safety gates remain authoritative.
 
-### Claude, Codex, GitHub Copilot, and VS Code
+### Claude, Codex, Antigravity, GitHub Copilot, and VS Code
 
 `oflow` is intentionally host-neutral. `oflow install` creates the shared
-`.oflow/WORKFLOW.md` contract, managed Claude/Codex instruction blocks when
-those hosts are detected, and a generic `.github/copilot-instructions.md` for
-GitHub Copilot and VS Code agents. Existing user-authored instructions are
-preserved.
+`.oflow/WORKFLOW.md` contract, managed Claude/Codex/Antigravity instruction blocks
+(`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`) when those hosts are detected, a native
+`.agents/skills/oflow/SKILL.md` skill for Antigravity CLI and 2.0, and a generic
+`.github/copilot-instructions.md` for GitHub Copilot and VS Code agents.
+Existing user-authored instructions are preserved.
 
 Every host uses the same flow from its terminal, task runner, or agent tool:
 

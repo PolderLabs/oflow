@@ -43,6 +43,7 @@ test("compat fixtures exist for host and transport boundaries", async () => {
   assert.ok(names.includes("omp-bridge"));
   assert.ok(names.includes("copilot-vscode-host"));
   assert.ok(names.includes("openwolf-host"));
+  assert.ok(names.includes("antigravity-bridge"));
 });
 
 test("compat fixtures never embed credentials or private hosts", async () => {
@@ -108,9 +109,9 @@ test("delegated fixture receipt matches apply --receipt contract", async () => {
 test("host fixtures document planPath and approval boundaries", async () => {
   const fixtures = await loadFixtures();
   const hostFixtures = fixtures.filter((fixture) =>
-    ["claude-code-host", "codex-host", "omp-bridge", "copilot-vscode-host", "openwolf-host"].includes(fixture.data.name),
+    ["claude-code-host", "codex-host", "omp-bridge", "copilot-vscode-host", "openwolf-host", "antigravity-bridge"].includes(fixture.data.name),
   );
-  assert.equal(hostFixtures.length, 5);
+  assert.equal(hostFixtures.length, 6);
   for (const { name, data } of hostFixtures) {
     assert.ok(Array.isArray(data.host.instructionFiles), name);
     assert.ok(data.cliContract && typeof data.cliContract === "object", name);

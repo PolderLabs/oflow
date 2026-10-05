@@ -11,6 +11,7 @@ import {
 import { getGitLabRemote } from "./git.js";
 import {
   agentInstructionBlock,
+  ANTIGRAVITY_SKILL_MARKDOWN,
   CACHE_POLICY_MARKDOWN,
   CACHE_POLICY_MARKER,
   COPILOT_INSTRUCTIONS_MARKDOWN,
@@ -48,7 +49,7 @@ export async function installProject(options: InstallOptions): Promise<InstallRe
 
   const installBoth = detection.mode === "unknown";
   if (installBoth) {
-    warnings.push("No Claude or Codex signal was detected; installing both instruction files.");
+    warnings.push("No Claude, Codex, OMP, or Antigravity signal was detected; installing both instruction files.");
   }
 
   files.push(
@@ -92,6 +93,27 @@ export async function installProject(options: InstallOptions): Promise<InstallRe
       ),
       detail: "Claude project instructions",
     });
+  }
+  if (detection.antigravity || installBoth) {
+    files.push({
+      path: "GEMINI.md",
+      action: await upsertManagedBlock(
+        join(root, "GEMINI.md"),
+        WORKFLOW_MARKER,
+        agentInstructionBlock("antigravity"),
+        dryRun,
+      ),
+      detail: "Antigravity project instructions",
+    });
+    files.push(
+      await planCanonicalFile(
+        root,
+        ".agents/skills/oflow/SKILL.md",
+        ANTIGRAVITY_SKILL_MARKDOWN,
+        dryRun,
+        "Antigravity oflow skill",
+      ),
+    );
   }
 
   if (detection.omp || installBoth) {
@@ -174,6 +196,7 @@ async function planCanonicalFile(
   relativePath: string,
   content: string,
   dryRun: boolean,
+  detail = "oflow scaffold",
 ): Promise<InstallFileChange> {
   const path = join(root, relativePath);
   const current = await readText(path);
@@ -185,9 +208,9 @@ async function planCanonicalFile(
     };
   }
   if (!dryRun) {
-    await writeText(path, content + "\n");
+    await writeText(path, content.endsWith("\n") ? content : content + "\n");
   }
-  return { path: relativePath, action: "created", detail: "oflow scaffold" };
+  return { path: relativePath, action: "created", detail };
 }
 
 async function planWorkflowFile(root: string, dryRun: boolean): Promise<InstallFileChange> {

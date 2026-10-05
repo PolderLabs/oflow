@@ -2,6 +2,12 @@
 
 ## Unreleased
 ### Added
+- Integrated Antigravity CLI (`agy`) and Antigravity 2.0 support: automatic
+  agent detection from project markers (`GEMINI.md`, `.agents/`), environment
+  variables (`ANTIGRAVITY_AGENT`, `ANTIGRAVITY_CONVERSATION_ID`, etc.), and PATH;
+  `oflow install` generates managed `GEMINI.md` rules and a native
+  `.agents/skills/oflow/SKILL.md` workspace skill with frontmatter and cache
+  policy guidance.
 - Overview stage counts now focus the work map while retaining parent context.
   Guided agent handoffs explain story-specific start, assessment and resume
   brief commands, with explicit copy-only and terminal-read boundaries.

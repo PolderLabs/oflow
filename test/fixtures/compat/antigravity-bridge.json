@@ -1,0 +1,20 @@
+{
+  "name": "antigravity-bridge",
+  "description": "Antigravity CLI and 2.0 bridge: GEMINI.md rules and .agents/skills/oflow/ skill guide the agent through oflow JSON.",
+  "credentials": "none-in-fixture",
+  "host": {
+    "id": "antigravity",
+    "bridgePath": ".agents/skills/oflow/",
+    "instructionFiles": ["GEMINI.md", ".agents/skills/oflow/SKILL.md", ".oflow/WORKFLOW.md"]
+  },
+  "cliContract": {
+    "handoff": ["oflow handoff --story <iid> --json"],
+    "check": ["oflow check --story <iid> --json"],
+    "finish": ["oflow finish --story <iid> --json"]
+  },
+  "boundaries": [
+    "Antigravity does not receive GitLab tokens from oflow.",
+    "GEMINI.md and SKILL.md preserve user-authored rules outside managed blocks.",
+    "All remote mutations follow plan approve apply verify."
+  ]
+}

@@ -2255,7 +2255,7 @@ function helpText(): string {
     "  auth login [--host <host>]          store a GitLab token outside the repo",
     "  auth status [--host <host>]         inspect auth sources, backends, and tokens",
     "  auth clear [--host <host>]          remove a stored token",
-    "  install [--agent auto|claude|codex|omp|both] [--dry-run] [--with-gitlab-mcp]",
+    "  install [--agent auto|claude|codex|omp|antigravity|both] [--dry-run] [--with-gitlab-mcp]",
     "  doctor [--check-api]",
     "  start [--story <iid>] [--json]         one compact work context for agents",
     "  check [--story <iid>] [--json]         unified story, evidence, and policy check",
