@@ -112,9 +112,5 @@ export async function ensureLines(
 }
 
 function escapeRegExp(value: string): string {
-  const specials = [".", "*", "+", "?", "^", "$", "{", "}", "(", ")", "|", "[", "]", "\\"];
-  return value
-    .split("")
-    .map((character) => (specials.includes(character) ? "\\" + character : character))
-    .join("");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
